@@ -1,9 +1,11 @@
-use mongodb::error::Error;
-pub type Result<T> = core::result::Result<T , Error>;
+pub type Result<T> = core::result::Result<T , MyError>;
 
+#[derive(Debug)]
 pub enum MyError {
     // school errors
     CantNotCreateSchool,
-    MongoErrorQuery(Error),
+
+    // user errors
     UserNotFound,
+    UserEmailIsReadyExit,
 }

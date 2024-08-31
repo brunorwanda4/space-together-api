@@ -22,7 +22,10 @@ pub async fn init () -> Result<Self> {
     };
 
     let client: Client = Client::with_uri_str(uri).await.unwrap();
-    let db: mongodb::Database = client.database("SpaceTogetherLocal");
+    let db = client.database("SpaceTogetherLocal");
+
+    let image_db = client.database("images");
+
 
     let school : Collection<School> = db.collection("schools");
     let user : Collection<UserModel> = db.collection("users");
@@ -53,7 +56,6 @@ pub async fn create_user(&self , user : UserModel) -> Result<InsertOneResult> {
     .await
     .ok()
     .expect("can't create a new user");
-
     Ok(res)
 }
 
@@ -67,6 +69,24 @@ pub async fn get_user (&self , id : &str) -> Result<Json<UserModel>> {
 
     let user_json : Json<UserModel> = Json(user.unwrap());
 
+    Ok(user_json)
+}
+
+// no duplicate user
+
+pub async fn get_user_by_email (&self , email : String) -> Result<Json<UserModel>> {
+    let user = self
+    .user
+    .find_one(doc! {"email" : email})
+    .await
+    .ok()
+    .expect("can not find as  user by email");
+
+    if(user.is_none()) {
+        return Err(MyError::UserNotFound);
+    }
+
+    let user_json: Json<UserModel> = Json(user.unwrap());
     Ok(user_json)
 }
 

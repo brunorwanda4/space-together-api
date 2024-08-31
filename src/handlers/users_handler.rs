@@ -15,15 +15,22 @@ use crate::{libs::db::Database, models::user_model::UserModel};
 
 use crate::AppState;
 
-pub async fn create_user_(
+pub async fn create_user(
     State(app_state) : State<Arc<AppState>>,
     Json(user_fc) : Json<UserModel>
 ) -> Result<Json<InsertOneResult>, (StatusCode)>{
+    let user_email = user_fc.email.clone();
+    let find_user_email = app_state.db.get_user_by_email(user_email);
+    
+    if find_user_email.await.is_ok() {
+        return Err(StatusCode::NOT_ACCEPTABLE);
+    }
     let new_user = app_state.db.create_user(user_fc).await;
     match new_user {
         Ok(res) => Ok(Json(res)),
         Err(err) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
+
 }
 
 pub async fn get_user (
@@ -37,22 +44,4 @@ pub async fn get_user (
     }
     // math
     // todo!()
-}
-
-pub async fn create_user (
-    State(app_state) : State<Arc<AppState>>,
-    Json(body) : Json<UserModel>
-) -> Result<impl IntoResponse , (StatusCode)>{
-    match app_state.db.create_user(body).await {
-        Ok(res) => Ok((StatusCode::CREATED)),
-        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR)),
-    }
-}
-
-pub fn routes(db : Arc<AppState>) -> Router {
-    Router::new()
-    .route("/", post(create_user))
-    .route("/add", post(create_user_))
-    .route("/:id", get(get_user))
-    .with_state(db)
 }
