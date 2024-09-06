@@ -10,7 +10,7 @@ use mongodb::bson::oid::ObjectId;
 use mongodb::results::InsertOneResult;
 
 use crate::errors::MyError;
-use crate::models::user_model::{self, ModelsController};
+use crate::models::user_model::{self, ModelsController, UpdateUserModel};
 use crate::{libs::db::Database, models::user_model::UserModel};
 
 use crate::AppState;
@@ -46,7 +46,7 @@ pub async fn get_user (
 pub async fn update_user (
     Path(id) : Path<String>,
     State(app_state) : State<Arc<AppState>>,
-    Json(user_fc) : Json<UserModel>
+    Json(user_fc) : Json<UpdateUserModel>
 ) -> Result<Json <UserModel> , (StatusCode)>{
     // let find_user = app_state.db.get_user(&id).await;
 

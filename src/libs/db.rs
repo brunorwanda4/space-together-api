@@ -5,7 +5,7 @@ use mongodb::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::models::{school::School, user_model::UserModel};
+use crate::models::{school::School, user_model::{UpdateUserModel, UserModel}};
 use crate::errors::{Result , MyError};
 
 #[derive(Debug , Clone,)]
@@ -72,7 +72,7 @@ pub async fn get_user (&self , id : &str) -> Result<Json<UserModel>> {
     Ok(user_json)
 }
 
-pub async fn update_user(&self, id: &str, user: &UserModel) -> Result<UserModel> {
+pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<UserModel> {
     // Convert id to ObjectId, return an error if it fails
     let obj_id = ObjectId::from_str(id).map_err(|_| MyError::InvalidUserId)?;
 
@@ -80,6 +80,10 @@ pub async fn update_user(&self, id: &str, user: &UserModel) -> Result<UserModel>
     let mut update_doc = Document::new();
     if let Some(password) = &user.password {
         update_doc.insert("password", password);
+    }
+
+    if let Some(username) = &user.username {
+        update_doc.insert("username", username);
     }
     if let Some(gender) = &user.gender {
         update_doc.insert("gender", gender.to_string());
@@ -118,6 +122,7 @@ pub async fn update_user(&self, id: &str, user: &UserModel) -> Result<UserModel>
         )
         .await;
 
+    
     // Handle possible outcomes of the update
     match update_res {
         Ok(Some(updated_user)) => Ok(updated_user), // Return the updated user

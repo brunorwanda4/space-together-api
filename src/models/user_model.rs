@@ -39,4 +39,22 @@ pub struct UserModel {
     pub linkedin : Option<String>,
     pub snapchat : Option<String>,
     pub whatsapp : Option<String>,
+    pub username : Option<String>,
+}
+
+#[derive(Debug , Serialize , Deserialize)]
+pub struct UpdateUserModel {
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id  : Option<ObjectId>,
+    pub password : Option<String>,
+    pub gender : Option<TGender>,
+    pub image : Option<String>,
+    pub birth_date : Option<DateTime>,
+    pub facebook : Option<String>,
+    pub twitter : Option<String>,
+    pub instagram : Option<String>,
+    pub linkedin : Option<String>,
+    pub snapchat : Option<String>,
+    pub whatsapp : Option<String>,
+    pub username : Option<String>,
 }
