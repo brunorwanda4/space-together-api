@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use axum::{routing::{get, post, put}, Router};
+use axum::{routing::{get, get_service, post, put}, Router};
+use tower_http::services::ServeDir;
 
 use crate::{
     handlers::users_handler::{

@@ -10,14 +10,14 @@ use mongodb::bson::oid::ObjectId;
 use mongodb::results::InsertOneResult;
 
 use crate::errors::MyError;
-use crate::models::user_model::{self, ModelsController, UpdateUserModel};
+use crate::models::user_model::{self, CreateUserRequestModel, ModelsController, UpdateUserModel};
 use crate::{libs::db::Database, models::user_model::UserModel};
 
 use crate::AppState;
 
 pub async fn create_user(
     State(app_state) : State<Arc<AppState>>,
-    Json(user_fc) : Json<UserModel>
+    Json(user_fc) : Json<CreateUserRequestModel>
 ) -> Result<Json<InsertOneResult>, (StatusCode)>{
     let user_email = user_fc.email.clone();
     let find_user_email = app_state.db.get_user_by_email(user_email);
@@ -25,7 +25,7 @@ pub async fn create_user(
     if find_user_email.await.is_ok() {
         return Err(StatusCode::NOT_ACCEPTABLE);
     }
-    let new_user = app_state.db.create_user(user_fc).await;
+    let new_user = app_state.db.create_user(user_fc.name , user_fc.email , Some(user_fc.password)).await;
     match new_user {
         Ok(res) => Ok(Json(res)),
         Err(err) => Err(StatusCode::INTERNAL_SERVER_ERROR),

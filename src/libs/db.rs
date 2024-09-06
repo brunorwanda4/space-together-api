@@ -22,7 +22,7 @@ pub async fn init () -> Result<Self> {
     };
 
     let client: Client = Client::with_uri_str(uri).await.unwrap();
-    let db = client.database("SpaceTogetherLocal");
+    let db = client.database("space-together-local");
 
     let image_db = client.database("images");
 
@@ -49,13 +49,15 @@ pub async fn create_school(&self , school : School) -> Result<InsertOneResult> {
 }
 
 // ----- user CRUD  ----------
-pub async fn create_user(&self , user : UserModel) -> Result<InsertOneResult> {
+pub async fn create_user(&self, name: String, email: String, password: Option<String>) -> Result<InsertOneResult> {
+    let new_user = UserModel::new(name, email, password);
     let res = self
     .user
-    .insert_one(user)
+    .insert_one(new_user)
     .await
     .ok()
     .expect("can't create a new user");
+
     Ok(res)
 }
 
