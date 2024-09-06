@@ -1,7 +1,7 @@
 use std::{env, str::FromStr, sync::{Arc, Mutex}};
 use axum::Json;
 use mongodb::{
-    action::FindOne, bson::{doc, from_document, oid::ObjectId, Document}, results::InsertOneResult, Client, Collection,error::Error
+    action::FindOne, bson::{doc, from_document, oid::ObjectId, Document}, error::Error, results::{InsertOneResult, UpdateResult}, Client, Collection
 };
 use serde::{Deserialize, Serialize};
 
@@ -72,6 +72,60 @@ pub async fn get_user (&self , id : &str) -> Result<Json<UserModel>> {
     Ok(user_json)
 }
 
+pub async fn update_user(&self, id: &str, user: &UserModel) -> Result<UserModel> {
+    // Convert id to ObjectId, return an error if it fails
+    let obj_id = ObjectId::from_str(id).map_err(|_| MyError::InvalidUserId)?;
+
+    // Create the update document
+    let mut update_doc = Document::new();
+    if let Some(password) = &user.password {
+        update_doc.insert("password", password);
+    }
+    if let Some(gender) = &user.gender {
+        update_doc.insert("gender", gender.to_string());
+    }
+    if let Some(image) = &user.image {
+        update_doc.insert("image", image);
+    }
+    if let Some(birth_date) = &user.birth_date {
+        update_doc.insert("birth_date", birth_date);
+    }
+    if let Some(facebook) = &user.facebook {
+        update_doc.insert("facebook", facebook);
+    }
+    if let Some(twitter) = &user.twitter {
+        update_doc.insert("twitter", twitter);
+    }
+    if let Some(instagram) = &user.instagram {
+        update_doc.insert("instagram", instagram);
+    }
+    if let Some(linkedin) = &user.linkedin {
+        update_doc.insert("linkedin", linkedin);
+    }
+    if let Some(snapchat) = &user.snapchat {
+        update_doc.insert("snapchat", snapchat);
+    }
+    if let Some(whatsapp) = &user.whatsapp {
+        update_doc.insert("whatsapp", whatsapp);
+    }
+
+    // Attempt to update the user
+    let update_res = self
+        .user
+        .find_one_and_update(
+            doc! { "_id": obj_id },
+            doc! { "$set": update_doc },
+        )
+        .await;
+
+    // Handle possible outcomes of the update
+    match update_res {
+        Ok(Some(updated_user)) => Ok(updated_user), // Return the updated user
+        Ok(None) => Err(MyError::UserNotFound), // Handle case where user was not found
+        Err(_) => Err(MyError::DatabaseError), // Generic database error handling
+    }
+}
+
 // no duplicate user
 
 pub async fn get_user_by_email (&self , email : String) -> Result<Json<UserModel>> {
@@ -89,28 +143,6 @@ pub async fn get_user_by_email (&self , email : String) -> Result<Json<UserModel
     let user_json: Json<UserModel> = Json(user.unwrap());
     Ok(user_json)
 }
-
-// pub async fn get_users(&self ,) -> Result<Vec<UserModel>> {
-//     let res = self
-//     .user
-//     .find(doc! {})
-//     .await
-//     .ok()
-//     .expect("can't find a user");
-
-//     let mut users : Vec<UserModel> = Vec::new();
-
-//     while let Some(res) = res.try_next().await?{
-//         match res {
-//             Ok(doc) => {
-//                 let my_user : UserModel = from_document(doc).expect("Error converting documents");
-//                 users.push(my_user);
-//             }
-//             Err(err) => panic!("Error converting user document: {}", err),
-//         }
-//     }
-//     Ok(users)
-// }
 
 
 }

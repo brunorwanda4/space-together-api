@@ -1,5 +1,12 @@
-# rust 
-/target
+# -- Base
+.*
+!.gitignore
 
-# environment
-.env*local
+*.lock
+*.lockb
+*.log
+
+# -- Rust
+target/
+# !Cargo.lock # Commented by default
+!.cargo/

@@ -37,11 +37,26 @@ pub async fn get_user (
     State(app_state) : State<Arc<AppState>>,
     Path(id) : Path<String>
 ) -> Result<Json<UserModel> , (StatusCode)>{
-
     match app_state.db.get_user(&id).await {
         Ok(res) => Ok(res),
         Err(err) => Err(StatusCode::NOT_FOUND)
     }
-    // math
-    // todo!()
+}
+
+pub async fn update_user (
+    Path(id) : Path<String>,
+    State(app_state) : State<Arc<AppState>>,
+    Json(user_fc) : Json<UserModel>
+) -> Result<Json <UserModel> , (StatusCode)>{
+    // let find_user = app_state.db.get_user(&id).await;
+
+    // if find_user.is_err() {
+    //     return Err(StatusCode::NOT_FOUND);
+    // }
+    let res = app_state.db.update_user(&id, &user_fc).await;
+
+    match res {
+        Ok(user) => Ok(Json(user)),
+        Err(status) => Err(StatusCode::BAD_REQUEST)
+    }
 }
