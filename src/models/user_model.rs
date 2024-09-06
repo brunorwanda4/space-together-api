@@ -39,7 +39,7 @@ pub struct UserModel {
     pub password: Option<String>,
     pub gender: Option<TGender>,
     pub image: Option<String>,
-    pub birth_date: Option<DateTime>,
+    pub birth_date: Option<String>,
     pub facebook: Option<String>,
     pub twitter: Option<String>,
     pub instagram: Option<String>,
@@ -47,7 +47,9 @@ pub struct UserModel {
     pub snapchat: Option<String>,
     pub whatsapp: Option<String>,
     pub username: Option<String>,
+    pub phone_number: Option<String>,
     pub created_at: Option<NaiveDateTime>,
+    pub updated_at: Option<NaiveDateTime>,
 }
 
 impl UserModel {
@@ -74,7 +76,9 @@ impl UserModel {
             snapchat: None,
             whatsapp: None,
             username: None,
+            phone_number : None,
             created_at: Some(Utc::now().naive_utc()),
+            updated_at: Some(Utc::now().naive_utc()),
         }
     }
 }
@@ -94,7 +98,7 @@ pub struct UpdateUserModel {
     pub password: Option<String>,
     pub gender: Option<TGender>,
     pub image: Option<String>,
-    pub birth_date: Option<DateTime>,
+    pub birth_date: Option<String>,
     pub facebook: Option<String>,
     pub twitter: Option<String>,
     pub instagram: Option<String>,
@@ -102,4 +106,11 @@ pub struct UpdateUserModel {
     pub snapchat: Option<String>,
     pub whatsapp: Option<String>,
     pub username: Option<String>,
+    pub phone_number: Option<String>,
+}
+
+#[derive(Debug , Deserialize , Serialize)]
+pub struct LoginUserModel {
+    pub email: String,
+    pub password: String,
 }

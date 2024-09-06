@@ -8,6 +8,7 @@ use libs::db::{self, Database};
 use routes::all_routers;
 use serde::Deserialize;
 use tokio::net::TcpListener;
+use tower_cookies::CookieManagerLayer;
 use tower_http::cors::CorsLayer;
 
 mod handlers;
@@ -39,7 +40,9 @@ async fn main() -> Result<() , MyError> {
     
     let routes = all_routers(mc).await;
 
-    let app = routes.layer(cors);
+    let app = routes
+     .layer(cors)
+     .layer(CookieManagerLayer::new());
     let listener = TcpListener::bind("127.0.0.1:8000").await.unwrap();
 
     println!("->> LISTENING on {:?}\n", listener.local_addr());

@@ -48,11 +48,6 @@ pub async fn update_user (
     State(app_state) : State<Arc<AppState>>,
     Json(user_fc) : Json<UpdateUserModel>
 ) -> Result<Json <UserModel> , (StatusCode)>{
-    // let find_user = app_state.db.get_user(&id).await;
-
-    // if find_user.is_err() {
-    //     return Err(StatusCode::NOT_FOUND);
-    // }
     let res = app_state.db.update_user(&id, &user_fc).await;
 
     match res {

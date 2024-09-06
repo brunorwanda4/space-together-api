@@ -114,6 +114,9 @@ pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<User
     if let Some(whatsapp) = &user.whatsapp {
         update_doc.insert("whatsapp", whatsapp);
     }
+    if let Some(phone_number) = &user.phone_number {
+        update_doc.insert("phone_number", phone_number);
+    }
 
     // Attempt to update the user
     let update_res = self
@@ -135,20 +138,18 @@ pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<User
 
 // no duplicate user
 
-pub async fn get_user_by_email (&self , email : String) -> Result<Json<UserModel>> {
-    let user = self
+pub async fn get_user_by_email (&self , email : String) -> Result<UserModel> {
+    let get_user = self
     .user
     .find_one(doc! {"email" : email})
-    .await
-    .ok()
-    .expect("can not find as  user by email");
+    .await;
 
-    if(user.is_none()) {
-        return Err(MyError::UserNotFound);
+    match get_user {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => Err(MyError::UserNotFound),
+        Err(_) => Err(MyError::DatabaseError)
     }
 
-    let user_json: Json<UserModel> = Json(user.unwrap());
-    Ok(user_json)
 }
 
 
