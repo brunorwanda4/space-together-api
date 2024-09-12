@@ -1,6 +1,7 @@
 use std::{
     string,
     sync::{Arc, Mutex},
+    time::SystemTime
 };
 
 use bcrypt::{hash, DEFAULT_COST};
@@ -48,8 +49,8 @@ pub struct UserModel {
     pub whatsapp: Option<String>,
     pub username: Option<String>,
     pub phone_number: Option<String>,
-    pub created_at: Option<NaiveDateTime>,
-    pub updated_at: Option<NaiveDateTime>,
+    pub created_at: Option<DateTime>,
+    pub updated_at: Option<DateTime>,
 }
 
 impl UserModel {
@@ -61,6 +62,7 @@ impl UserModel {
         let hashed_password = password.as_ref()
             .map(|pw| hash(pw, 10).unwrap());
         
+        let now: SystemTime = Utc::now().into();
         UserModel {
             id: None,
             name,
@@ -77,8 +79,8 @@ impl UserModel {
             whatsapp: None,
             username: None,
             phone_number : None,
-            created_at: Some(Utc::now().naive_utc()),
-            updated_at: Some(Utc::now().naive_utc()),
+            created_at: Some(DateTime::from_system_time(now)),
+            updated_at: Some(DateTime::from_system_time(now)),
         }
     }
 }
@@ -107,6 +109,7 @@ pub struct UpdateUserModel {
     pub whatsapp: Option<String>,
     pub username: Option<String>,
     pub phone_number: Option<String>,
+    pub updated_at : Option<DateTime>,
 }
 
 #[derive(Debug , Deserialize , Serialize)]

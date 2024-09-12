@@ -15,6 +15,7 @@ mod handlers;
 mod errors;
 mod models;
 mod libs;
+mod database;
 
 mod routes;
 

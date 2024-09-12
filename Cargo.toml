@@ -34,6 +34,7 @@ uuid = {version = "1", features = ["v4","fast-rng",]}
 bcrypt = "0.15.1"
 chrono = {version = "0.4.38", features = ["serde"]}
 crypto = "0.5.1"
+dotenv = "0.15.0"
 
 
 [dev-dependencies]
