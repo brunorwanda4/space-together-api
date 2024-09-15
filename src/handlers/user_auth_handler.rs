@@ -14,26 +14,22 @@ pub async fn user_login_handler(
     State(app_state) : State<Arc<AppState>>,
 )
  -> Result<Json<Value>, (StatusCode)>{
-    let get_user = app_state.db.get_user_by_email(user.email).await.unwrap();
+    let get_user = app_state
+        .db
+        .get_user_by_email(user.email.clone())
+        .await
+        .map_err(|_| MyError::UserEmailIsReadyExit { email : user.email.clone() });
 
-    if get_user.password.is_none() {
-        return Err(StatusCode::NOT_FOUND);
+    let user = match get_user {
+        Ok(user) => user,
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    if user.password.is_some() {
+        // let hash_password = user
     }
-    let hash_password = get_user.password.unwrap();
-    let password = user.password;
 
-    let compier_password = verify( password, &hash_password).unwrap();
-    if !compier_password {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    cookies.add(Cookie::new(AUTH_TOKEN , "user-1.exp.sign"));
-
-    let body = Json(json!({
-        "result" : {
-            "success" : true,
-        }
-    }));
-
-    Ok(body)
+    // let hash_password = user.password.inspect("user password is invalid");
+    
+    todo!()
 }

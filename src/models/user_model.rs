@@ -14,7 +14,7 @@ pub struct ModelsController {
     users: Arc<Mutex<Vec<Option<UserModel>>>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug , Clone)]
 pub enum TGender {
     Male,
     Female,
@@ -31,7 +31,14 @@ impl TGender {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize , Clone)]
+#[serde(untagged)]
+pub enum ImageType {
+    ObjectId(ObjectId),
+    String(String),
+}
+
+#[derive(Debug, Serialize, Deserialize , Clone)]
 pub struct UserModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
@@ -39,7 +46,7 @@ pub struct UserModel {
     pub email: String,
     pub password: Option<String>,
     pub gender: Option<TGender>,
-    pub image: Option<String>,
+    pub image: Option<ImageType>,
     pub birth_date: Option<String>,
     pub facebook: Option<String>,
     pub twitter: Option<String>,
@@ -97,7 +104,6 @@ pub struct CreateUserRequestModel {
 pub struct UpdateUserModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub password: Option<String>,
     pub gender: Option<TGender>,
     pub image: Option<String>,
     pub birth_date: Option<String>,
@@ -112,8 +118,47 @@ pub struct UpdateUserModel {
     pub updated_at : Option<DateTime>,
 }
 
+// login
+
 #[derive(Debug , Deserialize , Serialize)]
 pub struct LoginUserModel {
     pub email: String,
     pub password: String,
+}
+
+// get user
+
+#[derive(Debug , Clone ,Serialize , Deserialize)]
+pub struct ProfileImageModel {
+    pub src : String,
+    pub created_at: Option<DateTime>,
+}
+
+
+#[derive(Debug, Serialize, Deserialize , Clone)]
+#[serde(untagged)]
+pub enum ProfileImageType {
+    String(String),
+    Vec(ProfileImageModel),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GetUserModel {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub password: String,
+    pub gender : Option<TGender>,
+    pub image : Option<ProfileImageType>,
+    pub birth_date: Option<String>,
+    pub facebook: Option<String>,
+    pub twitter: Option<String>,
+    pub instagram: Option<String>,
+    pub linkedin: Option<String>,
+    pub snapchat: Option<String>,
+    pub whatsapp: Option<String>,
+    pub username: Option<String>,
+    pub phone_number: Option<String>,
+    pub created_at: Option<DateTime>,
+    pub updated_at: Option<DateTime>,
 }

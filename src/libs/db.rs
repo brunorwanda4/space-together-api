@@ -3,11 +3,11 @@ use axum::Json;
 use chrono::Utc;
 use lazy_regex::regex::Match;
 use mongodb::{
-    action::FindOne, bson::{doc, from_document, oid::ObjectId, to_bson, DateTime, Document}, error::Error, options::IndexOptions, results::{InsertOneResult, UpdateResult}, Client, Collection, IndexModel
+    action::FindOne, bson::{doc, from_document, oid::ObjectId, to_bson, to_document, DateTime, Document}, error::Error, options::IndexOptions, results::{InsertOneResult, UpdateResult}, Client, Collection, IndexModel
 };
 use serde::{Deserialize, Serialize};
 
-use crate::models::{images_models::{ProfileImageModel, ProfileImagesModel}, school::School, user_model::{UpdateUserModel, UserModel}};
+use crate::models::{images_models::{ProfileImageModel, ProfileImagesModel}, school::School, user_model::{ImageType, UpdateUserModel, UserModel}};
 use crate::errors::{Result , MyError};
 
 #[derive(Debug , Clone,)]
@@ -83,19 +83,46 @@ pub async fn create_user(&self, name: String, email: String, password: Option<St
 
 }
 
-pub async fn get_user (&self , id : &str) -> Result<Json<UserModel>> {
-    let user = self
-    .user
-    .find_one(doc! {"_id" : ObjectId::from_str(id).expect("Failed to find user by id")})
-    .await;
+pub async fn get_user(&self, id: &str) 
+    -> Result<Json<UserModel>> {
+    // Convert the string ID to an ObjectId
+    let user_id = ObjectId::parse_str(id).map_err(|_| MyError::InvalidUserId)?;
 
-    match user {
-        Ok(Some (user)) => Ok(Json(user)),
-        Ok(None) => Err(MyError::UserNotFound),
-        Err(err) => Err(MyError::GetUserErr),
+    // Step 1: Fetch the user by ID
+    let user_result = self
+        .user
+        .find_one(doc! { "_id": user_id })
+        .await
+        .map_err(|_| MyError::DatabaseError)?;
+
+    // Step 2: Check if user exists
+    let mut user = match user_result {
+        Some(u) => u,
+        None => return Err(MyError::UserNotFound),
+    };
+
+    // Step 3: Handle image fetching based on ImageType
+    if let Some(ImageType::ObjectId(image_id)) = user.image.clone() {
+        // Fetch profile image from `profile_image_collection`
+        let image_result = self
+            .profile_image
+            .find_one(doc! { "_id": image_id })
+            .await
+            .map_err(|_| MyError::CanNotFindImage)?;
+
+        if let Some(profile_image) = image_result {
+            if let Some(images) = profile_image.images {
+                if let Some(first_image) = images.first() {
+                    user.image = Some(ImageType::String(first_image.src.clone()));
+                }
+            }
+        }
     }
 
+    // Return the updated user (with the profile image, if found)
+    Ok(Json(user))
 }
+
 
 pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<UserModel> {
     // Convert id to ObjectId, return an error if it fails
@@ -107,10 +134,7 @@ pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<User
 
     // Create the update document
     let mut update_doc = Document::new();
-    if let Some(password) = &user.password {
-        update_doc.insert("password", password);
-    }
-
+   
     if let Some(username) = &user.username {
         update_doc.insert("username", username);
     }
@@ -152,11 +176,15 @@ pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<User
         } else {
             let new_profile_images = ProfileImagesModel::new(image.to_string(), Some(id.to_string()));
 
-            self.profile_image
+            let create_new_image = self.profile_image
                     .insert_one(new_profile_images)
                     .await
                     .map_err(|_| MyError::DatabaseError)?;
+
+
+            update_doc.insert("image", create_new_image.inserted_id.as_object_id().expect("can't insert "));
         }
+
 
     }
     if let Some(birth_date) = &user.birth_date {
@@ -200,7 +228,7 @@ pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<User
     
     // Handle possible outcomes of the update
     match update_res {
-        Ok(Some(updated_user)) => Ok(updated_user), // Return the updated user
+        Ok(Some(ok)) => Ok(ok), // Return the updated user
         Ok(None) => Err(MyError::UserNotFound), // Handle case where user was not found
         Err(err) => {
             println!("Update user profile image error 😡: {}" , err);

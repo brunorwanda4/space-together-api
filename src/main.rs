@@ -5,7 +5,7 @@ use std::sync::Arc;
 use errors::MyError;
 use axum::{extract::{Path, Query}, http::{header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}, HeaderValue, Method}, response::{Html, IntoResponse}, routing::get, Router};
 use libs::db::{self, Database};
-use routes::all_routers;
+use routes::all_routes::all_routes;
 use serde::Deserialize;
 use tokio::net::TcpListener;
 use tower_cookies::CookieManagerLayer;
@@ -14,10 +14,10 @@ use tower_http::cors::CorsLayer;
 mod handlers;
 mod errors;
 mod models;
+mod routes;
 mod libs;
 mod database;
 
-mod routes;
 
 #[derive(Deserialize)]
 struct HelloParams {
@@ -39,7 +39,7 @@ async fn main() -> Result<() , MyError> {
         .allow_credentials(true)
         .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
     
-    let routes = all_routers(mc).await;
+    let routes = all_routes(mc).await;
 
     let app = routes
      .layer(cors)

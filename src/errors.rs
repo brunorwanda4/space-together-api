@@ -16,6 +16,8 @@ pub enum MyError {
     // user auth
     InvalidCredentials,
     UserNotLoggedIn,
+    // image error
+    CanNotFindImage
 }
 
 impl std::fmt::Display for MyError {
@@ -30,6 +32,7 @@ impl std::fmt::Display for MyError {
             MyError::UserEmailIsReadyExit {email} => write!(f, "User's email is already registered: {}" , email),
             MyError::UserNotLoggedIn => write!(f, "User is not logged in"),
             MyError::InvalidCredentials => write!(f, "Invalid credentials"),
+            MyError::CanNotFindImage => write!(f, "Can not find image"),
         }
     }
 }
