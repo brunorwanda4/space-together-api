@@ -7,7 +7,7 @@ use mongodb::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::models::{images_models::{ProfileImageModel, ProfileImagesModel}, school::School, user_model::{ImageType, UpdateUserModel, UserModel}};
+use crate::models::{images_models::{ProfileImageModel, ProfileImagesModel}, school::School, user_model::{ProfileImageType, UpdateUserModel, UserModel}};
 use crate::errors::{Result , MyError};
 
 #[derive(Debug , Clone,)]
@@ -83,8 +83,7 @@ pub async fn create_user(&self, name: String, email: String, password: Option<St
 
 }
 
-pub async fn get_user(&self, id: &str) 
-    -> Result<Json<UserModel>> {
+pub async fn get_user(&self, id: &str) -> Result<Json<UserModel>> {
     // Convert the string ID to an ObjectId
     let user_id = ObjectId::parse_str(id).map_err(|_| MyError::InvalidUserId)?;
 
@@ -101,25 +100,34 @@ pub async fn get_user(&self, id: &str)
         None => return Err(MyError::UserNotFound),
     };
 
-    // Step 3: Handle image fetching based on ImageType
-    if let Some(ImageType::ObjectId(image_id)) = user.image.clone() {
-        // Fetch profile image from `profile_image_collection`
-        let image_result = self
-            .profile_image
-            .find_one(doc! { "_id": image_id })
-            .await
-            .map_err(|_| MyError::CanNotFindImage)?;
+    // Step 3: Initialize an empty vector for `ProfileImageModel`
+    let mut profile_images: Vec<ProfileImageModel> = Vec::new();
 
-        if let Some(profile_image) = image_result {
-            if let Some(images) = profile_image.images {
-                if let Some(first_image) = images.first() {
-                    user.image = Some(ImageType::String(first_image.src.clone()));
+    // Step 4: Handle image fetching based on ProfileImageType
+    if let Some(image) = user.image.take() {
+        if let ProfileImageType::ObjectId(image_id) = image {
+            // Fetch profile image(s) from `profile_image_collection`
+            let image_result = self
+                .profile_image
+                .find_one(doc! { "_id": image_id })
+                .await
+                .map_err(|_| MyError::CanNotFindImage)?;
+
+            if let Some(profile_images_model) = image_result {
+                if let Some(images) = profile_images_model.images {
+                    // Assign all the `ProfileImageModel` objects to `profile_images`
+                    profile_images = images;
                 }
             }
+            // Step 5: Assign all the profile images to the user's image field
+            user.image = Some(ProfileImageType::Images(profile_images));
+        } else if let ProfileImageType::String(image_string) = image {
+            user.image = Some(ProfileImageType::String(image_string));
         }
     }
 
-    // Return the updated user (with the profile image, if found)
+
+    // Step 6: Return the updated user (with the array of `ProfileImageModel`)
     Ok(Json(user))
 }
 

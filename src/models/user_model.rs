@@ -9,6 +9,8 @@ use mongodb::bson::{oid::ObjectId, DateTime};
 use serde::{Deserialize, Serialize};
 use chrono::{NaiveDateTime, Utc};
 
+use super::images_models::ProfileImageModel;
+
 #[derive(Clone)]
 pub struct ModelsController {
     users: Arc<Mutex<Vec<Option<UserModel>>>>,
@@ -33,9 +35,10 @@ impl TGender {
 
 #[derive(Debug, Serialize, Deserialize , Clone)]
 #[serde(untagged)]
-pub enum ImageType {
+pub enum ProfileImageType {
     ObjectId(ObjectId),
     String(String),
+    Images(Vec<ProfileImageModel>)
 }
 
 #[derive(Debug, Serialize, Deserialize , Clone)]
@@ -46,7 +49,7 @@ pub struct UserModel {
     pub email: String,
     pub password: Option<String>,
     pub gender: Option<TGender>,
-    pub image: Option<ImageType>,
+    pub image: Option<ProfileImageType>,
     pub birth_date: Option<String>,
     pub facebook: Option<String>,
     pub twitter: Option<String>,
@@ -115,7 +118,6 @@ pub struct UpdateUserModel {
     pub whatsapp: Option<String>,
     pub username: Option<String>,
     pub phone_number: Option<String>,
-    pub updated_at : Option<DateTime>,
 }
 
 // login
@@ -127,38 +129,3 @@ pub struct LoginUserModel {
 }
 
 // get user
-
-#[derive(Debug , Clone ,Serialize , Deserialize)]
-pub struct ProfileImageModel {
-    pub src : String,
-    pub created_at: Option<DateTime>,
-}
-
-
-#[derive(Debug, Serialize, Deserialize , Clone)]
-#[serde(untagged)]
-pub enum ProfileImageType {
-    String(String),
-    Vec(ProfileImageModel),
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GetUserModel {
-    pub id: String,
-    pub name: String,
-    pub email: String,
-    pub password: String,
-    pub gender : Option<TGender>,
-    pub image : Option<ProfileImageType>,
-    pub birth_date: Option<String>,
-    pub facebook: Option<String>,
-    pub twitter: Option<String>,
-    pub instagram: Option<String>,
-    pub linkedin: Option<String>,
-    pub snapchat: Option<String>,
-    pub whatsapp: Option<String>,
-    pub username: Option<String>,
-    pub phone_number: Option<String>,
-    pub created_at: Option<DateTime>,
-    pub updated_at: Option<DateTime>,
-}
