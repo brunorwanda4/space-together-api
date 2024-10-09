@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::errors::MyError;
 use crate::models::user_model::{self, CreateUserRequestModel, ModelsController, UpdateUserModel};
-use crate::{libs::db::Database, models::user_model::UserModel};
+use crate::models::user_model::UserModel;
 
 use crate::AppState;
 
@@ -27,7 +27,7 @@ pub async fn create_user(
     Json(user_fc): Json<CreateUserRequestModel>,
 ) -> impl IntoResponse {
     let user_email = user_fc.email.clone();
-    let find_user_email = app_state.db.get_user_by_email(user_email.clone()).await;
+    let find_user_email = app_state.db.user_action_db.get_user_by_email(user_email.clone()).await;
 
     if find_user_email.is_ok() {
         let error_response = CreateUserResultError {
@@ -37,7 +37,7 @@ pub async fn create_user(
         return (StatusCode::NOT_ACCEPTABLE, Json(error_response)).into_response();
     }
 
-    let new_user = app_state.db.create_user(user_fc.name, user_fc.email, Some(user_fc.password)).await;
+    let new_user = app_state.db.user_action_db.create_user(user_fc.name, user_fc.email, Some(user_fc.password)).await;
     match new_user {
         Ok(res) => (StatusCode::OK, Json(res)).into_response(),
         Err(_) => {
@@ -55,7 +55,7 @@ pub async fn get_user(
     State(app_state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let user = app_state.db.get_user(&id).await;
+    let user = app_state.db.user_action_db.get_user(&id).await;
 
     match user {
         Ok(user) => Ok(user),
@@ -75,7 +75,7 @@ pub async fn update_user (
     Json(user_fc) : Json<UpdateUserModel>
 ) -> impl IntoResponse{
     let username = user_fc.username.clone();
-    let find_username = app_state.db.get_user_by_username(username.clone()).await;
+    let find_username = app_state.db.user_action_db.get_user_by_username(username.clone()).await;
 
     if find_username.is_ok() {
         let error_response = CreateUserResultError {
@@ -85,7 +85,7 @@ pub async fn update_user (
         return (StatusCode::NOT_ACCEPTABLE, Json(error_response)).into_response();
     };
 
-    let res = app_state.db.update_user(&id, &user_fc).await;
+    let res = app_state.db.user_action_db.update_user(&id, &user_fc).await;
 
     match res {
         Ok(user) => (StatusCode::OK ,Json(user)).into_response(),

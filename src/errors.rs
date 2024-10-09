@@ -18,7 +18,9 @@ pub enum MyError {
     InvalidCredentials,
     UserNotLoggedIn,
     // image error
-    CanNotFindImage
+    CanNotFindImage,
+    // country
+    CanNotCreateCountry,
 }
 
 impl std::fmt::Display for MyError {
@@ -35,6 +37,8 @@ impl std::fmt::Display for MyError {
             MyError::UserNotLoggedIn => write!(f, "User is not logged in"),
             MyError::InvalidCredentials => write!(f, "Invalid credentials"),
             MyError::CanNotFindImage => write!(f, "Can not find image"),
+            // countries
+            MyError::CanNotCreateCountry => write!(f, "Can not create country"),
         }
     }
 }

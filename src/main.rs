@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use database::{countries_action_db::CountyActionDb, database_conn::DBConn};
 use errors::MyError;
 use axum::{extract::{Path, Query}, http::{header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}, HeaderValue, Method}, response::{Html, IntoResponse}, routing::get, Router};
-use libs::db::{self, Database};
 use routes::all_routes::all_routes;
 use serde::Deserialize;
 use tokio::net::TcpListener;
@@ -16,6 +16,7 @@ mod routes;
 mod libs;
 mod database;
 mod controller;
+mod error;
 
 
 #[derive(Deserialize)]
@@ -24,12 +25,12 @@ struct HelloParams {
 }
 
 pub struct AppState {
-    db: Database,
+    db: DBConn,
 }
 
 #[tokio::main]
 async fn main() -> Result<() , MyError> {
-    let db = Database::init().await?;
+    let db = DBConn::init().await.expect("Can not connect to database after initialization");
     let mc = Arc::new(AppState {db : db});
 
     let cors = CorsLayer::new()
