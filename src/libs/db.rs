@@ -87,7 +87,6 @@ pub async fn get_user(&self, id: &str) -> Result<Json<UserModel>> {
     // Convert the string ID to an ObjectId
     let user_id = ObjectId::parse_str(id).map_err(|_| MyError::InvalidUserId)?;
 
-    // Step 1: Fetch the user by ID
     let user_result = self
         .user
         .find_one(doc! { "_id": user_id })
@@ -100,10 +99,8 @@ pub async fn get_user(&self, id: &str) -> Result<Json<UserModel>> {
         None => return Err(MyError::UserNotFound),
     };
 
-    // Step 3: Initialize an empty vector for `ProfileImageModel`
     let mut profile_images: Vec<ProfileImageModel> = Vec::new();
 
-    // Step 4: Handle image fetching based on ProfileImageType
     if let Some(image) = user.image.take() {
         if let ProfileImageType::ObjectId(image_id) = image {
             // Fetch profile image(s) from `profile_image_collection`
@@ -119,7 +116,6 @@ pub async fn get_user(&self, id: &str) -> Result<Json<UserModel>> {
                     profile_images = images;
                 }
             }
-            // Step 5: Assign all the profile images to the user's image field
             user.image = Some(ProfileImageType::Images(profile_images));
         } else if let ProfileImageType::String(image_string) = image {
             user.image = Some(ProfileImageType::String(image_string));
@@ -127,7 +123,6 @@ pub async fn get_user(&self, id: &str) -> Result<Json<UserModel>> {
     }
 
 
-    // Step 6: Return the updated user (with the array of `ProfileImageModel`)
     Ok(Json(user))
 }
 
@@ -149,6 +144,11 @@ pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<User
     if let Some(gender) = &user.gender {
         update_doc.insert("gender", gender.to_string());
     }
+
+    if let Some(user_type) = &user.user_type {
+        update_doc.insert("user_type", user_type.to_string());
+    }
+
     if let Some(image) = &user.image {
         let user_object_id = Some(obj_id.clone());
         let now = DateTime::now().into();
@@ -163,7 +163,7 @@ pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<User
             .find_one(doc! { "user_id": user_object_id })
             .await
             .ok()
-            .expect("Couldn't find");
+            .expect("Couldn't find user");
 
         if let Some(mut profile_images) =  existing_profile_image{
              if let Some(images) = &mut profile_images.images {
@@ -249,17 +249,27 @@ pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<User
 
 pub async fn get_user_by_email (&self , email : String) -> Result<UserModel> {
     let get_user = self
-    .user
-    .find_one(doc! {"email" : email})
-    .await;
+        .user
+        .find_one(doc! {"email" : email})
+        .await;
 
     match get_user {
         Ok(Some(user)) => Ok(user),
         Ok(None) => Err(MyError::UserNotFound),
         Err(_) => Err(MyError::DatabaseError)
     }
-
 }
 
+pub async  fn get_user_by_username(&self, username: Option<String>) -> Result<UserModel> {
+    let get_user = self
+        .user
+        .find_one(doc! {"username": username})
+        .await;
 
+    match get_user {
+        Ok(Some(user)) => Ok(user),
+        Ok(None) => Err(MyError::UserNotFound),
+        Err(_) => Err(MyError::DatabaseError)
+    }
+}
 }

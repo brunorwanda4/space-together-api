@@ -1,5 +1,3 @@
-// #![allow(unused)]
-
 use std::sync::Arc;
 
 use errors::MyError;
@@ -17,6 +15,7 @@ mod models;
 mod routes;
 mod libs;
 mod database;
+mod controller;
 
 
 #[derive(Deserialize)]
@@ -51,7 +50,6 @@ async fn main() -> Result<() , MyError> {
     axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
-
     Ok(())
 }
 

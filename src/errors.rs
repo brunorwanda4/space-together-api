@@ -9,6 +9,7 @@ pub enum MyError {
     // user errors
     UserNotFound,
     UserEmailIsReadyExit {email : String},
+    UsernameIsReadyExit {username : String},
     InvalidUserId,
     DatabaseError,
     CreateUserError,
@@ -30,6 +31,7 @@ impl std::fmt::Display for MyError {
             MyError::DatabaseError => write!(f, "A database error occurred"),
             MyError::CantNotCreateSchool => write!(f, "Can't create a new school"),
             MyError::UserEmailIsReadyExit {email} => write!(f, "User's email is already registered: {}" , email),
+            MyError::UsernameIsReadyExit {username} => write!(f, "username is already exit: {}" , username),
             MyError::UserNotLoggedIn => write!(f, "User is not logged in"),
             MyError::InvalidCredentials => write!(f, "Invalid credentials"),
             MyError::CanNotFindImage => write!(f, "Can not find image"),

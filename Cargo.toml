@@ -32,9 +32,11 @@ lazy-regex = "3"
 strum_macros = "0.25"
 uuid = {version = "1", features = ["v4","fast-rng",]}
 bcrypt = "0.15.1"
+regex = "1.11.0"
 chrono = {version = "0.4.38", features = ["serde"]}
 crypto = "0.5.1"
 dotenv = "0.15.0"
+oauth2 = "4.4.2"
 
 
 [dev-dependencies]

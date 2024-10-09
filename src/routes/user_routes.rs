@@ -2,10 +2,8 @@ use std::sync::Arc;
 
 use axum::{routing::{get, post}, Router};
 
-use crate::{
-    handlers::{user_auth_handler::user_login_handler, users_handler::{
-        self, create_user, get_user, update_user
-    }}, AppState};
+use crate::{handlers::users_handler::{create_user, get_user, update_user}, AppState};
+
 
 pub fn user_routes(db : Arc<AppState>) -> Router {
     Router::new()

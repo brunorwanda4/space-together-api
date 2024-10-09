@@ -33,6 +33,27 @@ impl TGender {
     }
 }
 
+#[derive(Debug , Serialize , Deserialize ,Clone)]
+pub enum TUserType {
+    Teacher,
+    Student,
+    Parent,
+    Staff,
+    Directer,
+}
+
+impl TUserType {
+    pub (crate) fn to_string(&self) -> String {
+        match self {
+            TUserType::Teacher => "Teacher".to_string(),
+            TUserType::Directer => "Directer".to_string(),
+            TUserType::Student => "Student".to_string(),
+            TUserType::Parent => "Parent".to_string(),
+            TUserType::Staff => "Staff".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize , Clone)]
 #[serde(untagged)]
 pub enum ProfileImageType {
@@ -59,6 +80,7 @@ pub struct UserModel {
     pub whatsapp: Option<String>,
     pub username: Option<String>,
     pub phone_number: Option<String>,
+    pub user_type : Option<TUserType>,
     pub created_at: Option<DateTime>,
     pub updated_at: Option<DateTime>,
 }
@@ -89,6 +111,7 @@ impl UserModel {
             whatsapp: None,
             username: None,
             phone_number : None,
+            user_type : None,
             created_at: Some(DateTime::from_system_time(now)),
             updated_at: Some(DateTime::from_system_time(now)),
         }
@@ -118,6 +141,7 @@ pub struct UpdateUserModel {
     pub whatsapp: Option<String>,
     pub username: Option<String>,
     pub phone_number: Option<String>,
+    pub user_type : Option<TUserType>,
 }
 
 // login

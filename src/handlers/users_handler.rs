@@ -73,11 +73,22 @@ pub async fn update_user (
     Path(id) : Path<String>,
     State(app_state) : State<Arc<AppState>>,
     Json(user_fc) : Json<UpdateUserModel>
-) -> Result<Json <UserModel> , (StatusCode)>{
+) -> impl IntoResponse{
+    let username = user_fc.username.clone();
+    let find_username = app_state.db.get_user_by_username(username.clone()).await;
+
+    if find_username.is_ok() {
+        let error_response = CreateUserResultError {
+            success: false,
+            message: MyError::UsernameIsReadyExit { username: username.unwrap() }.to_string(),
+        };
+        return (StatusCode::NOT_ACCEPTABLE, Json(error_response)).into_response();
+    };
+
     let res = app_state.db.update_user(&id, &user_fc).await;
 
     match res {
-        Ok(user) => Ok(Json(user)),
-        Err(status) => Err(StatusCode::BAD_REQUEST)
+        Ok(user) => (StatusCode::OK ,Json(user)).into_response(),
+        Err(status) => (StatusCode::BAD_REQUEST ,StatusCode::BAD_REQUEST).into_response()
     }
 }
