@@ -1,4 +1,4 @@
-use mongodb::options::IndexOptions;
+use mongodb::options::{FindOptions, IndexOptions};
 use mongodb::results::InsertOneResult;
 use mongodb::IndexModel;
 use mongodb::{bson::{doc , oid::ObjectId}, Collection};
@@ -35,11 +35,4 @@ impl CountyActionDb {
         }
     }
 
-    // pub async fn get_counties(&self) -> Result<Vec<CountryModel>> {
-    //     let counties = self
-    //         .country
-    //         .find()
-    //         .await;
-    //     todo!()
-    // }
 }

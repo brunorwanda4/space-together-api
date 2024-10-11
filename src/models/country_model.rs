@@ -13,5 +13,11 @@ pub struct CountryModel {
     pub id : Option<ObjectId>,
     pub name : String,
     pub provinces : Option<Vec<Province>>,
+}
 
+#[derive(Debug , Deserialize , Serialize , Clone)]
+pub struct CountryModelLocation {
+    pub country : String,
+    pub province : String,
+    pub district : String,
 }
