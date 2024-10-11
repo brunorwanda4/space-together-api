@@ -27,7 +27,10 @@ pub enum MyError {
     // school requested error
     SchoolRequestCanNotCreate,
     SchoolEmailIsLeadExit,
-    CanNotFIndSchoolRequest
+    CanNotFIndSchoolRequest,
+    SchoolRequestIsReadyExit,
+    SchoolRequestEmailIsReadyExit {email : String},
+    SchoolRequestUsernameIsReadyExit {username : String},
 }
 
 impl std::fmt::Display for MyError {
@@ -53,6 +56,9 @@ impl std::fmt::Display for MyError {
             MyError::SchoolRequestCanNotCreate => write!(f, "Can't create a new school request"),
             MyError::SchoolEmailIsLeadExit => write!(f, "School email is lead exit "),
             MyError::CanNotFIndSchoolRequest => write!(f, "Can not find a school request"),
+            MyError::SchoolRequestEmailIsReadyExit { email } => write!(f, "This email is ready exit please try other : {}" , email),
+            MyError::SchoolRequestUsernameIsReadyExit { username } => write!(f, "This username is ready exit try other: {}" , username),
+            MyError::SchoolRequestIsReadyExit => write!(f, "Your school request is ready exit check your school email to see response"),
         }
     }
 }

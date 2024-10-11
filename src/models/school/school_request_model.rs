@@ -13,4 +13,5 @@ pub struct SchoolRequestModel {
     pub phone : String,
     pub location : CountryModelLocation,
     pub description : String,
+    pub verified : Option<bool>
 }

@@ -8,6 +8,42 @@ pub async fn create_school_request_handlers (
     State(query) : State<Arc<AppState>>,
     Json(request) : Json<SchoolRequestModel>,
 ) -> impl IntoResponse {
+    let find_req_email = query
+        .db
+        .school_request_db
+        .get_school_request_by_email(&request.email.clone())
+        .await;
+
+    let find_req_username = query
+        .db
+        .school_request_db
+        .get_school_request_by_username(&request.username.clone())
+        .await;
+
+    if find_req_email.is_ok() && find_req_username.is_ok() {
+        let err = ResReq {
+            success : false,
+            message : MyError::SchoolRequestIsReadyExit.to_string()
+        };
+        return (StatusCode::BAD_REQUEST , Json(err)).into_response();
+    }
+
+    if find_req_email.is_ok() {
+        let error_response = ResReq {
+            success: false,
+            message: MyError::SchoolRequestEmailIsReadyExit { email: request.email.clone() }.to_string(),
+        };
+        return (StatusCode::BAD_REQUEST , Json(error_response)).into_response();
+    }
+
+    if find_req_username.is_ok() {
+        let error_response = ResReq {
+            success: false,
+            message: MyError::SchoolRequestUsernameIsReadyExit { username: request.username.clone() }.to_string(),
+        };
+        return (StatusCode::BAD_REQUEST , Json(error_response)).into_response();
+    }
+
     let create_req =  
         query
         .db
