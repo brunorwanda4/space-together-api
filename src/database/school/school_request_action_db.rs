@@ -2,7 +2,7 @@ use mongodb::{bson::{doc , oid::ObjectId}, options::IndexOptions, results::Inser
 use oauth2::http::request;
 use serde::{Deserialize, Serialize};
 
-use crate::{errors::{MyError , Result}, models::school::school_request_model::SchoolRequestModel};
+use crate::{errors::{MyError , Result}, models::school::school_request_model::{SchoolRequestModel, SchoolRequestModelNew}};
 
 #[derive(Debug , Clone)]
 pub struct SchoolRequestActionDb {
@@ -10,7 +10,7 @@ pub struct SchoolRequestActionDb {
 }
 
 impl SchoolRequestActionDb {
-    pub async fn create_school_request (&self , request : &SchoolRequestModel) -> Result<InsertOneResult>{
+    pub async fn create_school_request (&self , request : SchoolRequestModelNew) -> Result<InsertOneResult>{
         // check if the request is already in the database
         let index = IndexModel::builder()
             .keys(doc! {"email" : 1 , "name" : 1 , "username" : 1})
@@ -19,9 +19,11 @@ impl SchoolRequestActionDb {
         
         self.school_request.create_index(index).await;
 
+        let new_req = SchoolRequestModel::new(request);
+
         let create_request = self
             .school_request
-            .insert_one(request)
+            .insert_one(&new_req)
             .await
             .map_err(|_| MyError::SchoolRequestCanNotCreate);
 

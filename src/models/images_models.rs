@@ -15,8 +15,6 @@ pub struct ProfileImagesModel {
     pub images : Option<Vec<ProfileImageModel>>,
 }
 
-
-
 impl ProfileImagesModel {
     pub fn new(src : String , user_id : Option<String>) -> Self {
         let now = DateTime::now().into();
@@ -32,5 +30,4 @@ impl ProfileImagesModel {
         images : Some(vec![image])
        }
     }
-
 }

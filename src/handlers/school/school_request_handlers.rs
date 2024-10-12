@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use axum::{extract::{Path, State}, http::StatusCode, response::IntoResponse, Json};
 
-use crate::{error::res_req::ResReq, errors::MyError, models::school::school_request_model::SchoolRequestModel, AppState};
+use crate::{error::res_req::ResReq, errors::MyError, models::school::school_request_model::{SchoolRequestModel, SchoolRequestModelNew}, AppState};
 
 pub async fn create_school_request_handlers (
     State(query) : State<Arc<AppState>>,
-    Json(request) : Json<SchoolRequestModel>,
+    Json(request) : Json<SchoolRequestModelNew>,
 ) -> impl IntoResponse {
     let find_req_email = query
         .db
@@ -25,7 +25,7 @@ pub async fn create_school_request_handlers (
             success : false,
             message : MyError::SchoolRequestIsReadyExit.to_string()
         };
-        return (StatusCode::BAD_REQUEST , Json(err)).into_response();
+        return (StatusCode::OK , Json(err)).into_response();
     }
 
     if find_req_email.is_ok() {
@@ -33,7 +33,7 @@ pub async fn create_school_request_handlers (
             success: false,
             message: MyError::SchoolRequestEmailIsReadyExit { email: request.email.clone() }.to_string(),
         };
-        return (StatusCode::BAD_REQUEST , Json(error_response)).into_response();
+        return (StatusCode::OK , Json(error_response)).into_response();
     }
 
     if find_req_username.is_ok() {
@@ -41,14 +41,14 @@ pub async fn create_school_request_handlers (
             success: false,
             message: MyError::SchoolRequestUsernameIsReadyExit { username: request.username.clone() }.to_string(),
         };
-        return (StatusCode::BAD_REQUEST , Json(error_response)).into_response();
+        return (StatusCode::OK , Json(error_response)).into_response();
     }
 
     let create_req =  
         query
         .db
         .school_request_db
-        .create_school_request(&request)
+        .create_school_request(request)
         .await;
 
     match create_req {
@@ -59,7 +59,7 @@ pub async fn create_school_request_handlers (
                 message : MyError::SchoolRequestCanNotCreate.to_string()
             };
 
-            return (StatusCode::BAD_REQUEST,Json(error)).into_response();
+            return (StatusCode::OK,Json(error)).into_response();
         }
     }
 }
