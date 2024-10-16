@@ -1,13 +1,13 @@
 use std::{
     string,
     sync::{Arc, Mutex},
-    time::SystemTime
+    time::SystemTime,
 };
 
 use bcrypt::{hash, DEFAULT_COST};
+use chrono::{NaiveDateTime, Utc};
 use mongodb::bson::{oid::ObjectId, DateTime};
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDateTime, Utc};
 
 use super::images_models::ProfileImageModel;
 
@@ -16,7 +16,7 @@ pub struct ModelsController {
     users: Arc<Mutex<Vec<Option<UserModel>>>>,
 }
 
-#[derive(Serialize, Deserialize, Debug , Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TGender {
     Male,
     Female,
@@ -33,7 +33,7 @@ impl TGender {
     }
 }
 
-#[derive(Debug , Serialize , Deserialize ,Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum TUserType {
     Teacher,
     Student,
@@ -43,7 +43,7 @@ pub enum TUserType {
 }
 
 impl TUserType {
-    pub (crate) fn to_string(&self) -> String {
+    pub(crate) fn to_string(&self) -> String {
         match self {
             TUserType::Teacher => "Teacher".to_string(),
             TUserType::Directer => "Directer".to_string(),
@@ -54,15 +54,15 @@ impl TUserType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize , Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum ProfileImageType {
     ObjectId(ObjectId),
     String(String),
-    Images(Vec<ProfileImageModel>)
+    Images(Vec<ProfileImageModel>),
 }
 
-#[derive(Debug, Serialize, Deserialize , Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
@@ -80,20 +80,15 @@ pub struct UserModel {
     pub whatsapp: Option<String>,
     pub username: Option<String>,
     pub phone_number: Option<String>,
-    pub user_type : Option<TUserType>,
+    pub user_type: Option<TUserType>,
     pub created_at: Option<DateTime>,
     pub updated_at: Option<DateTime>,
 }
 
 impl UserModel {
-    pub fn new(
-        name: String,
-        email: String,
-        password: Option<String>,
-    ) -> Self {
-        let hashed_password = password.as_ref()
-            .map(|pw| hash(pw, 10).unwrap());
-        
+    pub fn new(name: String, email: String, password: Option<String>) -> Self {
+        let hashed_password = password.as_ref().map(|pw| hash(pw, 10).unwrap());
+
         let now: SystemTime = Utc::now().into();
         UserModel {
             id: None,
@@ -110,8 +105,8 @@ impl UserModel {
             snapchat: None,
             whatsapp: None,
             username: None,
-            phone_number : None,
-            user_type : None,
+            phone_number: None,
+            user_type: None,
             created_at: Some(DateTime::from_system_time(now)),
             updated_at: Some(DateTime::from_system_time(now)),
         }
@@ -141,12 +136,12 @@ pub struct UpdateUserModel {
     pub whatsapp: Option<String>,
     pub username: Option<String>,
     pub phone_number: Option<String>,
-    pub user_type : Option<TUserType>,
+    pub user_type: Option<TUserType>,
 }
 
 // login
 
-#[derive(Debug , Deserialize , Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct LoginUserModel {
     pub email: String,
     pub password: String,
