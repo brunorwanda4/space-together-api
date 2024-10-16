@@ -2,6 +2,7 @@ use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 use crate::models::country_model::CountryModelLocation;
+use super::school_model::SchoolType;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SchoolRequestModel {
@@ -14,7 +15,10 @@ pub struct SchoolRequestModel {
     pub phone: String,
     pub location: CountryModelLocation,
     pub description: String,
+    pub logo : Option<String>,
     pub verified: Option<bool>,
+    pub school_type : Vec<SchoolType>,
+    pub school_id : Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,8 +28,10 @@ pub struct SchoolRequestModelNew {
     pub username: String,
     pub email: String,
     pub phone: String,
+    pub logo : Option<String>,
     pub location: CountryModelLocation,
     pub description: String,
+    pub school_type : Vec<SchoolType>,
 }
 
 impl SchoolRequestModel {
@@ -39,7 +45,10 @@ impl SchoolRequestModel {
             verified: Some(false),
             email: request.email,
             name: request.name,
+            logo : request.logo,
             username: request.username,
+            school_type : request.school_type,
+            school_id : None,
         }
     }
 }

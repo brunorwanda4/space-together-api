@@ -13,7 +13,7 @@ impl SchoolRequestActionDb {
     pub async fn create_school_request (&self , request : SchoolRequestModelNew) -> Result<InsertOneResult>{
         // check if the request is already in the database
         let index = IndexModel::builder()
-            .keys(doc! {"email" : 1 , "name" : 1 , "username" : 1})
+            .keys(doc! {"email" : 1, "username" : 1})
             .options(IndexOptions::builder().unique(true).build())
             .build();
         
