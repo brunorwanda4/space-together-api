@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum StudentRole {
     Student,
     ClassMonitor,
-    ClassMonitress,
+    ClassLeader,
     HeadBoy,
     HeadGirl,
 }
@@ -13,8 +13,9 @@ pub enum StudentRole {
 #[derive(Debug, Deserialize, Clone)]
 pub struct StudentModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: ObjectId,
+    pub id: Option<ObjectId>,
     pub user_id: ObjectId,
+    pub school: Vec<ObjectId>,
     pub role: StudentRole,
     pub class: Vec<ObjectId>,
 }

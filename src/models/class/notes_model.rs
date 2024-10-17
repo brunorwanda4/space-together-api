@@ -42,5 +42,5 @@ pub struct NotesModel {
     pub previous_version: Option<Vec<ObjectId>>,
     pub subject_id: Option<ObjectId>,
     pub created_at: DateTime,
-    pub updated_at: DateTime,
+    pub updated_at: Option<DateTime>,
 }

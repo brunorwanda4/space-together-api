@@ -14,6 +14,7 @@ pub struct TradingModel {
     pub id: Option<ObjectId>,
     pub name: String,
     pub username: String,
+    pub description: Option<String>,
     pub trading_type: TradingType,
     pub schools_id: Option<Vec<ObjectId>>,
     pub reasons: Option<Vec<ObjectId>>,
