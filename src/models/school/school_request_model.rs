@@ -76,3 +76,23 @@ impl SchoolRequestModel {
         }
     }
 }
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SchoolRequestModelGet {
+    pub id: String,
+    pub sended_by: String,
+    pub name: String,
+    pub username: String,
+    pub email: String,
+    pub phone: String,
+    pub description: String,
+    pub location: CountryModelLocation,
+    pub logo: Option<String>,
+    pub verified: Option<bool>,
+    pub school_type: Vec<SchoolType>,
+    pub education_system: Vec<EducationSystem>,
+    pub school_id: Option<String>,
+    pub is_private: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}

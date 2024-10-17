@@ -8,8 +8,11 @@ use axum::{
 };
 
 use crate::{
-    error::res_req::ResReq, errors::MyError,
-    models::school::school_request_model::SchoolRequestModelNew, AppState,
+    controller::school::school_request_controller::{self, get_school_request_controller},
+    error::{res_req::ResReq, school::school_request_error::SchoolRequestErr},
+    errors::MyError,
+    models::school::school_request_model::SchoolRequestModelNew,
+    AppState,
 };
 
 pub async fn create_school_request_handlers(
@@ -81,18 +84,14 @@ pub async fn get_school_request_handler(
     State(query): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let req = query
-        .db
-        .school_request_db
-        .get_school_request_by_id(&id)
-        .await;
+    let req = get_school_request_controller(id, query).await;
 
     match req {
         Ok(request) => (StatusCode::OK, Json(request)).into_response(),
-        Err(err) => {
+        Err(_) => {
             let error = ResReq {
                 success: false,
-                message: err.to_string(),
+                message: SchoolRequestErr::CanNotGetSchoolRequest.to_string(),
             };
 
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
