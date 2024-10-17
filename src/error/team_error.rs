@@ -1,5 +1,3 @@
-use serde::Deserialize;
-
 pub type TeamResult<T> = core::result::Result<T, TeamError>;
 
 #[derive(Debug)]

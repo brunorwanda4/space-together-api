@@ -1,12 +1,7 @@
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{oid::ObjectId, DateTime};
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
-pub enum TradingType {
-    Primary,
-    OLevel,
-    ELevel,
-}
+use super::school_model::SchoolType;
 
 #[derive(Debug, Deserialize)]
 pub struct TradingModel {
@@ -15,7 +10,17 @@ pub struct TradingModel {
     pub name: String,
     pub username: String,
     pub description: Option<String>,
-    pub trading_type: TradingType,
+    pub trading_type: SchoolType,
     pub schools_id: Option<Vec<ObjectId>>,
     pub reasons: Option<Vec<ObjectId>>,
+    pub is_active: bool,
+    pub created_at: DateTime,
+    pub updated_at: Option<DateTime>,
+}
+pub struct TradingNew {
+    pub name: String,
+    pub username: String,
+    pub description: Option<String>,
+    pub trading_type: SchoolType,
+    pub schools_id: Option<Vec<ObjectId>>,
 }
