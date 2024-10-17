@@ -8,10 +8,8 @@ use axum::{
 };
 
 use crate::{
-    error::res_req::ResReq,
-    errors::MyError,
-    models::school::school_request_model::{SchoolRequestModel, SchoolRequestModelNew},
-    AppState,
+    error::res_req::ResReq, errors::MyError,
+    models::school::school_request_model::SchoolRequestModelNew, AppState,
 };
 
 pub async fn create_school_request_handlers(
@@ -35,7 +33,7 @@ pub async fn create_school_request_handlers(
             success: false,
             message: MyError::SchoolRequestIsReadyExit.to_string(),
         };
-        return (StatusCode::OK, Json(err)).into_response();
+        (StatusCode::OK, Json(err)).into_response();
     }
 
     if find_req_email.is_ok() {
@@ -46,7 +44,7 @@ pub async fn create_school_request_handlers(
             }
             .to_string(),
         };
-        return (StatusCode::OK, Json(error_response)).into_response();
+        (StatusCode::OK, Json(error_response)).into_response();
     }
 
     if find_req_username.is_ok() {
@@ -57,7 +55,7 @@ pub async fn create_school_request_handlers(
             }
             .to_string(),
         };
-        return (StatusCode::OK, Json(error_response)).into_response();
+        (StatusCode::OK, Json(error_response)).into_response();
     }
 
     let create_req = query
@@ -71,7 +69,7 @@ pub async fn create_school_request_handlers(
         Err(err) => {
             let error = ResReq {
                 success: false,
-                message: MyError::SchoolRequestCanNotCreate.to_string(),
+                message: err.to_string(),
             };
 
             (StatusCode::OK, Json(error)).into_response()

@@ -1,19 +1,18 @@
-use mongodb::options::{FindOptions, IndexOptions};
+use mongodb::options::IndexOptions;
 use mongodb::results::InsertOneResult;
 use mongodb::IndexModel;
-use mongodb::{bson::{doc , oid::ObjectId}, Collection};
-use serde::{Deserialize, Serialize};
+use mongodb::{bson::doc, Collection};
 
+use crate::errors::{MyError, Result};
 use crate::models::country_model::CountryModel;
-use crate::errors::{Result , MyError};
 
-#[derive(Debug , Clone,)]
+#[derive(Debug, Clone)]
 pub struct CountyActionDb {
-    pub country: Collection<CountryModel>
+    pub country: Collection<CountryModel>,
 }
 
 impl CountyActionDb {
-    pub async fn create_country (&self , country: &CountryModel) -> Result<InsertOneResult>{
+    pub async fn create_country(&self, country: &CountryModel) -> Result<InsertOneResult> {
         let index_model = IndexModel::builder()
             .keys(doc! {"name" : 1})
             .options(IndexOptions::builder().unique(true).build())
@@ -21,18 +20,11 @@ impl CountyActionDb {
 
         self.country.create_index(index_model).await;
 
-        let qry = self
-            .country
-            .insert_one(country)
-            .await;
-        
+        let qry = self.country.insert_one(country).await;
+
         match qry {
-            Ok(res) => Ok (res),
-            Err(e) => {
-                panic!("Error inserting country: {:?}" , e);
-                Err(MyError::CanNotCreateCountry)
-            }
+            Ok(res) => Ok(res),
+            Err(_) => Err(MyError::CanNotCreateCountry),
         }
     }
-
 }

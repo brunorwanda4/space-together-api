@@ -1,49 +1,52 @@
 use std::sync::Arc;
 
+use axum::{
+    extract::{Path, Query},
+    http::{
+        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+        HeaderValue, Method,
+    },
+    response::{Html, IntoResponse},
+    routing::get,
+    Router,
+};
 use database::{countries_action_db::CountyActionDb, database_conn::DBConn};
 use errors::MyError;
-use axum::{extract::{Path, Query}, http::{header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}, HeaderValue, Method}, response::{Html, IntoResponse}, routing::get, Router};
 use routes::all_routes::all_routes;
 use serde::Deserialize;
 use tokio::net::TcpListener;
 use tower_cookies::CookieManagerLayer;
 use tower_http::cors::CorsLayer;
 
-mod handlers;
+mod controller;
+mod database;
+mod error;
 mod errors;
+mod handlers;
+mod libs;
 mod models;
 mod routes;
-mod libs;
-mod database;
-mod controller;
-mod error;
-
-
-#[derive(Deserialize)]
-struct HelloParams {
-    name: Option<String>,
-}
 
 pub struct AppState {
     db: DBConn,
 }
 
 #[tokio::main]
-async fn main() -> Result<() , MyError> {
-    let db = DBConn::init().await.expect("Can not connect to database after initialization");
-    let mc = Arc::new(AppState {db : db});
+async fn main() -> Result<(), MyError> {
+    let db = DBConn::init()
+        .await
+        .expect("Can not connect to database after initialization");
+    let mc = Arc::new(AppState { db });
 
     let cors = CorsLayer::new()
         .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
         .allow_credentials(true)
         .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]);
-    
+
     let routes = all_routes(mc).await;
 
-    let app = routes
-     .layer(cors)
-     .layer(CookieManagerLayer::new());
+    let app = routes.layer(cors).layer(CookieManagerLayer::new());
     let listener = TcpListener::bind("127.0.0.1:8000").await.unwrap();
 
     println!("->> LISTENING on {:?}\n", listener.local_addr());
@@ -53,18 +56,3 @@ async fn main() -> Result<() , MyError> {
         .unwrap();
     Ok(())
 }
-
-// async fn hello_world() -> impl IntoResponse {
-//     Html("Hello World".to_string())
-// }
-
-// hello name hello/name=world
-// async fn hello_1(Query(params): Query<HelloParams>) -> impl IntoResponse {
-//     let name = params.name.as_deref().unwrap_or("World");
-//     Html(format!("Hello, {}!", name))
-// }
-
-// hello name /hello/name
-// async fn hello_2 (Path(name) : Path<String>) -> impl IntoResponse {
-//     Html(format!("Hello {} nice to meet you", name ))
-// }

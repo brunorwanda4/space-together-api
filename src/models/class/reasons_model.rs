@@ -7,6 +7,7 @@ pub struct TopicsContent {
     pub description: String,
     pub content: Vec<String>,
     pub notes: Vec<ObjectId>,
+    pub team: Option<ObjectId>,
 }
 
 #[derive(Debug, Deserialize)]

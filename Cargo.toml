@@ -10,7 +10,6 @@ repository = "https://github.com/rust-httpc-test"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
-unused = "allow" # For experimental dev.
 
 [lints]
 workspace = true

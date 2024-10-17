@@ -13,9 +13,9 @@ pub struct SchoolModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
     pub school_request_id: ObjectId,
-    pub students: Vec<ObjectId>,
-    pub teachers: Vec<ObjectId>,
-    pub staff: Vec<ObjectId>,
+    pub students: Option<Vec<ObjectId>>,
+    pub teachers: Option<Vec<ObjectId>>,
+    pub staff: Option<Vec<ObjectId>>,
     pub headmaster: Vec<ObjectId>,
     pub school_type: Vec<SchoolType>,
     pub created_at: DateTime,
