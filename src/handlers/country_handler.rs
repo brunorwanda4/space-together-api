@@ -24,7 +24,7 @@ pub async fn add_country(
         Err(err) => {
             let error = ResReq {
                 success: false,
-                message: MyError::CanNotCreateCountry.to_string(),
+                message: err.to_string(),
             };
 
             (StatusCode::BAD_REQUEST, Json(error)).into_response()

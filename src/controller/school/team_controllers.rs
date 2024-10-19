@@ -22,7 +22,6 @@ pub async fn create_team_controller(
 
     match new {
         Ok(result) => {
-            // Extract the `inserted_id` from the result and convert it to a `String`
             if let Bson::ObjectId(oid) = result.inserted_id {
                 Ok(oid.to_hex()) // Convert ObjectId to hex string
             } else {

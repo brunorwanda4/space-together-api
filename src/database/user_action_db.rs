@@ -1,21 +1,12 @@
 use axum::Json;
 use chrono::Utc;
-use lazy_regex::regex::Match;
 use mongodb::{
-    action::FindOne,
-    bson::{doc, from_document, oid::ObjectId, to_bson, to_document, DateTime, Document},
-    error::Error,
+    bson::{doc, oid::ObjectId, to_bson, DateTime, Document},
     options::IndexOptions,
-    results::{InsertOneResult, UpdateResult},
-    Client, Collection, IndexModel,
+    results::InsertOneResult,
+    Collection, IndexModel,
 };
-use std::{
-    borrow::Borrow,
-    env,
-    str::FromStr,
-    sync::{Arc, Mutex},
-    vec,
-};
+use std::{str::FromStr, vec};
 
 use crate::errors::{MyError, Result};
 use crate::models::{
@@ -36,7 +27,7 @@ impl UserActionDb {
         email: String,
         password: Option<String>,
     ) -> Result<InsertOneResult> {
-        let index_model = IndexModel::builder()
+        let index = IndexModel::builder()
             .keys(doc! {
                 "email" : 1,
                 "username" : 1
@@ -44,7 +35,10 @@ impl UserActionDb {
             .options(IndexOptions::builder().unique(true).build())
             .build();
 
-        self.user.create_index(index_model).await;
+        let one_index = self.user.create_index(index).await;
+        if one_index.is_err() {
+            return Err(MyError::UserCanNotCreate);
+        }
 
         let new_user = UserModel::new(name, email, password);
 
@@ -104,10 +98,15 @@ impl UserActionDb {
     pub async fn update_user(&self, id: &str, user: &UpdateUserModel) -> Result<UserModel> {
         // Convert id to ObjectId, return an error if it fails
         let obj_id = ObjectId::from_str(id).map_err(|_| MyError::InvalidUserId)?;
-        let index_model = IndexModel::builder()
+        let index = IndexModel::builder()
             .keys(doc! {"username" : 1})
             .options(IndexOptions::builder().unique(true).build())
             .build();
+        let one_index = self.avatar.create_index(index).await;
+
+        if one_index.is_err() {
+            return Err(MyError::AvatarUserIdIsReadyExit);
+        }
 
         // Create the update document
         let mut update_doc = Document::new();

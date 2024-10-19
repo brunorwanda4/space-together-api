@@ -6,7 +6,10 @@ use crate::AppState;
 
 use super::{
     countries_routes::countries_routes,
-    school::{school_request_routers::school_request_router, team_routers::team_routers},
+    school::{
+        school_request_routers::school_request_router, team_routers::team_routers,
+        trading_router::trading_routers,
+    },
     user_routes::user_routes,
 };
 pub async fn all_routes(query: Arc<AppState>) -> Router {
@@ -17,5 +20,6 @@ pub async fn all_routes(query: Arc<AppState>) -> Router {
             "/api/v1/schoolRequest",
             school_request_router(query.clone()),
         )
-        .nest("/api/v1/team", team_routers(query))
+        .nest("/api/v1/team", team_routers(query.clone()))
+        .nest("/api/v1/trading", trading_routers(query))
 }

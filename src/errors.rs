@@ -13,11 +13,13 @@ pub enum MyError {
     InvalidUserId,
     DatabaseError,
     CreateUserError,
+    UserCanNotCreate,
     // user auth
     InvalidCredentials,
     UserNotLoggedIn,
     // image error
     CanNotFindImage,
+    AvatarUserIdIsReadyExit,
     // country
     CanNotCreateCountry,
     CanNotFetchCountries,
@@ -49,6 +51,8 @@ impl std::fmt::Display for MyError {
             MyError::UserNotLoggedIn => write!(f, "User is not logged in"),
             MyError::InvalidCredentials => write!(f, "Invalid credentials"),
             MyError::CanNotFindImage => write!(f, "Can not find image"),
+            MyError::AvatarUserIdIsReadyExit => write!(f, "Avatar user id ready exit"),
+            MyError::UserCanNotCreate => write!(f, "Can not create user"),
             // countries
             MyError::CanNotCreateCountry => write!(f, "Can not create country"),
             MyError::CanNotFetchCountries => write!(f, "Can not Fetches countries"),

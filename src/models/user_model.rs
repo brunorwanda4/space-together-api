@@ -1,20 +1,11 @@
-use std::{
-    string,
-    sync::{Arc, Mutex},
-    time::SystemTime,
-};
+use std::time::SystemTime;
 
-use bcrypt::{hash, DEFAULT_COST};
-use chrono::{NaiveDateTime, Utc};
+use bcrypt::hash;
+use chrono::Utc;
 use mongodb::bson::{oid::ObjectId, DateTime};
 use serde::{Deserialize, Serialize};
 
 use super::images_models::ProfileImageModel;
-
-#[derive(Clone)]
-pub struct ModelsController {
-    users: Arc<Mutex<Vec<Option<UserModel>>>>,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum TGender {
@@ -146,5 +137,3 @@ pub struct LoginUserModel {
     pub email: String,
     pub password: String,
 }
-
-// get user

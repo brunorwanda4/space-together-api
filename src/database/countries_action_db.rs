@@ -13,12 +13,15 @@ pub struct CountyActionDb {
 
 impl CountyActionDb {
     pub async fn create_country(&self, country: &CountryModel) -> Result<InsertOneResult> {
-        let index_model = IndexModel::builder()
+        let index = IndexModel::builder()
             .keys(doc! {"name" : 1})
             .options(IndexOptions::builder().unique(true).build())
             .build();
 
-        self.country.create_index(index_model).await;
+        let one_index = self.country.create_index(index).await;
+        if one_index.is_err() {
+            return Err(MyError::CanNotCreateCountry);
+        }
 
         let qry = self.country.insert_one(country).await;
 
