@@ -1,3 +1,5 @@
+use core::fmt;
+
 use mongodb::bson::{oid::ObjectId, DateTime};
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +17,15 @@ pub enum SchoolType {
 pub enum EducationSystem {
     TVET,
     REB,
+}
+
+impl fmt::Display for EducationSystem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            EducationSystem::TVET => write!(f, "TVET"),
+            EducationSystem::REB => write!(f, "REB"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

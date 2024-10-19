@@ -4,8 +4,12 @@ pub type TradingResult<T> = core::result::Result<T, TradingErr>;
 pub enum TradingErr {
     CanNotCreateTrading,
     CanNotGetTrading,
+    NotFoundTrading,
     CanNotUpdateTrading,
+    CanNotCreateTradingIndex,
     CanNotDeleteTrading,
+    CanChangeTradingIdIntoObjectId,
+    NoFieldsToUpdate,
 }
 
 impl std::fmt::Display for TradingErr {
@@ -14,7 +18,13 @@ impl std::fmt::Display for TradingErr {
             TradingErr::CanNotCreateTrading => write!(f, "Can not create trading"),
             TradingErr::CanNotGetTrading => write!(f, "Can not get trading information"),
             TradingErr::CanNotUpdateTrading => write!(f, "Can not update trading"),
+            TradingErr::CanNotCreateTradingIndex => write!(f, "Can not create trading index"),
             TradingErr::CanNotDeleteTrading => write!(f, "Can not delete trading"),
+            TradingErr::CanChangeTradingIdIntoObjectId => {
+                write!(f, "Can not change trading ID into ObjectId")
+            }
+            TradingErr::NoFieldsToUpdate => write!(f, "No fields to update in Trading object "),
+            TradingErr::NotFoundTrading => write!(f, " cannot find trading by id"),
         }
     }
 }
