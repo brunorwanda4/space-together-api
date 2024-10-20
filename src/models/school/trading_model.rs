@@ -1,4 +1,7 @@
 use core::fmt;
+use std::str::FromStr;
+
+use crate::errors::MyError;
 
 use super::school_request_model::EducationSystem;
 use mongodb::bson::{oid::ObjectId, DateTime};
@@ -42,6 +45,7 @@ pub struct TradingModelNew {
     pub username: String,
     pub code: String,
     pub description: Option<String>,
+    pub reasons: Option<Vec<String>>,
     pub trading_type: TradingType,
     pub schools_id: Option<Vec<ObjectId>>,
     pub education: EducationSystem,
@@ -50,12 +54,15 @@ pub struct TradingModelNew {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TradingModelUpdate {
     pub name: Option<String>,
+    pub reasons: Option<Vec<String>>,
     pub username: Option<String>,
     pub code: Option<String>,
     pub description: Option<String>,
     pub trading_type: Option<TradingType>,
     pub schools_id: Option<Vec<ObjectId>>,
     pub education: Option<EducationSystem>,
+    pub is_active: Option<bool>,
+    pub updated_at: Option<DateTime>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -84,7 +91,18 @@ impl TradingModel {
             description: trading.description,
             trading_type: trading.trading_type,
             schools_id: trading.schools_id,
-            reasons: None,
+            reasons: Some(
+                trading
+                    .reasons
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|reason_str| {
+                        ObjectId::from_str(&reason_str)
+                            .map_err(|_| MyError::InvalidId)
+                            .expect("Can not change trading id")
+                    })
+                    .collect::<Vec<ObjectId>>(),
+            ),
             is_active: false,
             education: trading.education,
             created_at: DateTime::now(),
@@ -109,6 +127,10 @@ impl TradingModel {
         }
         if let Some(description) = updates.description {
             self.description = Some(description);
+            has_updates = true;
+        }
+        if let Some(is_active) = updates.is_active {
+            self.is_active = is_active;
             has_updates = true;
         }
         if let Some(trading_type) = updates.trading_type {

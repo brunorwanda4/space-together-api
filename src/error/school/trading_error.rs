@@ -10,6 +10,9 @@ pub enum TradingErr {
     CanNotDeleteTrading,
     CanChangeTradingIdIntoObjectId,
     NoFieldsToUpdate,
+    TradingUsernameIsReadyExit,
+    TradingCodeIsReadyExit,
+    CanNotGetAllTradings,
 }
 
 impl std::fmt::Display for TradingErr {
@@ -25,6 +28,13 @@ impl std::fmt::Display for TradingErr {
             }
             TradingErr::NoFieldsToUpdate => write!(f, "No fields to update in Trading object "),
             TradingErr::NotFoundTrading => write!(f, " cannot find trading by id"),
+            TradingErr::TradingUsernameIsReadyExit => {
+                write!(f, " Trading username is ready to exit, try other!")
+            }
+            TradingErr::TradingCodeIsReadyExit => {
+                write!(f, "Trade code are ready to exit, try other! ")
+            }
+            TradingErr::CanNotGetAllTradings => write!(f, "Can not get all tradings"),
         }
     }
 }
