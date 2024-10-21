@@ -26,6 +26,19 @@ pub struct TeamModel {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct TeamModelGet {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub school: Option<String>,
+    pub team_type: TeamType,
+    pub start_on: String,
+    pub end_on: String,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct TeamModelNew {
     pub name: String,
     pub description: Option<String>,
