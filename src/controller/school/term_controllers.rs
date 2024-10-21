@@ -18,14 +18,14 @@ pub async fn create_term_controller(
         .term_db
         .create_term(term)
         .await
-        .map_err(|_| TermError::CanNotCreateterm);
+        .map_err(|_| TermError::CanNotCreateTerm);
 
     match new {
         Ok(result) => {
             let id = if let Bson::ObjectId(oid) = result.inserted_id {
                 Ok(oid.to_hex())
             } else {
-                Err(TermError::CanNotCreateterm)
+                Err(TermError::CanNotCreateTerm)
             };
             let get = db.db.term_db.get_term_by_id(id.unwrap()).await;
             match get {

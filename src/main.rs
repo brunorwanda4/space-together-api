@@ -1,19 +1,12 @@
 use std::sync::Arc;
 
-use axum::{
-    extract::{Path, Query},
-    http::{
-        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
-        HeaderValue, Method,
-    },
-    response::{Html, IntoResponse},
-    routing::get,
-    Router,
+use axum::http::{
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+    HeaderValue, Method,
 };
-use database::{countries_action_db::CountyActionDb, database_conn::DBConn};
+use database::database_conn::DBConn;
 use errors::MyError;
 use routes::all_routes::all_routes;
-use serde::Deserialize;
 use tokio::net::TcpListener;
 use tower_cookies::CookieManagerLayer;
 use tower_http::cors::CorsLayer;

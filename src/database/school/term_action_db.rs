@@ -6,7 +6,7 @@ use mongodb::results::InsertOneResult;
 use mongodb::Collection;
 
 use crate::error::term_error::{TermError, TermResult};
-use crate::models::school::term_model::{TermModel, TermModelGet, TermModelNew, TermModelUpdate};
+use crate::models::school::term_model::{TermModel, TermModelNew, TermModelUpdate};
 
 #[derive(Debug, Clone)]
 pub struct TermActionDb {
@@ -16,15 +16,11 @@ pub struct TermActionDb {
 impl TermActionDb {
     pub async fn create_term(&self, term: TermModelNew) -> TermResult<InsertOneResult> {
         let new = TermModel::new(term);
-        let new_term = self
-            .term
-            .insert_one(new)
-            .await
-            .map_err(|_| TermError::CanNotCreateterm);
+        let new_term = self.term.insert_one(new).await;
 
         match new_term {
             Ok(result) => Ok(result),
-            Err(_) => Err(TermError::CanNotCreateterm),
+            Err(_) => Err(TermError::CanNotCreateTerm),
         }
     }
     pub async fn get_term_by_id(&self, id: String) -> TermResult<TermModel> {
@@ -36,7 +32,7 @@ impl TermActionDb {
         match get {
             Ok(Some(term)) => Ok(term),
             Ok(None) => Err(TermError::TermNotFound),
-            Err(err) => Err(TermError::CanNotGetterm {
+            Err(err) => Err(TermError::CanNotGetTerm {
                 error: err.to_string(),
             }),
         }
@@ -93,7 +89,7 @@ impl TermActionDb {
         match update {
             Ok(Some(ok)) => Ok(ok),
             Ok(None) => Err(TermError::TermNotFound),
-            Err(_) => Err(TermError::CanNotUpdateterm),
+            Err(_) => Err(TermError::CanNotUpdateTerm),
         }
     }
 }

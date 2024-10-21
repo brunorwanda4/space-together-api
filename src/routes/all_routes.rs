@@ -5,6 +5,7 @@ use axum::Router;
 use crate::AppState;
 
 use super::{
+    class::reason_router::reason_routers,
     countries_routes::countries_routes,
     school::{
         school_request_routers::school_request_router, term_routers::term_routers,
@@ -21,5 +22,6 @@ pub async fn all_routes(query: Arc<AppState>) -> Router {
             school_request_router(query.clone()),
         )
         .nest("/api/v1/term", term_routers(query.clone()))
-        .nest("/api/v1/trading", trading_routers(query))
+        .nest("/api/v1/trading", trading_routers(query.clone()))
+        .nest("/api/v1/reason", reason_routers(query))
 }

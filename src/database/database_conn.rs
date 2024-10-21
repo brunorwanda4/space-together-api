@@ -3,6 +3,7 @@ use std::env;
 use mongodb::{Client, Collection};
 
 use super::{
+    class::reasons_action_db::ReasonActionDb,
     countries_action_db::CountyActionDb,
     school::{
         school_request_action_db::SchoolRequestActionDb, term_action_db::TermActionDb,
@@ -13,6 +14,7 @@ use super::{
 use crate::{
     errors::Result,
     models::{
+        class::reasons_model::ReasonModel,
         country_model::CountryModel,
         images_models::ProfileImagesModel,
         school::{
@@ -30,6 +32,7 @@ pub struct DBConn {
     pub school_request_db: SchoolRequestActionDb,
     pub term_db: TermActionDb,
     pub trading_db: TradingActionDb,
+    pub reason_db: ReasonActionDb,
 }
 
 impl DBConn {
@@ -46,15 +49,11 @@ impl DBConn {
         let space_together_db = client.database("space_together");
         let space_together_image_db = client.database("space_together_images");
 
-        // Corrections in the database of space-together
-        let school_request: Collection<SchoolRequestModel> =
-            space_together_db.collection("school_requests");
-
         // collections in the database of space-together-images
         let avatar_collection: Collection<ProfileImagesModel> =
             space_together_image_db.collection("avatars");
 
-        // initialize the database actions
+        // Corrections in the database of space-together
         let count_collection: Collection<CountryModel> = space_together_db.collection("countries");
         let country_action_db = CountyActionDb {
             country: count_collection,
@@ -72,7 +71,12 @@ impl DBConn {
         let term: Collection<TermModel> = space_together_db.collection("terms");
         let term_db = TermActionDb { term };
 
+        let school_request: Collection<SchoolRequestModel> =
+            space_together_db.collection("school_requests");
         let school_request_db = SchoolRequestActionDb { school_request };
+
+        let reason: Collection<ReasonModel> = space_together_db.collection("reasons");
+        let reason_db = ReasonActionDb { reason };
 
         println!("Database connected successfully ✅");
 
@@ -82,6 +86,7 @@ impl DBConn {
             school_request_db,
             term_db,
             trading_db,
+            reason_db,
         })
     }
 }

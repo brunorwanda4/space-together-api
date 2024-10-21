@@ -59,7 +59,7 @@ pub struct TradingModelUpdate {
     pub code: Option<String>,
     pub description: Option<String>,
     pub trading_type: Option<TradingType>,
-    pub schools_id: Option<Vec<ObjectId>>,
+    pub schools_id: Option<Vec<String>>,
     pub education: Option<EducationSystem>,
     pub is_active: Option<bool>,
     pub updated_at: Option<DateTime>,
@@ -107,47 +107,6 @@ impl TradingModel {
             education: trading.education,
             created_at: DateTime::now(),
             updated_at: None,
-        }
-    }
-
-    pub fn update(&mut self, updates: TradingModelUpdate) {
-        let mut has_updates = false;
-
-        if let Some(name) = updates.name {
-            self.name = name;
-            has_updates = true;
-        }
-        if let Some(username) = updates.username {
-            self.username = username;
-            has_updates = true;
-        }
-        if let Some(code) = updates.code {
-            self.code = code;
-            has_updates = true;
-        }
-        if let Some(description) = updates.description {
-            self.description = Some(description);
-            has_updates = true;
-        }
-        if let Some(is_active) = updates.is_active {
-            self.is_active = is_active;
-            has_updates = true;
-        }
-        if let Some(trading_type) = updates.trading_type {
-            self.trading_type = trading_type;
-            has_updates = true;
-        }
-        if let Some(schools_id) = updates.schools_id {
-            self.schools_id = Some(schools_id);
-            has_updates = true;
-        }
-        if let Some(education) = updates.education {
-            self.education = education;
-            has_updates = true;
-        }
-
-        if has_updates {
-            self.updated_at = Some(DateTime::now());
         }
     }
 }

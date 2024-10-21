@@ -1,3 +1,4 @@
+pub mod class;
 pub mod image;
 pub mod res_req;
 pub mod school;
