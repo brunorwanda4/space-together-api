@@ -1,3 +1,3 @@
 pub mod school_request_handlers;
-pub mod team_handler;
+pub mod term_handler;
 pub mod trading_handler;

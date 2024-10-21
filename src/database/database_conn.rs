@@ -5,7 +5,7 @@ use mongodb::{Client, Collection};
 use super::{
     countries_action_db::CountyActionDb,
     school::{
-        school_request_action_db::SchoolRequestActionDb, team_action_db::TeamActionDb,
+        school_request_action_db::SchoolRequestActionDb, term_action_db::TermActionDb,
         trading_action_db::TradingActionDb,
     },
     user_action_db::UserActionDb,
@@ -16,7 +16,7 @@ use crate::{
         country_model::CountryModel,
         images_models::ProfileImagesModel,
         school::{
-            school_request_model::SchoolRequestModel, team_model::TeamModel,
+            school_request_model::SchoolRequestModel, term_model::TermModel,
             trading_model::TradingModel,
         },
         user_model::UserModel,
@@ -28,7 +28,7 @@ pub struct DBConn {
     pub country_action_db: CountyActionDb,
     pub user_action_db: UserActionDb,
     pub school_request_db: SchoolRequestActionDb,
-    pub team_db: TeamActionDb,
+    pub term_db: TermActionDb,
     pub trading_db: TradingActionDb,
 }
 
@@ -69,8 +69,8 @@ impl DBConn {
         let trading: Collection<TradingModel> = space_together_db.collection("tradings");
         let trading_db = TradingActionDb { trading };
 
-        let team: Collection<TeamModel> = space_together_db.collection("teams");
-        let team_db = TeamActionDb { team };
+        let term: Collection<TermModel> = space_together_db.collection("terms");
+        let term_db = TermActionDb { term };
 
         let school_request_db = SchoolRequestActionDb { school_request };
 
@@ -80,7 +80,7 @@ impl DBConn {
             country_action_db,
             user_action_db,
             school_request_db,
-            team_db,
+            term_db,
             trading_db,
         })
     }
