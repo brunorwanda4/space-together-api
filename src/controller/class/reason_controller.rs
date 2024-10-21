@@ -5,7 +5,10 @@ use mongodb::bson::Bson;
 
 use crate::{
     error::class::reason_error::{ReasonErr, ReasonResult},
-    models::class::reasons_model::{ReasonModelGet, ReasonModelNew},
+    models::{
+        class::reasons_model::{ReasonModelGet, ReasonModelNew},
+        school::trading_model::TradingModelUpdateReasons,
+    },
     AppState,
 };
 
@@ -13,15 +16,33 @@ pub async fn create_reason_controller(
     query: Arc<AppState>,
     reason: ReasonModelNew,
 ) -> ReasonResult<ReasonModelGet> {
-    let create = query.db.reason_db.create_reason(reason).await;
+    let create = query.db.reason_db.create_reason(reason.clone()).await;
     match create {
         Ok(res) => {
-            let id = if let Bson::ObjectId(oid) = res.inserted_id {
-                Ok(oid.to_hex())
-            } else {
-                Err(ReasonErr::InvalidId)
+            let id = res
+                .inserted_id
+                .as_object_id()
+                .map(|oid| oid.to_hex())
+                .ok_or(ReasonErr::InvalidId)
+                .unwrap();
+
+            if reason.trading.is_some() {
+                let trading_model_update = TradingModelUpdateReasons {
+                    tradings_id: reason.trading,
+                    reason_id: id.clone(),
+                };
+                let updates_trading = query
+                    .db
+                    .trading_db
+                    .update_trading_reasons(trading_model_update)
+                    .await;
+                if let Err(err) = updates_trading {
+                    return Err(ReasonErr::CanMakeReasonBecauseOfTradingError {
+                        error: err.to_string(),
+                    });
+                }
             };
-            let get = query.db.reason_db.get_reason_by_id(id.unwrap()).await;
+            let get = query.db.reason_db.get_reason_by_id(id).await;
             match get {
                 Ok(result) => {
                     let reason_get = ReasonModelGet {

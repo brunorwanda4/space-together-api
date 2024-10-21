@@ -7,6 +7,7 @@ pub enum ReasonErr {
     CanNotGetReason { error: String },
     NotFoundReason,
     NoFieldsToUpdate,
+    CanMakeReasonBecauseOfTradingError { error: String },
 }
 
 impl std::fmt::Display for ReasonErr {
@@ -23,6 +24,9 @@ impl std::fmt::Display for ReasonErr {
                 write!(f, "No Fields to update Reason , please field all data")
             }
             ReasonErr::NotFoundReason => write!(f, "Reason not found"),
+            ReasonErr::CanMakeReasonBecauseOfTradingError { error } => {
+                write!(f, "Can't make Reason because of Trading error : {}", error)
+            }
         }
     }
 }

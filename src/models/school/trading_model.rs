@@ -110,3 +110,9 @@ impl TradingModel {
         }
     }
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TradingModelUpdateReasons {
+    pub reason_id: String,
+    pub tradings_id: Option<Vec<String>>,
+}

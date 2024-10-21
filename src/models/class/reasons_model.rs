@@ -1,9 +1,10 @@
 use core::fmt;
+use std::str::FromStr;
 
 use mongodb::bson::{oid::ObjectId, DateTime};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum ReasonType {
     Specific,
     General,
@@ -20,7 +21,7 @@ impl fmt::Display for ReasonType {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TopicsContent {
     pub name: String,
     pub description: String,
@@ -29,14 +30,14 @@ pub struct TopicsContent {
     pub term: Option<ObjectId>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReasonContent {
     pub topics: Vec<TopicsContent>,
     pub description: String,
     pub notes: Option<Vec<ObjectId>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReasonModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
@@ -58,7 +59,7 @@ pub struct ReasonModel {
     pub updated_at: Option<DateTime>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReasonModelGet {
     pub id: String,
     pub name: String,
@@ -79,16 +80,16 @@ pub struct ReasonModelGet {
     pub updated_at: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ReasonModelNew {
     pub name: String,
     pub reason_content: Option<ReasonContent>,
     pub code: String,
     pub severity: Option<String>,
-    pub classes: Option<Vec<ObjectId>>,
-    pub teachers_id: Option<Vec<ObjectId>>,
-    pub updated_by: Option<Vec<ObjectId>>,
-    pub trading: Option<Vec<ObjectId>>,
+    pub classes: Option<Vec<String>>,
+    pub teachers_id: Option<Vec<String>>,
+    pub updated_by: Option<Vec<String>>,
+    pub trading: Option<Vec<String>>,
     pub hours: u32,
     pub follow_up_required: bool,
     pub school: Option<ObjectId>,
@@ -108,7 +109,14 @@ impl ReasonModel {
             classes: None,
             teachers_id: None,
             updated_by: None,
-            trading: reason.trading,
+            trading: Some(
+                reason
+                    .trading
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|id| ObjectId::from_str(id).unwrap())
+                    .collect(),
+            ),
             hours: reason.hours,
             follow_up_required: reason.follow_up_required,
             school: reason.school,

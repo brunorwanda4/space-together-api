@@ -1,6 +1,8 @@
 use crate::{
     error::school::trading_error::{TradingErr, TradingResult},
-    models::school::trading_model::{TradingModel, TradingModelNew, TradingModelUpdate},
+    models::school::trading_model::{
+        TradingModel, TradingModelNew, TradingModelUpdate, TradingModelUpdateReasons,
+    },
 };
 use futures::stream::StreamExt;
 use mongodb::{
@@ -9,7 +11,7 @@ use mongodb::{
     results::InsertOneResult,
     Collection, IndexModel,
 };
-use std::{result, str::FromStr};
+use std::str::FromStr;
 
 #[derive(Debug, Clone)]
 pub struct TradingActionDb {
@@ -161,6 +163,62 @@ impl TradingActionDb {
             Ok(None) => Err(TradingErr::CanNotGetTrading),
             Err(_) => Err(TradingErr::CanNotUpdateTrading),
         }
+    }
+
+    pub async fn update_trading_reasons(
+        &self,
+        update_reasons: TradingModelUpdateReasons,
+    ) -> TradingResult<Vec<TradingModel>> {
+        let mut updated_tradings: Vec<TradingModel> = Vec::new();
+
+        // Extract the reason_id and the list of tradings_id to update
+        let reason_obj_id = ObjectId::from_str(&update_reasons.reason_id)
+            .map_err(|_| TradingErr::CanChangeTradingIdIntoObjectId)?;
+
+        if let Some(tradings_ids) = update_reasons.tradings_id {
+            for trading_id in tradings_ids {
+                let obj_id = ObjectId::from_str(&trading_id)
+                    .map_err(|_| TradingErr::CanChangeTradingIdIntoObjectId)?;
+
+                // Fetch the existing trading model by id
+                let trading = self
+                    .trading
+                    .find_one(doc! {"_id": obj_id})
+                    .await
+                    .map_err(|_| TradingErr::CanNotGetTrading)?
+                    .ok_or(TradingErr::NotFoundTrading)?;
+
+                // Update the reasons by adding the new reason_id if it's not already present
+                let mut updated_reasons = trading.reasons.unwrap_or_else(Vec::new);
+                if !updated_reasons.contains(&reason_obj_id) {
+                    updated_reasons.push(reason_obj_id);
+                }
+
+                // Prepare the update document
+                let update_doc = doc! {
+                    "$set": {
+                        "reasons": updated_reasons,
+                        "updated_at": DateTime::now()
+                    }
+                };
+
+                // Perform the update
+                let result = self
+                    .trading
+                    .find_one_and_update(doc! {"_id": obj_id}, update_doc)
+                    .await;
+
+                match result {
+                    Ok(Some(updated_trading)) => updated_tradings.push(updated_trading),
+                    Ok(None) => return Err(TradingErr::NotFoundTrading),
+                    Err(_) => return Err(TradingErr::CanNotUpdateTrading),
+                }
+            }
+        } else {
+            return Err(TradingErr::CanNotUpdateTrading);
+        }
+
+        Ok(updated_tradings)
     }
 
     // Add school_id to the schools_id array if it doesn't already exist

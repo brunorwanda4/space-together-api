@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 
-use crate::AppState;
-
+// Import the necessary modules for routes
 use super::{
     class::reason_router::reason_routers,
     countries_routes::countries_routes,
@@ -13,15 +12,18 @@ use super::{
     },
     user_routes::user_routes,
 };
+use crate::AppState;
+
+// Define all routes
 pub async fn all_routes(query: Arc<AppState>) -> Router {
-    Router::new()
-        .nest("/api/v1/user", user_routes(query.clone()))
-        .nest("/api/v1/countries", countries_routes(query.clone()))
-        .nest(
-            "/api/v1/schoolRequest",
-            school_request_router(query.clone()),
-        )
-        .nest("/api/v1/term", term_routers(query.clone()))
-        .nest("/api/v1/trading", trading_routers(query.clone()))
-        .nest("/api/v1/reason", reason_routers(query))
+    Router::new().nest(
+        "/api/v1",
+        Router::new()
+            .nest("/user", user_routes(Arc::clone(&query))) // User routes
+            .nest("/countries", countries_routes(Arc::clone(&query))) // Countries routes
+            .nest("/schoolRequest", school_request_router(Arc::clone(&query))) // School request routes
+            .nest("/term", term_routers(Arc::clone(&query))) // Term routes
+            .nest("/trading", trading_routers(Arc::clone(&query))) // Trading routes
+            .nest("/reason", reason_routers(query)), // Reason routes
+    )
 }
