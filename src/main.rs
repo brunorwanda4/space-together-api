@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
-use axum::http::{
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
-    HeaderValue, Method,
+use axum::{
+    extract::FromRef,
+    http::{
+        header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+        HeaderValue, Method,
+    },
 };
 use database::database_conn::DBConn;
 use errors::MyError;
+use minijinja::Environment;
+use pages_template::pages_template;
 use routes::all_routes::all_routes;
 use tokio::net::TcpListener;
 use tower_cookies::CookieManagerLayer;
@@ -18,10 +23,13 @@ mod errors;
 mod handlers;
 mod libs;
 mod models;
+mod pages_template;
 mod routes;
 
+#[derive(Clone)]
 pub struct AppState {
-    db: DBConn,
+    pub db: DBConn,
+    pub env: Environment<'static>,
 }
 
 #[tokio::main]
@@ -29,7 +37,12 @@ async fn main() -> Result<(), MyError> {
     let db = DBConn::init()
         .await
         .expect("Can not connect to database after initialization");
-    let mc = Arc::new(AppState { db });
+
+    let mc = Arc::new(AppState {
+        db,
+        env: pages_template()
+            .expect("Can not connect to database after initialization for pages template"),
+    });
 
     let cors = CorsLayer::new()
         .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())

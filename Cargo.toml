@@ -37,6 +37,7 @@ crypto = "0.5.1"
 dotenv = "0.15.0"
 oauth2 = "4.4.2"
 futures = "0.3.31"
+minijinja = "2.3.1"
 
 
 [dev-dependencies]

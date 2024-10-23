@@ -1,4 +1,3 @@
-pub mod headmaster_model;
 pub mod school_model;
 pub mod school_request_model;
 pub mod staff_model;

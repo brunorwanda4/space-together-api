@@ -19,11 +19,11 @@ pub async fn all_routes(query: Arc<AppState>) -> Router {
     Router::new().nest(
         "/api/v1",
         Router::new()
-            .nest("/user", user_routes(Arc::clone(&query))) // User routes
-            .nest("/countries", countries_routes(Arc::clone(&query))) // Countries routes
-            .nest("/schoolRequest", school_request_router(Arc::clone(&query))) // School request routes
-            .nest("/term", term_routers(Arc::clone(&query))) // Term routes
-            .nest("/trading", trading_routers(Arc::clone(&query))) // Trading routes
-            .nest("/reason", reason_routers(query)), // Reason routes
+            .nest("/user", user_routes(Arc::clone(&query)))
+            .nest("/countries", countries_routes(Arc::clone(&query)))
+            .nest("/schoolRequest", school_request_router(Arc::clone(&query)))
+            .nest("/term", term_routers(Arc::clone(&query)))
+            .nest("/trading", trading_routers(Arc::clone(&query)))
+            .nest("/reason", reason_routers(query)),
     )
 }
