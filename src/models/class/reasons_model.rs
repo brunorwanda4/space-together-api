@@ -98,6 +98,24 @@ pub struct ReasonModelNew {
     pub is_active: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ReasonModelUpdate {
+    pub name: Option<String>,
+    pub reason_content: Option<ReasonContent>,
+    pub code: Option<String>,
+    pub severity: Option<String>,
+    pub classes: Option<Vec<String>>,
+    pub teachers_id: Option<Vec<String>>,
+    pub updated_by: Option<Vec<String>>,
+    pub trading: Option<Vec<String>>,
+    pub hours: Option<u32>,
+    pub follow_up_required: Option<bool>,
+    pub school: Option<String>,
+    pub is_public: Option<bool>,
+    pub reason_type: Option<ReasonType>,
+    pub is_active: Option<bool>,
+}
+
 impl ReasonModel {
     pub fn new(reason: ReasonModelNew) -> Self {
         ReasonModel {

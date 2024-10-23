@@ -4,10 +4,14 @@ pub type ReasonResult<T> = core::result::Result<T, ReasonErr>;
 pub enum ReasonErr {
     InvalidId,
     CanNotCreateReason { error: String },
+    CanNotCreateReasonIndex,
     CanNotGetReason { error: String },
     NotFoundReason,
-    NoFieldsToUpdate,
     CanMakeReasonBecauseOfTradingError { error: String },
+    NoFieldsToUpdate,
+    ReasonNotFound,
+    CanNotUpdateReason { error: String },
+    CanNotDeleteReason { error: String },
 }
 
 impl std::fmt::Display for ReasonErr {
@@ -17,15 +21,23 @@ impl std::fmt::Display for ReasonErr {
             ReasonErr::CanNotCreateReason { error } => {
                 write!(f, "Can't create Reason error is {}", error)
             }
+            ReasonErr::CanNotCreateReasonIndex => write!(f, "Can't create Reason index "),
             ReasonErr::CanNotGetReason { error } => {
                 write!(f, "Can't get Reason information error is : {:?} ", error)
-            }
-            ReasonErr::NoFieldsToUpdate => {
-                write!(f, "No Fields to update Reason , please field all data")
             }
             ReasonErr::NotFoundReason => write!(f, "Reason not found"),
             ReasonErr::CanMakeReasonBecauseOfTradingError { error } => {
                 write!(f, "Can't make Reason because of Trading error : {}", error)
+            }
+            ReasonErr::NoFieldsToUpdate => {
+                write!(f, "No fields to update in Reason, Please enter a field!")
+            }
+            ReasonErr::ReasonNotFound => write!(f, "Reason not found"),
+            ReasonErr::CanNotUpdateReason { error } => {
+                write!(f, "Can not update Reason error is: {:?}", error)
+            }
+            ReasonErr::CanNotDeleteReason { error } => {
+                write!(f, "Can not delete Reason error is: {:?}", error)
             }
         }
     }

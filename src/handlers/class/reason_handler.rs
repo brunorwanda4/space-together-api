@@ -8,9 +8,12 @@ use axum::{
 };
 
 use crate::{
-    controller::class::reason_controller::{create_reason_controller, get_reason_controller},
+    controller::class::reason_controller::{
+        create_reason_controller, delete_reason_by_id_controller, get_reason_controller,
+        update_reason_controller,
+    },
     error::res_req::ResReq,
-    models::class::reasons_model::ReasonModelNew,
+    models::class::reasons_model::{ReasonModelNew, ReasonModelUpdate},
     AppState,
 };
 
@@ -36,6 +39,41 @@ pub async fn get_reason_by_id_handler(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     let res = get_reason_controller(query, id).await;
+    match res {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => {
+            let error = ResReq {
+                success: false,
+                message: err.to_string(),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        }
+    }
+}
+
+pub async fn update_reason_by_id_handle(
+    State(query): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(reason): Json<ReasonModelUpdate>,
+) -> impl IntoResponse {
+    let res = update_reason_controller(query, id, reason).await;
+    match res {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => {
+            let error = ResReq {
+                success: false,
+                message: err.to_string(),
+            };
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        }
+    }
+}
+
+pub async fn delete_reason_by_id_handle(
+    State(query): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let res = delete_reason_by_id_controller(query, id).await;
     match res {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(err) => {
