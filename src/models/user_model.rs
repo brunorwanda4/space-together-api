@@ -72,7 +72,6 @@ pub struct UserModel {
     pub username: Option<String>,
     pub phone_number: Option<String>,
     pub user_type: Option<TUserType>,
-    pub staff_id: Option<ObjectId>,
     pub created_at: Option<DateTime>,
     pub updated_at: Option<DateTime>,
 }
@@ -99,7 +98,6 @@ impl UserModel {
             username: None,
             phone_number: None,
             user_type: None,
-            staff_id: None,
             created_at: Some(DateTime::from_system_time(now)),
             updated_at: Some(DateTime::from_system_time(now)),
         }

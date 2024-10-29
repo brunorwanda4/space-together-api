@@ -18,8 +18,6 @@ pub struct SchoolModel {
     pub students: Option<Vec<ObjectId>>,
     pub teachers: Option<Vec<ObjectId>>,
     pub classes: Option<Vec<ObjectId>>,
-    pub staff: Option<Vec<ObjectId>>,
-    pub headmaster: Option<Vec<ObjectId>>,
     pub trading: Option<Vec<ObjectId>>,
     pub school_type: SchoolType,
     pub created_at: DateTime,

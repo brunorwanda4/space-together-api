@@ -6,8 +6,8 @@ use super::{
     class::reasons_action_db::ReasonActionDb,
     countries_action_db::CountyActionDb,
     school::{
-        school_request_action_db::SchoolRequestActionDb, term_action_db::TermActionDb,
-        trading_action_db::TradingActionDb,
+        school_request_action_db::SchoolRequestActionDb, staff_action_db::StaffActionDb,
+        term_action_db::TermActionDb, trading_action_db::TradingActionDb,
     },
     user_action_db::UserActionDb,
 };
@@ -18,8 +18,8 @@ use crate::{
         country_model::CountryModel,
         images_models::ProfileImagesModel,
         school::{
-            school_request_model::SchoolRequestModel, term_model::TermModel,
-            trading_model::TradingModel,
+            school_request_model::SchoolRequestModel, staff_model::StaffModel,
+            term_model::TermModel, trading_model::TradingModel,
         },
         user_model::UserModel,
     },
@@ -33,6 +33,7 @@ pub struct DBConn {
     pub term_db: TermActionDb,
     pub trading_db: TradingActionDb,
     pub reason_db: ReasonActionDb,
+    pub staff_db: StaffActionDb,
 }
 
 impl DBConn {
@@ -78,6 +79,9 @@ impl DBConn {
         let reason: Collection<ReasonModel> = space_together_db.collection("reasons");
         let reason_db = ReasonActionDb { reason };
 
+        let staff: Collection<StaffModel> = space_together_db.collection("school_staffs");
+        let staff_db = StaffActionDb { staff };
+
         println!("Database connected successfully ✅");
 
         Ok(Self {
@@ -87,6 +91,7 @@ impl DBConn {
             term_db,
             trading_db,
             reason_db,
+            staff_db,
         })
     }
 }
