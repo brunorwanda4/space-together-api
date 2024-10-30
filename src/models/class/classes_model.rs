@@ -1,8 +1,6 @@
 use mongodb::bson::{oid::ObjectId, DateTime};
 use serde::Deserialize;
 
-use super::student_model::StudentModel;
-
 #[derive(Debug, Deserialize)]
 struct ClassModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]

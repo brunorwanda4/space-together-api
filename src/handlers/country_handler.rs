@@ -2,12 +2,7 @@ use std::sync::Arc;
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 
-use crate::{
-    error::res_req::ResReq,
-    errors::{MyError, Result},
-    models::country_model::CountryModel,
-    AppState,
-};
+use crate::{error::res_req::ResReq, models::country_model::CountryModel, AppState};
 
 pub async fn add_country(
     State(app_state): State<Arc<AppState>>,
@@ -24,7 +19,7 @@ pub async fn add_country(
         Err(err) => {
             let error = ResReq {
                 success: false,
-                message: MyError::CanNotCreateCountry.to_string(),
+                message: err.to_string(),
             };
 
             (StatusCode::BAD_REQUEST, Json(error)).into_response()

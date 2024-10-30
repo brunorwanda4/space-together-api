@@ -17,8 +17,9 @@ pub struct CountryModel {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CountryModelLocation {
-    pub country: String,
-    pub province: String,
-    pub district: String,
+    pub country: Option<String>,
+    pub province: Option<String>,
+    pub district: Option<String>,
     pub zip_code: Option<String>,
+    pub google_address: Option<String>,
 }
