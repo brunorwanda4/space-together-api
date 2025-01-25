@@ -3,7 +3,7 @@ use std::str::FromStr;
 use mongodb::bson::{self, oid::ObjectId, DateTime, Document};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassModel {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
@@ -16,13 +16,13 @@ pub struct ClassModel {
     pub class_type_id: Option<ObjectId>,
     pub class_room_id: Option<ObjectId>,
     pub is_public: Option<bool>,
-    pub image: Option<ObjectId>,
     pub description: Option<String>,
+    pub symbol_id: Option<ObjectId>,
     pub created_on: DateTime,
     pub updated_on: Option<DateTime>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassModelNew {
     pub name: String,
     pub username: Option<String>,
@@ -33,11 +33,11 @@ pub struct ClassModelNew {
     pub class_type: Option<String>,
     pub class_room: Option<String>,
     pub is_public: Option<bool>,
-    pub image: Option<String>,
     pub description: Option<String>,
+    pub symbol: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassModelGet {
     pub id: String,
     pub name: String,
@@ -49,13 +49,13 @@ pub struct ClassModelGet {
     pub code: Option<String>,
     pub class_type: Option<String>,
     pub is_public: Option<bool>,
-    pub image: Option<String>,
     pub description: Option<String>,
     pub created_on: String,
     pub updated_on: Option<String>,
+    pub symbol: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassModelPut {
     pub name: Option<String>,
     pub username: Option<String>,
@@ -66,8 +66,8 @@ pub struct ClassModelPut {
     pub class_type: Option<String>,
     pub class_room: Option<String>,
     pub is_public: Option<bool>,
-    pub image: Option<String>,
     pub description: Option<String>,
+    pub symbol: Option<String>,
 }
 
 impl ClassModel {
@@ -93,9 +93,9 @@ impl ClassModel {
                 .class_type
                 .and_then(|id| ObjectId::from_str(&id).ok()),
             is_public: class_model_new.is_public,
-            image: class_model_new
-                .image
-                .and_then(|id| ObjectId::from_str(&id).ok()),
+            symbol_id: class_model_new
+                .symbol
+                .map(|id| ObjectId::from_str(&id).unwrap()),
             description: class_model_new.description,
             created_on: DateTime::now(),
             updated_on: None,
@@ -110,12 +110,12 @@ impl ClassModel {
             description: class.description.clone(),
             class_teacher: class.class_teacher_id.map(|id| id.to_string()),
             class_room: class.class_room_id.map(|id| id.to_string()),
-            image: class.image.map(|id| id.to_string()),
             trade: class.trade_id.map(|id| id.to_string()),
             sector: class.sector_id.map(|id| id.to_string()),
             class_type: class.class_type_id.map(|id| id.to_string()),
             is_public: class.is_public,
             code: class.code.clone(),
+            symbol: class.symbol_id.map(|id| id.to_string()),
             created_on: class
                 .created_on
                 .try_to_rfc3339_string()
@@ -180,15 +180,16 @@ impl ClassModel {
             class_model_put.is_public.map(bson::Bson::Boolean),
         );
         insert_if_some(
-            "image",
-            class_model_put
-                .image
-                .and_then(|id| ObjectId::from_str(&id).ok())
-                .map(bson::Bson::ObjectId),
-        );
-        insert_if_some(
             "description",
             class_model_put.description.map(bson::Bson::String),
+        );
+
+        insert_if_some(
+            "symbol_id",
+            class_model_put
+                .symbol
+                .and_then(|id| ObjectId::from_str(&id).ok())
+                .map(bson::Bson::ObjectId),
         );
 
         if is_updated {

@@ -8,6 +8,7 @@ use mongodb::{
 
 use crate::{
     controllers::{
+        file_controller::file_controller_controller::create_file_image,
         school_controller::{
             sector_controller::get_sector_by_id, trade_controller::get_trade_by_id,
         },
@@ -31,58 +32,47 @@ use crate::{
 use super::{
     class_room_controller::get_class_room_by_id, class_type_controller::get_class_type_by_id,
 };
-
 async fn get_other_collection(
     state: Arc<AppState>,
     class: ClassModel,
 ) -> DbClassResult<ClassModelGet> {
-    let trade_name = if let Some(ref trade_id) = class.trade_id {
+    let mut formatted_class = ClassModel::format(class.clone());
+
+    if let Some(ref trade_id) = class.trade_id {
         let trade = get_trade_by_id(state.clone(), *trade_id).await?;
-        trade.username.or(Some(trade.name))
-    } else {
-        None
-    };
+        formatted_class.trade = trade.username.or(Some(trade.name));
+    }
 
-    let sector_name = if let Some(ref sector_id) = class.sector_id {
+    if let Some(ref sector_id) = class.sector_id {
         let sector = get_sector_by_id(state.clone(), *sector_id).await?;
-        sector.username.or(Some(sector.name))
-    } else {
-        None
-    };
+        formatted_class.sector = sector.username.or(Some(sector.name));
+    }
 
-    let class_type = if let Some(ref class_type_id) = class.class_type_id {
+    if let Some(ref class_type_id) = class.class_type_id {
         let document = get_class_type_by_id(state.clone(), *class_type_id).await?;
-        document.username.or(Some(document.name))
-    } else {
-        None
-    };
+        formatted_class.class_type = document.username.or(Some(document.name));
+    }
 
-    let class_teacher = if let Some(ref class_teacher_id) = class.class_teacher_id {
+    if let Some(ref class_teacher_id) = class.class_teacher_id {
         let document = controller_get_user_by_id(state.clone(), *class_teacher_id)
             .await
             .map_err(|e| DbClassError::OtherError { err: e.to_string() })?;
-        document.username.or(Some(document.name))
-    } else {
-        None
-    };
+        formatted_class.class_teacher = document.username.or(Some(document.name));
+    }
 
-    let class_room = if let Some(class_room_id) = class.class_room_id {
+    if let Some(class_room_id) = class.class_room_id {
         let document = get_class_room_by_id(state.clone(), class_room_id)
             .await
             .map_err(|e| DbClassError::OtherError { err: e.to_string() })?;
-        document.username.or(Some(document.name))
-    } else {
-        None
-    };
+        formatted_class.class_room = document.username.or(Some(document.name));
+    }
 
-    let mut class = ClassModel::format(class);
-    class.trade = trade_name;
-    class.sector = sector_name;
-    class.class_type = class_type;
-    class.class_teacher = class_teacher;
-    class.class_room = class_room;
+    // if let Some(symbol_id) = class.symbol_id {
+    //     let get_symbol = get_file_by_id(state.clone(), symbol_id).await?;
+    //     format_class_room.symbol = Some(get_symbol.src);
+    // };
 
-    Ok(class)
+    Ok(formatted_class)
 }
 
 async fn validate_class_username(
@@ -157,6 +147,14 @@ pub async fn create_class(
         }
     }
 
+    if class.username.is_none() {
+        class.username = Some(generate_username(&class.name));
+    }
+
+    if class.code.is_none() {
+        class.code = Some(generate_code());
+    }
+
     let index = IndexModel::builder()
         .keys(doc! {"username": 1, "code": 1})
         .options(IndexOptions::builder().unique(true).build())
@@ -170,12 +168,10 @@ pub async fn create_class(
         .await
         .map_err(|e| DbClassError::OtherError { err: e.to_string() })?;
 
-    if class.username.is_none() {
-        class.username = Some(generate_username(&class.name));
-    }
-
-    if class.code.is_none() {
-        class.code = Some(generate_code());
+    if let Some(file) = class.symbol {
+        let symbol =
+            create_file_image(state.clone(), file, "class room symbol".to_string()).await?;
+        class.symbol = Some(symbol);
     }
 
     let create = state
