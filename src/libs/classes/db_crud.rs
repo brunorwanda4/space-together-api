@@ -1,6 +1,6 @@
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{doc, oid::ObjectId, DateTime, Document},
+    bson::{self, doc, oid::ObjectId, DateTime, Document},
     Collection,
 };
 use serde::{Deserialize, Serialize};
@@ -97,19 +97,28 @@ where
         }
     }
 
-    pub async fn create_new(
-        &self,
-        mut document: T,
-        collection: Option<String>,
-    ) -> DbClassResult<T> {
+    pub async fn create_new(&self, document: T, collection: Option<String>) -> DbClassResult<T> {
         let created_at = DateTime::now();
-        if let Some(account) =
-            (&mut document as &mut dyn std::any::Any).downcast_mut::<AccountModel>()
-        {
-            account.created_at = Some(created_at);
-        }
 
-        let insert_result = self.collection.insert_one(&document).await;
+        let mut doc_bson =
+            bson::to_document(&document).map_err(|e| DbClassError::CanNotDoAction {
+                error: e.to_string(),
+                collection: collection.clone().unwrap_or_else(|| "unknown".to_string()),
+                action: "serialize document".to_string(),
+                how_fix_it: "Ensure document is serializable".to_string(),
+            })?;
+
+        doc_bson.insert("created_at", created_at);
+
+        let new_document: T =
+            bson::from_document(doc_bson).map_err(|e| DbClassError::CanNotDoAction {
+                error: e.to_string(),
+                collection: collection.clone().unwrap_or_else(|| "unknown".to_string()),
+                action: "deserialize document".to_string(),
+                how_fix_it: "Ensure document structure matches T".to_string(),
+            })?;
+
+        let insert_result = self.collection.insert_one(new_document).await;
         match insert_result {
             Err(e) => Err(DbClassError::CanNotDoAction {
                 error: e.to_string(),
@@ -118,11 +127,13 @@ where
                 how_fix_it: "try again later".to_string(),
             }),
             Ok(inserted_id) => {
-                self.get_one_by_id(
-                    change_insertoneresult_into_object_id(inserted_id),
-                    collection.clone(),
-                )
-                .await
+                let inserted_doc = self
+                    .get_one_by_id(
+                        change_insertoneresult_into_object_id(inserted_id),
+                        collection.clone(),
+                    )
+                    .await?;
+                Ok(inserted_doc)
             }
         }
     }
