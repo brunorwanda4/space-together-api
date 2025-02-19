@@ -8,11 +8,14 @@ use crate::{
         create_subject, delete_subject_by_id, get_all_subject, get_subject_by_id,
         update_subject_by_id,
     },
-    libs::functions::object_id::change_string_into_object_id,
+    libs::{
+        functions::object_id::change_string_into_object_id, schemas::subject_schema::SubjectSchema,
+    },
     models::{
         request_error_model::ReqErrModel,
         subject_model::subject_model_model::{SubjectModelNew, SubjectModelPut},
     },
+    services::subject_services::create_subject_servicer,
     AppState,
 };
 
@@ -21,6 +24,19 @@ pub async fn create_subject_handle(
     subject: Json<SubjectModelNew>,
 ) -> impl Responder {
     let create = create_subject(state.into_inner(), subject.into_inner()).await;
+    match create {
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel {
+            message: e.to_string(),
+        }),
+        Ok(r) => HttpResponse::Created().json(r),
+    }
+}
+
+pub async fn create_subjects_handle(
+    state: Data<AppState>,
+    subject: Json<SubjectSchema>,
+) -> impl Responder {
+    let create = create_subject_servicer(state.into_inner(), subject.into_inner()).await;
     match create {
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel {
             message: e.to_string(),

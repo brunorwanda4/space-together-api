@@ -15,6 +15,7 @@ use crate::{
             conversation_db::conversation_db_db::ConversationDb,
             db_status::db_status_db::get_database_stats,
         },
+        schemas::subject_schema::SubjectSchema,
     },
     models::{
         auth::adapter_model::{AccountModel, SessionModel},
@@ -60,6 +61,7 @@ pub struct ConnDb {
     pub class_type: MongoCrud<ClassTypeModel>,
     pub subject_type: MongoCrud<SubjectTypeModel>,
     pub subject: MongoCrud<SubjectModel>,
+    pub subjects: MongoCrud<SubjectSchema>,
     // images
     pub avatars: MongoCrud<ProfileImageModel>,
     pub school_logo: MongoCrud<SchoolLogoModel>,
@@ -83,8 +85,8 @@ impl ConnDb {
 
         match client {
             Ok(res) => {
-                let st_data = res.database("space-together-data");
-                let st_image = res.database("space-together-images");
+                let st_data = res.database("space-together-data-testing");
+                let st_image = res.database("space-together-images-testing");
 
                 let stats_result = get_database_stats(&res, "space-together-data").await;
                 let stats = match stats_result {
@@ -102,7 +104,7 @@ impl ConnDb {
                         user: st_data.collection("users"),
                     },
                     class: MongoCrud {
-                        collection: st_data.collection("classes"),
+                        collection: st_data.collection("Class"),
                     },
                     class_group: ClassGroupDb {
                         class_group: st_data.collection("--classes_groups"), // private
@@ -143,6 +145,9 @@ impl ConnDb {
                     },
                     subject: MongoCrud {
                         collection: st_data.collection("subjects"),
+                    },
+                    subjects: MongoCrud {
+                        collection: st_data.collection("subject"),
                     },
                     class_type: MongoCrud {
                         collection: st_data.collection("classes.role"),
