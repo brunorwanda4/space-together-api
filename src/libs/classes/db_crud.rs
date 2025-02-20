@@ -99,7 +99,6 @@ where
 
     pub async fn create_new(&self, document: T, collection: Option<String>) -> DbClassResult<T> {
         let created_at = DateTime::now();
-
         let mut doc_bson =
             bson::to_document(&document).map_err(|e| DbClassError::CanNotDoAction {
                 error: e.to_string(),
