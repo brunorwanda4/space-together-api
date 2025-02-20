@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::db_class_error::{DbClassError, DbClassResult},
     libs::functions::{
-        data_type_fn::convert_id_fields, object_id::change_insertoneresult_into_object_id,
+        data_type_fn::{convert_fields_to_string, convert_id_fields},
+        object_id::change_insertoneresult_into_object_id,
     },
 };
 
@@ -58,7 +59,24 @@ where
         let item = self.collection.find_one(filter).await;
 
         match item {
-            Ok(Some(i)) => Ok(i),
+            Ok(Some(mut i)) => {
+                let doc_bson = bson::to_document(&i).map_err(|e| DbClassError::CanNotDoAction {
+                    error: e.to_string(),
+                    collection: collection.clone().unwrap_or_else(|| "unknown".to_string()),
+                    action: "convert document".to_string(),
+                    how_fix_it: "Ensure document is serializable".to_string(),
+                })?;
+                let converted_doc = convert_fields_to_string(doc_bson);
+                i = bson::from_document(converted_doc).map_err(|e| {
+                    DbClassError::CanNotDoAction {
+                        error: e.to_string(),
+                        collection: collection.clone().unwrap_or_else(|| "unknown".to_string()),
+                        action: "deserialize document".to_string(),
+                        how_fix_it: "Ensure document structure matches T".to_string(),
+                    }
+                })?;
+                Ok(i)
+            }
             Ok(None) => Err(DbClassError::CanNotDoAction {
                 error: "Item not found".to_string(),
                 action: "get one".to_string(),

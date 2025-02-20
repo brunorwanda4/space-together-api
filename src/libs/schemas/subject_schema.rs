@@ -1,7 +1,7 @@
-use mongodb::bson::{oid::ObjectId, DateTime};
+use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::libs::types::fields_types::IdType;
+use crate::libs::types::fields_types::{DateType, IdType};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub enum SubjectType {
@@ -22,7 +22,7 @@ pub struct SubjectSchema {
     pub curriculum: Option<String>,
     pub copyright: Option<String>,
     pub learning_hours: Option<i32>,
-    pub issue_date: Option<DateTime>,
+    pub issue_date: Option<DateType>,
     pub purpose: Option<String>,
     pub symbol: Option<String>,
     pub knowledge: Option<Vec<String>>,
@@ -30,8 +30,8 @@ pub struct SubjectSchema {
     pub attitude: Option<Vec<String>>,
     pub resource: Option<Vec<SubjectResource>>,
     pub competence: Option<Vec<SubjectCompetence>>,
-    pub created_at: Option<DateTime>,
-    pub updated_at: Option<DateTime>,
+    pub created_at: Option<DateType>,
+    pub updated_at: Option<DateType>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
