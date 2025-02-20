@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::db_class_error::{DbClassError, DbClassResult},
-    libs::functions::object_id::change_insertoneresult_into_object_id,
+    libs::functions::{
+        data_type_fn::convert_id_fields, object_id::change_insertoneresult_into_object_id,
+    },
 };
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -108,6 +110,7 @@ where
             })?;
 
         doc_bson.insert("created_at", created_at);
+        doc_bson = convert_id_fields(doc_bson); // Convert _id fields before inserting
 
         let new_document: T =
             bson::from_document(doc_bson).map_err(|e| DbClassError::CanNotDoAction {
