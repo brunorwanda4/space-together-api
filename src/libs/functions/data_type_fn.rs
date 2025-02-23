@@ -19,7 +19,7 @@ pub fn convert_fields_to_string(mut doc: Document) -> Document {
     for (key, value) in doc.clone().into_iter() {
         if key.ends_with("_id") {
             if let bson::Bson::ObjectId(object_id) = value {
-                doc.insert(key, bson::Bson::String(object_id.to_hex()));
+                doc.insert(key, bson::Bson::String(object_id.to_string()));
             }
         } else if key.ends_with("_at") {
             if let bson::Bson::DateTime(datetime) = value {
