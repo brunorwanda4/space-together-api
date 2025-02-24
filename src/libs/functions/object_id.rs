@@ -9,7 +9,7 @@ use crate::models::request_error_model::ReqErrModel;
 //         .as_object_id()
 //         .map(|oid| oid.to_hex())
 //         .unwrap()
-// }
+// }make function in rust which get value which is unknown can be array string object or  other this but it check if the value is objectID (mongodb id) it change tah value into string,
 
 pub fn change_insertoneresult_into_object_id(id: InsertOneResult) -> ObjectId {
     id.inserted_id.as_object_id().unwrap()
