@@ -15,34 +15,34 @@ pub fn convert_id_fields(mut doc: Document) -> Document {
     doc
 }
 
-pub fn convert_fields_to_string(doc: Document) -> Document {
-    let mut new_doc = Document::new();
-    for (key, value) in doc.into_iter() {
-        let new_value = match value {
-            Bson::ObjectId(object_id) => Bson::String(object_id.to_string()),
-            Bson::DateTime(datetime) => {
-                Bson::String(datetime.try_to_rfc3339_string().unwrap_or("".to_string()))
-            }
-            Bson::Document(sub_doc) => Bson::Document(convert_fields_to_string(sub_doc)),
-            Bson::Array(arr) => {
-                let converted_arr: Vec<Bson> = arr
-                    .into_iter()
-                    .map(|item| match item {
-                        Bson::ObjectId(object_id) => Bson::String(object_id.to_string()),
-                        Bson::DateTime(datetime) => {
-                            Bson::String(datetime.try_to_rfc3339_string().unwrap_or("".to_string()))
-                        }
-                        Bson::Document(sub_doc) => {
-                            Bson::Document(convert_fields_to_string(sub_doc))
-                        }
-                        _ => item,
-                    })
-                    .collect();
-                Bson::Array(converted_arr)
-            }
-            _ => value,
-        };
-        new_doc.insert(key, new_value);
+pub fn convert_fields_to_string(mut doc: Document) -> Document {
+    for (key, value) in doc.clone().into_iter() {
+        if let Bson::ObjectId(object_id) = value {
+            doc.insert(key, Bson::String(object_id.to_hex().to_string()));
+        } else if let Bson::DateTime(datetime) = value {
+            doc.insert(
+                key,
+                Bson::String(datetime.try_to_rfc3339_string().unwrap_or("".to_string())),
+            );
+        } else if let Bson::Document(sub_doc) = value {
+            doc.insert(key, Bson::Document(convert_fields_to_string(sub_doc)));
+        } else if let Bson::Array(arr) = value {
+            let converted_arr: Vec<Bson> = arr
+                .into_iter()
+                .map(|item| {
+                    if let Bson::ObjectId(object_id) = item {
+                        Bson::String(object_id.to_hex().to_string())
+                    } else if let Bson::DateTime(datetime) = item {
+                        Bson::String(datetime.try_to_rfc3339_string().unwrap_or("".to_string()))
+                    } else if let Bson::Document(sub_doc) = item {
+                        Bson::Document(convert_fields_to_string(sub_doc))
+                    } else {
+                        item
+                    }
+                })
+                .collect();
+            doc.insert(key, Bson::Array(converted_arr));
+        }
     }
-    new_doc
+    doc
 }
