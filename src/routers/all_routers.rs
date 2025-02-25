@@ -90,10 +90,15 @@ pub fn all_routers(cfg: &mut ServiceConfig, state: Arc<AppState>) {
                 routers_file(user_cfg, state.clone());
             })),
     );
+
+    cfg.service(
+        scope("/api/v0.0.2").service(web::scope("/subject").configure(|user_cfg| {
+            routers_subject_type(user_cfg, state.clone());
+            routers_subject(user_cfg, state.clone());
+        })),
+    );
 }
 
 async fn manual_hello() -> impl Responder {
     HttpResponse::Ok().body("Hey there! 🌼 this is space-together api version v0.0.1")
 }
-
-// TODO : to check CRUD for file

@@ -1,13 +1,13 @@
-use mongodb::bson::{self, oid::ObjectId, Bson, Document};
+use mongodb::bson::{oid::ObjectId, Bson, Document};
 use std::str::FromStr;
 
 /// Converts string `_id` fields into ObjectId if they are valid ObjectId strings.
 pub fn convert_id_fields(mut doc: Document) -> Document {
     for (key, value) in doc.clone().into_iter() {
         if key.ends_with("_id") {
-            if let bson::Bson::String(id_str) = value {
+            if let Bson::String(id_str) = value {
                 if let Ok(object_id) = ObjectId::from_str(&id_str) {
-                    doc.insert(key, bson::Bson::ObjectId(object_id));
+                    doc.insert(key, Bson::ObjectId(object_id));
                 }
             }
         }
@@ -17,6 +17,13 @@ pub fn convert_id_fields(mut doc: Document) -> Document {
 
 pub fn convert_fields_to_string(mut doc: Document) -> Document {
     for (key, value) in doc.clone().into_iter() {
+        if key.ends_with("_id") {
+            let new_value = match value {
+                Bson::ObjectId(object_id) => Bson::String(object_id.to_hex().to_string()),
+                _ => value.clone(),
+            };
+            doc.insert(&key, new_value);
+        }
         if let Bson::ObjectId(object_id) = value {
             doc.insert(key, Bson::String(object_id.to_hex().to_string()));
         } else if let Bson::DateTime(datetime) = value {

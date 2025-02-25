@@ -1,4 +1,3 @@
-use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 use crate::libs::types::fields_types::{DateType, IdType};
@@ -11,7 +10,7 @@ pub enum SubjectType {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SubjectSchema {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
+    pub id: Option<IdType>,
     pub name: String,
     pub class_room_id: Option<IdType>,
     pub class_id: Option<IdType>,

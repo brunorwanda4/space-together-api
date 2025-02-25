@@ -8,8 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::db_class_error::{DbClassError, DbClassResult},
     libs::functions::{
-        data_type_fn::{convert_fields_to_string, convert_id_fields},
-        object_id::change_insertoneresult_into_object_id,
+        data_type_fn::convert_id_fields, object_id::change_insertoneresult_into_object_id,
     },
 };
 
@@ -66,7 +65,7 @@ where
                     action: "convert document".to_string(),
                     how_fix_it: "Ensure document is serializable".to_string(),
                 })?;
-                let converted_doc = convert_fields_to_string(doc_bson);
+                let converted_doc = doc_bson;
                 i = bson::from_document(converted_doc).map_err(|e| {
                     DbClassError::CanNotDoAction {
                         error: e.to_string(),
