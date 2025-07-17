@@ -21,8 +21,8 @@ pub async fn all_routes(query: Arc<AppState>) -> Router {
         Router::new()
             .nest("/user", user_routes(query.clone()))
             .nest("/countries", countries_routes(query.clone()))
-            .nest("/schoolRequest", school_request_router(query.clone()))
             .nest("/term", term_routers(query.clone()))
+            .nest("/schoolRequest", school_request_router(query.clone()))
             .nest("/trading", trading_routers(query.clone()))
             .nest("/reason", reason_routers(query.clone()))
             .nest("/school-staff", staff_routers(query)),

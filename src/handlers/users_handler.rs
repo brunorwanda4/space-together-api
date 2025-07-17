@@ -18,41 +18,41 @@ pub struct CreateUserResultError {
     message: String,
 }
 
-pub async fn create_user(
-    State(app_state): State<Arc<AppState>>,
-    Json(user_fc): Json<CreateUserRequestModel>,
-) -> impl IntoResponse {
-    let user_email = user_fc.email.clone();
-    let find_user_email = app_state
-        .db
-        .user_action_db
-        .get_user_by_email(user_email.clone())
-        .await;
+// pub async fn create_user(
+//     State(app_state): State<Arc<AppState>>,
+//     Json(user_fc): Json<CreateUserRequestModel>,
+// ) -> impl IntoResponse {
+//     let user_email = user_fc.email.clone();
+//     let find_user_email = app_state
+//         .db
+//         .user_action_db
+//         .get_user_by_email(user_email.clone())
+//         .await;
 
-    if find_user_email.is_ok() {
-        let error_response = CreateUserResultError {
-            success: false,
-            message: MyError::UserEmailIsReadyExit { email: user_email }.to_string(),
-        };
-        return (StatusCode::NOT_ACCEPTABLE, Json(error_response)).into_response();
-    }
+//     if find_user_email.is_ok() {
+//         let error_response = CreateUserResultError {
+//             success: false,
+//             message: MyError::UserEmailIsReadyExit { email: user_email }.to_string(),
+//         };
+//         return (StatusCode::NOT_ACCEPTABLE, Json(error_response)).into_response();
+//     }
 
-    let new_user = app_state
-        .db
-        .user_action_db
-        .create_user(user_fc.name, user_fc.email, Some(user_fc.password))
-        .await;
-    match new_user {
-        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
-        Err(_) => {
-            let error_response = CreateUserResultError {
-                success: false,
-                message: MyError::CreateUserError.to_string(),
-            };
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response()
-        }
-    }
-}
+//     let new_user = app_state
+//         .db
+//         .user_action_db
+//         .create_user(user_fc.name, user_fc.email, Some(user_fc.password))
+//         .await;
+//     match new_user {
+//         Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+//         Err(_) => {
+//             let error_response = CreateUserResultError {
+//                 success: false,
+//                 message: MyError::CreateUserError.to_string(),
+//             };
+//             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_response)).into_response()
+//         }
+//     }
+// }
 
 pub async fn get_user(
     State(app_state): State<Arc<AppState>>,

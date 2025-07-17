@@ -8,10 +8,13 @@ use mongodb::{
 };
 use std::{str::FromStr, vec};
 
-use crate::errors::{MyError, Result};
 use crate::models::{
     images_models::{ProfileImageModel, ProfileImagesModel},
-    user_model::{ProfileImageType, UpdateUserModel, UserModel},
+    user_model::{ProfileImageType, UpdateUserModel, UserModel, UserModelNew},
+};
+use crate::{
+    error::user::user_error::{UserError, UserResult},
+    errors::{MyError, Result},
 };
 
 #[derive(Debug, Clone)]
@@ -21,12 +24,7 @@ pub struct UserActionDb {
 }
 
 impl UserActionDb {
-    pub async fn create_user(
-        &self,
-        name: String,
-        email: String,
-        password: Option<String>,
-    ) -> Result<InsertOneResult> {
+    pub async fn create_user(&self, user: UserModelNew) -> UserResult<InsertOneResult> {
         let index = IndexModel::builder()
             .keys(doc! {
                 "email" : 1,
@@ -37,19 +35,18 @@ impl UserActionDb {
 
         let one_index = self.user.create_index(index).await;
         if one_index.is_err() {
-            return Err(MyError::UserCanNotCreate);
+            return Err(UserError::UserEmailOrUsernameIsReadyExit);
         }
 
-        let new_user = UserModel::new(name, email, password);
+        let new_user = UserModel::new(user);
 
         let result = self.user.insert_one(new_user).await;
 
         match result {
             Ok(ok) => Ok(ok),
-            Err(err) => {
-                println!("{}", err); // Log the error
-                Err(MyError::CreateUserError) // Return the custom error
-            }
+            Err(err) => Err(UserError::CanNotCreateUser {
+                error: err.to_string(),
+            }),
         }
     }
 

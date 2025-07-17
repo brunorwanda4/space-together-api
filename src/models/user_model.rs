@@ -72,20 +72,25 @@ pub struct UserModel {
     pub username: Option<String>,
     pub phone_number: Option<String>,
     pub user_type: Option<TUserType>,
-    pub created_at: Option<DateTime>,
+    pub created_at: DateTime,
     pub updated_at: Option<DateTime>,
 }
 
-impl UserModel {
-    pub fn new(name: String, email: String, password: Option<String>) -> Self {
-        let hashed_password = password.as_ref().map(|pw| hash(pw, 10).unwrap());
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserModelNew {
+    pub name: String,
+    pub email: String,
+    pub password: String,
+}
 
+impl UserModel {
+    pub fn new(user: UserModelNew) -> Self {
         let now: SystemTime = Utc::now().into();
         UserModel {
             id: None,
-            name,
-            email,
-            password: hashed_password,
+            name: user.name,
+            email: user.email,
+            password: Some(user.password),
             gender: None,
             image: None,
             birth_date: None,
@@ -98,8 +103,8 @@ impl UserModel {
             username: None,
             phone_number: None,
             user_type: None,
-            created_at: Some(DateTime::from_system_time(now)),
-            updated_at: Some(DateTime::from_system_time(now)),
+            created_at: DateTime::now(),
+            updated_at: None,
         }
     }
 }
@@ -114,8 +119,6 @@ pub struct CreateUserRequestModel {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateUserModel {
-    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
-    pub id: Option<ObjectId>,
     pub gender: Option<TGender>,
     pub image: Option<String>,
     pub birth_date: Option<String>,
@@ -128,6 +131,30 @@ pub struct UpdateUserModel {
     pub username: Option<String>,
     pub phone_number: Option<String>,
     pub user_type: Option<TUserType>,
+}
+
+// get user
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserModelGet {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub password: Option<String>,
+    pub gender: Option<TGender>,
+    pub image: Option<ProfileImageType>,
+    pub birth_date: Option<String>,
+    pub facebook: Option<String>,
+    pub twitter: Option<String>,
+    pub instagram: Option<String>,
+    pub linkedin: Option<String>,
+    pub snapchat: Option<String>,
+    pub whatsapp: Option<String>,
+    pub username: Option<String>,
+    pub phone_number: Option<String>,
+    pub user_type: Option<TUserType>,
+    pub created_at: DateTime,
+    pub updated_at: Option<DateTime>,
 }
 
 // login

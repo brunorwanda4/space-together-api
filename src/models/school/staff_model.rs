@@ -11,7 +11,7 @@ pub enum StaffRole {
     Principal,
     DeputyPrincipal,
 }
-
+  
 impl fmt::Display for StaffRole {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
