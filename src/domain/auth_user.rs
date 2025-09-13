@@ -11,6 +11,7 @@ pub struct AuthUserDto {
     pub image: Option<String>,
     pub phone: Option<String>,
     pub role: Option<UserRole>,
+    pub current_school_id: Option<String>,
     pub iat: Option<i64>, // issued at
     pub exp: Option<i64>, // expiration
 }

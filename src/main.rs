@@ -2,7 +2,9 @@ mod api;
 mod config;
 mod domain;
 mod errors;
+mod guards;
 mod mappers;
+mod middleware;
 mod models;
 mod repositories;
 mod services;
@@ -24,8 +26,8 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(db.clone()))
             .configure(api::init_routes)
+            .app_data(web::Data::new(db.clone()))
     })
     .bind(("127.0.0.1", port.parse::<u16>().unwrap()))?
     .run()

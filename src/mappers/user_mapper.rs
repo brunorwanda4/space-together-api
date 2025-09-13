@@ -13,6 +13,12 @@ pub fn to_auth_dto(user: &User) -> AuthUserDto {
         image: user.image.clone(),
         phone: user.phone.clone(),
         role: user.role.clone(),
+        current_school_id: Some(
+            user.current_school_id
+                .as_ref()
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
+        ),
         iat: None,
         exp: None,
     }
