@@ -1,0 +1,8 @@
+pub mod address;
+pub mod age;
+pub mod auth;
+pub mod auth_user;
+pub mod gender;
+pub mod student;
+pub mod user;
+pub mod user_role;
