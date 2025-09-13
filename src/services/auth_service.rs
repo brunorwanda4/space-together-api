@@ -26,15 +26,15 @@ impl<'a> AuthService<'a> {
     }
 
     pub async fn register(&self, data: RegisterUser) -> Result<(String, User), String> {
+        is_valid_email(&data.email)?;
+
         if let Ok(Some(_)) = self.repo.find_by_email(&data.email).await {
             return Err("Email already exists".to_string());
         }
 
-        is_valid_email(&data.email)?;
-
         let valid_name = is_valid_name(&data.name)?;
         let username = Some(generate_username(&valid_name));
-        let now = Utc::now();
+        let now = Some(Utc::now());
 
         let user = User {
             id: None,

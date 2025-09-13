@@ -1,6 +1,12 @@
 use mongodb::{bson::oid::ObjectId, results::InsertOneResult};
 use serde_json::Value;
 
+pub fn change_insertoneresult_into_object_id(id: InsertOneResult) -> Result<ObjectId, String> {
+    id.inserted_id
+        .as_object_id()
+        .ok_or_else(|| "Failed to convert inserted_id to ObjectId".to_string())
+}
+
 pub fn convert_object_id_to_string(mut doc: Value) -> Value {
     match &mut doc {
         Value::Object(map) => {
@@ -24,8 +30,4 @@ pub fn convert_object_id_to_string(mut doc: Value) -> Value {
         _ => {}
     }
     doc
-}
-
-pub fn change_insertoneresult_into_object_id(id: InsertOneResult) -> ObjectId {
-    id.inserted_id.as_object_id().unwrap()
 }

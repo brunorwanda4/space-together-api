@@ -9,10 +9,12 @@ use super::{address::Address, age::Age, gender::Gender, user_role::UserRole};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
     #[serde(
-        rename = "_id",                         // Mongo expects "_id"
-        alias = "id",                           // Accept "id" when deserializing JSON
+        rename = "_id",
+        alias = "id",
         serialize_with = "object_id_serde::serialize",
-        deserialize_with = "object_id_serde::deserialize"
+        deserialize_with = "object_id_serde::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
     )]
     pub id: Option<ObjectId>,
 
@@ -30,9 +32,20 @@ pub struct User {
     pub gender: Option<Gender>,
     pub age: Option<Age>,
     pub address: Option<Address>,
-    pub current_school_id: Option<String>,
+
+    #[serde(
+        serialize_with = "object_id_serde::serialize",
+        deserialize_with = "object_id_serde::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub current_school_id: Option<ObjectId>,
+
     pub bio: Option<String>,
 
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub created_at: Option<DateTime<Utc>>,
+
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
 }

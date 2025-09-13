@@ -70,7 +70,7 @@ async fn get_me(req: HttpRequest, db: web::Data<Database>) -> impl Responder {
 
     match service.get_user_from_token(&token).await {
         Ok(user) => HttpResponse::Ok().json(user),
-        Err(msg) => HttpResponse::Unauthorized().body(msg),
+        Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
     }
 }
 
