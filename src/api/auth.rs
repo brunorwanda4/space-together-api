@@ -15,14 +15,15 @@ async fn register_user(data: web::Json<RegisterUser>, db: web::Data<Database>) -
 
     match service.register(data.into_inner()).await {
         Ok((token, user)) => HttpResponse::Created().json(serde_json::json!({
-            "token": token,
-            "user": {
-                "id": user.id,
-                "name": user.name,
-                "email": user.email,
-                "role": user.role,
-                "username": user.username
-            }
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "accessToken": token,
+            "image": user.image,
+            "role": user.role,
+            "username": user.username,
+            "bio": user.bio,
+            "schoolAccessToken": ""
         })),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -35,14 +36,15 @@ async fn login_user(data: web::Json<LoginUser>, db: web::Data<Database>) -> impl
 
     match service.login(data.into_inner()).await {
         Ok((token, user)) => HttpResponse::Ok().json(serde_json::json!({
-            "token": token,
-            "user": {
-                "id": user.id,
-                "name": user.name,
-                "email": user.email,
-                "role": user.role,
-                "username": user.username
-            }
+             "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "accessToken": token,
+            "image": user.image,
+            "role": user.role,
+            "username": user.username,
+            "bio": user.bio,
+            "schoolAccessToken": ""
         })),
         Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
     }

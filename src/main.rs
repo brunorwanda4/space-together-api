@@ -10,6 +10,7 @@ mod repositories;
 mod services;
 mod utils;
 
+use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use dotenvy::dotenv;
 use std::env;
@@ -25,9 +26,16 @@ async fn main() -> std::io::Result<()> {
     println!("🚀 Space-Together backend running on http://127.0.0.1:{port}");
 
     HttpServer::new(move || {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .max_age(3600);
+
         App::new()
-            .configure(api::init_routes)
+            .wrap(cors)
             .app_data(web::Data::new(db.clone()))
+            .configure(api::init_routes)
     })
     .bind(("127.0.0.1", port.parse::<u16>().unwrap()))?
     .run()

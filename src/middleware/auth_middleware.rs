@@ -42,7 +42,7 @@ where
         self.service.poll_ready(ctx)
     }
 
-    fn call(&self, mut req: ServiceRequest) -> Self::Future {
+    fn call(&self, req: ServiceRequest) -> Self::Future {
         if let Some(auth_header) = req.headers().get("Authorization") {
             if let Ok(auth_str) = auth_header.to_str() {
                 let token = auth_str.strip_prefix("Bearer ").unwrap_or("");
@@ -53,6 +53,6 @@ where
         }
 
         let fut = self.service.call(req);
-        Box::pin(async move { fut.await })
+        Box::pin(fut)
     }
 }
