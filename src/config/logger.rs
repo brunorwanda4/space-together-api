@@ -10,11 +10,29 @@ use std::env;
 pub fn init() {
     // Set default log level if RUST_LOG is not already set
     if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "debug,actix_web=debug,mongodb=info");
+        env::set_var(
+            "RUST_LOG",
+            // debug everything + actix-web requests + mongodb queries
+            "debug,actix_web=debug,mongodb=info",
+        );
     }
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
-        .format_timestamp_secs()
+        .format(|buf, record| {
+            use std::io::Write;
+            let ts = buf.timestamp_seconds();
+
+            // Add colors depending on level
+            let level = match record.level() {
+                log::Level::Error => "❌ ERROR",
+                log::Level::Warn => "⚠️  WARN ",
+                log::Level::Info => "✅ INFO ",
+                log::Level::Debug => "🔍 DEBUG",
+                log::Level::Trace => "📍 TRACE",
+            };
+
+            writeln!(buf, "[{}] [{}] {}", ts, level, record.args())
+        })
         .init();
 
     log::info!("✅ Logger initialized. Logs are now active.");

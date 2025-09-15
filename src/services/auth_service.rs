@@ -1,7 +1,7 @@
 use crate::{
     domain::{
         auth::{LoginUser, RegisterUser},
-        user::User,
+        user::{UpdateUserDto, User},
         user_role::UserRole,
     },
     mappers::user_mapper::to_auth_dto,
@@ -44,6 +44,7 @@ impl<'a> AuthService<'a> {
             password_hash: Some(hash_password(&data.password)),
             role: Some(UserRole::STUDENT),
             image: None,
+            image_id: None,
             phone: None,
             gender: None,
             age: None,
@@ -63,7 +64,7 @@ impl<'a> AuthService<'a> {
         let dto = to_auth_dto(&res);
         let token = create_jwt(&dto);
 
-        Ok((token, user))
+        Ok((token, res))
     }
 
     pub async fn login(&self, data: LoginUser) -> Result<(String, User), String> {
@@ -97,5 +98,23 @@ impl<'a> AuthService<'a> {
             Ok(None) => Err("User not found".to_string()),
             Err(e) => Err(e.message),
         }
+    }
+
+    pub async fn onboard_user(
+        &self,
+        user_id: &str,
+        updated_data: UpdateUserDto,
+        user_service: &crate::services::user_service::UserService<'a>,
+    ) -> Result<(String, crate::domain::user::User), String> {
+        let id = crate::models::id_model::IdType::from_string(user_id);
+
+        // update user
+        let updated_user = user_service.update_user(&id, updated_data).await?;
+
+        // issue fresh token
+        let dto = crate::mappers::user_mapper::to_auth_dto(&updated_user);
+        let new_token = crate::utils::jwt::create_jwt(&dto);
+
+        Ok((new_token, updated_user))
     }
 }

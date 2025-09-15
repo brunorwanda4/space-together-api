@@ -26,7 +26,10 @@ pub struct User {
     pub password_hash: Option<String>,
 
     pub role: Option<UserRole>,
+    // cloudinary
+    pub image_id: Option<String>,
     pub image: Option<String>,
+
     pub phone: Option<String>,
 
     pub gender: Option<Gender>,
@@ -47,5 +50,22 @@ pub struct User {
     pub created_at: Option<DateTime<Utc>>,
 
     #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UpdateUserDto {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub username: Option<String>,
+    pub password_hash: Option<String>,
+    pub role: Option<UserRole>,
+    pub image: Option<String>,
+    pub phone: Option<String>,
+    pub gender: Option<Gender>,
+    pub age: Option<Age>,
+    pub address: Option<Address>,
+    pub current_school_id: Option<ObjectId>,
+    pub bio: Option<String>,
     pub updated_at: Option<DateTime<Utc>>,
 }

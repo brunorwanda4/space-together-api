@@ -2,7 +2,10 @@ use actix_web::{delete, get, post, put, web, HttpMessage, HttpResponse, Responde
 use mongodb::Database;
 
 use crate::{
-    domain::{auth_user::AuthUserDto, user::User},
+    domain::{
+        auth_user::AuthUserDto,
+        user::{UpdateUserDto, User},
+    },
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::user_repo::UserRepo,
     services::user_service::UserService,
@@ -45,7 +48,7 @@ async fn get_user_by_username(path: web::Path<String>, db: web::Data<Database>) 
     }
 }
 
-#[post("/users")]
+#[post("/")]
 async fn create_user(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<User>,
@@ -55,7 +58,7 @@ async fn create_user(
 
     if let Err(err) = crate::guards::role_guard::check_admin(&logged_user) {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": err.to_string()
+            "message": err.to_string()
         }));
     }
 
@@ -68,18 +71,18 @@ async fn create_user(
     }
 }
 
-#[put("/users/{id}")]
+#[put("/{id}")]
 async fn update_user(
     req: actix_web::HttpRequest,
     path: web::Path<String>,
-    data: web::Json<User>,
+    data: web::Json<UpdateUserDto>,
     db: web::Data<Database>,
 ) -> impl Responder {
     let logged_user = match req.extensions().get::<AuthUserDto>() {
         Some(u) => u.clone(),
         None => {
             return HttpResponse::Unauthorized().json(serde_json::json!({
-                "error": "Unauthorized"
+                "message": "Unauthorized"
             }))
         }
     };
@@ -90,7 +93,7 @@ async fn update_user(
         crate::guards::role_guard::check_owner_or_admin(&logged_user, &target_user_id_str)
     {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": err.to_string()
+            "message": err.to_string()
         }));
     }
 
@@ -107,7 +110,7 @@ async fn update_user(
     }
 }
 
-#[delete("/users/{id}")]
+#[delete("/{id}")]
 async fn delete_user(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
@@ -120,7 +123,7 @@ async fn delete_user(
         crate::guards::role_guard::check_owner_or_admin(&logged_user, &target_user_id_str)
     {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "error": err.to_string()
+            "message": err.to_string()
         }));
     }
 
@@ -145,8 +148,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
 
     // Protected routes (JWT required)
     cfg.service(
-        web::scope("")
-            .wrap(crate::middleware::jwt_middleware::JwtMiddleware) // 👈 only here
+        web::scope("/users")
+            .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_user)
             .service(update_user)
             .service(delete_user),

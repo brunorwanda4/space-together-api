@@ -72,7 +72,7 @@ where
             // unauthorized
             let res = req.into_response(
                 HttpResponse::Unauthorized()
-                    .json(serde_json::json!({"error": "Unauthorized"}))
+                    .json(serde_json::json!({"message": "Unauthorized 😥"}))
                     .map_into_right_body(),
             );
             Ok(res)

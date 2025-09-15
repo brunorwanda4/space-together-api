@@ -1,8 +1,9 @@
 use crate::{
-    domain::user::User,
+    domain::user::{UpdateUserDto, User},
     errors::AppError,
     models::id_model::IdType,
     repositories::user_repo::UserRepo,
+    services::cloudinary_service::CloudinaryService,
     utils::{
         hash::hash_password,
         names::is_valid_username,
@@ -27,6 +28,7 @@ impl<'a> UserService<'a> {
         Ok(sanitize_users(users))
     }
 
+    /// Create a new user
     pub async fn create_user(&self, mut new_user: User) -> Result<User, String> {
         // Validate username if provided
         if let Some(ref username) = new_user.username {
@@ -48,6 +50,13 @@ impl<'a> UserService<'a> {
             new_user.password_hash = Some(hash_password(&password));
         } else {
             return Err("Password is required".to_string());
+        }
+
+        // ✅ Handle image (can be base64 or path)
+        if let Some(new_image_file) = new_user.image.clone() {
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_file).await?;
+            new_user.image_id = Some(cloud_res.public_id);
+            new_user.image = Some(cloud_res.secure_url);
         }
 
         // Set timestamps
@@ -92,7 +101,11 @@ impl<'a> UserService<'a> {
     }
 
     /// Update a user by id
-    pub async fn update_user(&self, id: &IdType, updated_data: User) -> Result<User, String> {
+    pub async fn update_user(
+        &self,
+        id: &IdType,
+        updated_data: UpdateUserDto,
+    ) -> Result<User, String> {
         if let Some(ref username) = updated_data.username {
             is_valid_username(username)?;
         }
@@ -104,37 +117,71 @@ impl<'a> UserService<'a> {
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "User not found".to_string())?;
 
-        if user_to_update.username != updated_data.username {
-            if let Some(ref username) = updated_data.username {
+        // 🔒 Username uniqueness check
+        if let Some(ref username) = updated_data.username {
+            if user_to_update.username.as_ref() != Some(username) {
                 if let Ok(Some(_)) = self.repo.find_by_username(username).await {
                     return Err("username already exists".to_string());
                 }
             }
         }
 
-        if user_to_update.email != updated_data.email {
-            if let Ok(Some(_)) = self.repo.find_by_email(&updated_data.email).await {
-                return Err("Email already exists".to_string());
+        // 🔒 Email uniqueness check
+        if let Some(ref username) = updated_data.username {
+            if user_to_update.username.as_deref() != Some(username.as_str()) {
+                if let Ok(Some(_)) = self.repo.find_by_username(username).await {
+                    return Err("username already exists".to_string());
+                }
             }
         }
 
-        // Overwrite fields if provided
-        user_to_update.name = updated_data.name;
-        user_to_update.email = updated_data.email;
-        user_to_update.username = updated_data.username;
+        // ✅ Handle image
+        if let Some(ref new_image) = updated_data.image {
+            if let Some(old_image) = user_to_update.image_id.clone() {
+                CloudinaryService::delete_from_cloudinary(&old_image)
+                    .await
+                    .ok();
+            }
+            let cloud_res = CloudinaryService::upload_to_cloudinary(new_image).await?;
+            user_to_update.image_id = Some(cloud_res.public_id);
+            user_to_update.image = Some(cloud_res.secure_url);
+        }
+
+        // ✅ Only overwrite if provided
+        if let Some(name) = updated_data.name {
+            user_to_update.name = name;
+        }
+        if let Some(email) = updated_data.email {
+            user_to_update.email = email;
+        }
+        if let Some(username) = updated_data.username {
+            user_to_update.username = Some(username);
+        }
         if let Some(password) = updated_data.password_hash {
             user_to_update.password_hash = Some(hash_password(&password));
         }
-        user_to_update.role = updated_data.role.or(user_to_update.role);
-        user_to_update.phone = updated_data.phone.or(user_to_update.phone);
-        user_to_update.image = updated_data.image.or(user_to_update.image);
-        user_to_update.gender = updated_data.gender.or(user_to_update.gender);
-        user_to_update.age = updated_data.age.or(user_to_update.age);
-        user_to_update.address = updated_data.address.or(user_to_update.address);
-        user_to_update.current_school_id = updated_data
-            .current_school_id
-            .or(user_to_update.current_school_id);
-        user_to_update.bio = updated_data.bio.or(user_to_update.bio);
+        if let Some(role) = updated_data.role {
+            user_to_update.role = Some(role);
+        }
+        if let Some(phone) = updated_data.phone {
+            user_to_update.phone = Some(phone);
+        }
+        if let Some(gender) = updated_data.gender {
+            user_to_update.gender = Some(gender);
+        }
+        if let Some(age) = updated_data.age {
+            user_to_update.age = Some(age);
+        }
+        if let Some(address) = updated_data.address {
+            user_to_update.address = Some(address);
+        }
+        if let Some(school_id) = updated_data.current_school_id {
+            user_to_update.current_school_id = Some(school_id);
+        }
+        if let Some(bio) = updated_data.bio {
+            user_to_update.bio = Some(bio);
+        }
+
         user_to_update.updated_at = Some(Utc::now());
 
         let updated_user = self
@@ -147,12 +194,23 @@ impl<'a> UserService<'a> {
 
     /// Delete a user by id
     pub async fn delete_user(&self, id: &IdType) -> Result<(), String> {
+        let user = self.repo.find_by_id(id).await.map_err(|e| e.message)?;
+
+        if let Some(delete_user) = user {
+            if let Some(image_public_id) = delete_user.image_id {
+                CloudinaryService::delete_from_cloudinary(&image_public_id)
+                    .await
+                    .ok(); // ignore delete errors
+            }
+        }
+
         self.repo.delete_user(id).await.map_err(|e| e.message)
     }
 }
 
+/// (Optional) If frontend sends string IDs instead of ObjectId
 fn extract_id_from_json_like(_user: &User) -> Option<String> {
-    None // <- fill this if your JSON comes as string instead of ObjectId
+    None
 }
 
 pub fn normalize_user_ids(mut user: User) -> Result<User, AppError> {

@@ -1,11 +1,16 @@
-use actix_web::{get, post, web, HttpRequest, HttpResponse, Responder};
+use actix_web::{get, patch, post, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use mongodb::Database;
 
 use crate::{
-    domain::auth::{LoginUser, RegisterUser},
+    domain::{
+        auth::{LoginUser, RegisterUser},
+        auth_user::AuthUserDto,
+        user::UpdateUserDto,
+    },
+    middleware::jwt_middleware::JwtMiddleware,
     models::request_error_model::ReqErrModel,
     repositories::user_repo::UserRepo,
-    services::auth_service::AuthService,
+    services::{auth_service::AuthService, user_service::UserService},
 };
 
 #[post("/register")]
@@ -76,8 +81,52 @@ async fn get_me(req: HttpRequest, db: web::Data<Database>) -> impl Responder {
     }
 }
 
+#[patch("/onboarding")]
+async fn onboarding_user(
+    req: HttpRequest,
+    data: web::Json<UpdateUserDto>,
+    db: web::Data<Database>,
+) -> impl Responder {
+    let logged_user = match req.extensions().get::<AuthUserDto>() {
+        Some(u) => u.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(ReqErrModel {
+                message: "Unauthorized".to_string(),
+            })
+        }
+    };
+
+    let repo = UserRepo::new(db.get_ref());
+    let user_service = UserService::new(&repo);
+    let auth_service = AuthService::new(&repo);
+
+    match auth_service
+        .onboard_user(&logged_user.id, data.into_inner(), &user_service)
+        .await
+    {
+        Ok((new_token, user)) => HttpResponse::Ok().json(serde_json::json!({
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "accessToken": new_token,
+            "image": user.image,
+            "role": user.role,
+            "username": user.username,
+            "bio": user.bio,
+            "schoolAccessToken": ""
+        })),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(register_user);
     cfg.service(login_user);
     cfg.service(get_me);
+
+    cfg.service(
+        web::scope("/auth")
+            .wrap(JwtMiddleware)
+            .service(onboarding_user),
+    );
 }
