@@ -11,7 +11,7 @@ use crate::{
     services::user_service::UserService,
 };
 
-#[get("/users")]
+#[get("")]
 async fn get_all_users(db: web::Data<Database>) -> impl Responder {
     let repo = UserRepo::new(db.get_ref());
     let service = UserService::new(&repo);
@@ -22,7 +22,7 @@ async fn get_all_users(db: web::Data<Database>) -> impl Responder {
     }
 }
 
-#[get("/users/{id}")]
+#[get("/{id}")]
 async fn get_user_by_id(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
     let repo = UserRepo::new(db.get_ref());
     let service = UserService::new(&repo);
@@ -35,7 +35,7 @@ async fn get_user_by_id(path: web::Path<String>, db: web::Data<Database>) -> imp
     }
 }
 
-#[get("/users/username/{username}")]
+#[get("/username/{username}")]
 async fn get_user_by_username(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
     let repo = UserRepo::new(db.get_ref());
     let service = UserService::new(&repo);
@@ -48,7 +48,7 @@ async fn get_user_by_username(path: web::Path<String>, db: web::Data<Database>) 
     }
 }
 
-#[post("/")]
+#[post("")]
 async fn create_user(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<User>,
@@ -142,13 +142,11 @@ async fn delete_user(
 
 pub fn init(cfg: &mut web::ServiceConfig) {
     // Public routes
-    cfg.service(get_all_users);
-    cfg.service(get_user_by_id);
-    cfg.service(get_user_by_username);
-
-    // Protected routes (JWT required)
     cfg.service(
         web::scope("/users")
+            .service(get_all_users)
+            .service(get_user_by_username)
+            .service(get_user_by_id)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_user)
             .service(update_user)

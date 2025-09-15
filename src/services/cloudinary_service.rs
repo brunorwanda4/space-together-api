@@ -94,8 +94,9 @@ impl CloudinaryService {
     }
 
     /// Upload image to Cloudinary (accepts file path as `&str`)
+    /// Upload image to Cloudinary (accepts file path, base64, or URL)
     pub async fn upload_to_cloudinary(
-        file_path_or_base64: &str,
+        file_path_or_base64_or_url: &str,
     ) -> Result<CloudinaryResponse, String> {
         let client = Client::new();
         let cloud_name = CloudinaryService::env_loader("CLOUDINARY_CLOUD_NAME");
@@ -103,58 +104,83 @@ impl CloudinaryService {
         let api_key = CloudinaryService::env_loader("CLOUDINARY_API_KEY");
         let timestamp = chrono::Utc::now().timestamp();
 
-        // Decide if it's a base64 data URL or a file path
-        let (public_id, buffer): (String, Vec<u8>) = if file_path_or_base64.starts_with("data:") {
-            // ---------- Base64 handling ----------
-            let parts: Vec<&str> = file_path_or_base64.split(',').collect();
-            if parts.len() != 2 {
-                return Err("Invalid base64 data".to_string());
-            }
+        let (public_id, buffer): (String, Vec<u8>) =
+            if file_path_or_base64_or_url.starts_with("data:") {
+                // ---------- Base64 ----------
+                let parts: Vec<&str> = file_path_or_base64_or_url.split(',').collect();
+                if parts.len() != 2 {
+                    return Err("Invalid base64 data".to_string());
+                }
 
-            // Extract MIME type (e.g. image/jpeg) and assign filename
-            let mime_type_part = parts[0];
-            let ext = if mime_type_part.contains("jpeg") {
-                "jpg"
-            } else if mime_type_part.contains("png") {
-                "png"
-            } else if mime_type_part.contains("gif") {
-                "gif"
+                let mime_type_part = parts[0];
+                let ext = if mime_type_part.contains("jpeg") {
+                    "jpg"
+                } else if mime_type_part.contains("png") {
+                    "png"
+                } else if mime_type_part.contains("gif") {
+                    "gif"
+                } else {
+                    "bin"
+                };
+
+                let public_id = format!("upload_{}", timestamp);
+                let decoded = STANDARD
+                    .decode(parts[1])
+                    .map_err(|_| "Failed to decode base64 image".to_string())?;
+
+                (format!("{}.{}", public_id, ext), decoded)
+            } else if file_path_or_base64_or_url.starts_with("http://")
+                || file_path_or_base64_or_url.starts_with("https://")
+            {
+                // ---------- URL ----------
+                let res = client
+                    .get(file_path_or_base64_or_url)
+                    .send()
+                    .await
+                    .map_err(|e| format!("Failed to fetch image from URL: {}", e))?;
+
+                if !res.status().is_success() {
+                    return Err(format!(
+                        "Failed to download image (status {}): {}",
+                        res.status(),
+                        res.text().await.unwrap_or_default()
+                    ));
+                }
+
+                let bytes = res
+                    .bytes()
+                    .await
+                    .map_err(|e| format!("Failed to read image bytes: {}", e))?;
+
+                let public_id = format!("url_upload_{}", timestamp);
+                (public_id, bytes.to_vec())
             } else {
-                "bin"
+                // ---------- Local file ----------
+                let path = std::path::Path::new(file_path_or_base64_or_url);
+                let public_id = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("file")
+                    .to_string();
+
+                let mut file = tokio::fs::File::open(path)
+                    .await
+                    .map_err(|e| format!("Failed to open file ({}): {}", public_id, e))?;
+
+                let mut buffer = Vec::new();
+                file.read_to_end(&mut buffer)
+                    .await
+                    .map_err(|e| format!("Failed to read file ({}): {}", public_id, e))?;
+
+                (public_id, buffer)
             };
-
-            let public_id = format!("upload_{}", timestamp);
-
-            let decoded = STANDARD
-                .decode(parts[1])
-                .map_err(|_| "Failed to decode base64 image".to_string())?;
-
-            (format!("{}.{}", public_id, ext), decoded)
-        } else {
-            // ---------- File path handling ----------
-            let public_id = std::path::Path::new(file_path_or_base64)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("file")
-                .to_string();
-
-            let mut file = tokio::fs::File::open(file_path_or_base64)
-                .await
-                .map_err(|e| format!("Failed to open file ({}): {}", public_id, e))?;
-
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)
-                .await
-                .map_err(|e| format!("Failed to read file ({}): {}", public_id, e))?;
-
-            (public_id, buffer)
-        };
 
         // ✅ Validate file size
         if buffer.len() > MAX_SIZE {
             return Err("File size exceeded 5MB".to_string());
         }
 
+        // ---------- Cloudinary Upload ----------
         let mut params = HashMap::new();
         params.insert("public_id", ParamValue::Str(public_id.clone()));
         params.insert("timestamp", ParamValue::Int(timestamp));
