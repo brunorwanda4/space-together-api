@@ -1,3 +1,4 @@
+pub mod bytes;
 pub mod code;
 pub mod datetime;
 pub mod email;

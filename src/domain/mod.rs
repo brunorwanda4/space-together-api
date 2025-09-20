@@ -2,6 +2,7 @@ pub mod address;
 pub mod age;
 pub mod auth;
 pub mod auth_user;
+pub mod database_status;
 pub mod gender;
 pub mod sector;
 pub mod student;
