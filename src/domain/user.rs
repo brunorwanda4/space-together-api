@@ -69,3 +69,18 @@ pub struct UpdateUserDto {
     pub bio: Option<String>,
     pub updated_at: Option<DateTime<Utc>>,
 }
+
+#[derive(Serialize)]
+pub struct UserStats {
+    pub total: i64,
+    pub male: i64,
+    pub female: i64,
+    pub other: i64,
+    pub admins: i64,
+    pub staff: i64,
+    pub students: i64,
+    pub teachers: i64,
+    pub assigned_school: i64,
+    pub no_school: i64,
+    pub recent_30_days: i64,
+}

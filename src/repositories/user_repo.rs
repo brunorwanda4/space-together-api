@@ -1,13 +1,16 @@
+use crate::domain::user::UserStats;
 use crate::errors::AppError;
 use crate::services::user_service::normalize_user_ids;
 use crate::{domain::user::User, models::id_model::IdType};
+use chrono::{Duration, Utc};
 use futures::TryStreamExt;
-use mongodb::bson;
+use mongodb::{bson, IndexModel};
 use mongodb::{
-    bson::{doc, oid::ObjectId},
+    bson::{doc, oid::ObjectId, DateTime as BsonDateTime},
     options::IndexOptions,
-    Collection, Database, IndexModel,
+    Collection, Database,
 };
+use std::time::SystemTime;
 
 pub struct UserRepo {
     pub collection: Collection<User>,
@@ -105,9 +108,47 @@ impl UserRepo {
         }
     }
 
-    pub async fn get_all_users(&self) -> Result<Vec<User>, AppError> {
-        // Use aggregation to sort by updated_at descending
-        let pipeline = vec![doc! { "$sort": { "updated_at": -1 } }];
+    pub async fn get_all_users(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<User>, AppError> {
+        let mut pipeline = vec![];
+
+        if let Some(f) = filter {
+            let regex = doc! {
+                "$regex": f,
+                "$options": "i"
+            };
+            pipeline.push(doc! {
+                "$match": {
+                    "$or": [
+                        { "name": &regex },
+                        { "email": &regex },
+                        { "role": &regex },
+                        { "username": &regex },
+                        { "phone": &regex },
+                        { "gender": &regex },
+                        { "age": &regex },
+                        { "address": &regex },
+                        { "bio": &regex },
+                    ]
+                }
+            });
+        }
+
+        pipeline.push(doc! {
+            "$addFields": {
+                "sort_date": { "$ifNull": [ "$updated_at", "$created_at" ] }
+            }
+        });
+        pipeline.push(doc! { "$sort": { "sort_date": -1 } });
+
+        if let Some(s) = skip {
+            pipeline.push(doc! { "$skip": s });
+        }
+        pipeline.push(doc! { "$limit": limit.unwrap_or(10) });
 
         let mut cursor = self
             .collection
@@ -121,7 +162,6 @@ impl UserRepo {
         while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
             message: format!("Failed to iterate users: {}", e),
         })? {
-            // Deserialize into User
             let user: User = mongodb::bson::from_document(result).map_err(|e| AppError {
                 message: format!("Failed to deserialize user: {}", e),
             })?;
@@ -139,14 +179,10 @@ impl UserRepo {
         let mut update_doc = bson::to_document(updated_user).map_err(|e| AppError {
             message: format!("Failed to convert user to document: {}", e),
         })?;
-
-        // Remove immutable field
         update_doc.remove("_id");
 
-        let update_doc = doc! { "$set": update_doc };
-
         self.collection
-            .update_one(doc! { "_id": user_obj_id }, update_doc)
+            .update_one(doc! { "_id": user_obj_id }, doc! { "$set": update_doc })
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to update user: {}", e),
@@ -177,5 +213,69 @@ impl UserRepo {
         }
 
         Ok(())
+    }
+
+    pub async fn get_user_stats(&self) -> Result<UserStats, AppError> {
+        let total = self.collection.count_documents(doc! {}).await?;
+        let male = self
+            .collection
+            .count_documents(doc! { "gender": "MALE" })
+            .await?;
+        let female = self
+            .collection
+            .count_documents(doc! { "gender": "FEMALE" })
+            .await?;
+        let other = self
+            .collection
+            .count_documents(doc! { "gender": "OTHER" })
+            .await?;
+        let admins = self
+            .collection
+            .count_documents(doc! { "role": "ADMIN" })
+            .await?;
+        let staff = self
+            .collection
+            .count_documents(doc! { "role": "SCHOOLSTAFF" })
+            .await?;
+        let students = self
+            .collection
+            .count_documents(doc! { "role": "STUDENT" })
+            .await?;
+        let teachers = self
+            .collection
+            .count_documents(doc! { "role": "TEACHER" })
+            .await?;
+        let assigned_school = self
+            .collection
+            .count_documents(doc! { "current_school_id": { "$exists": true } })
+            .await?;
+        let no_school = self
+            .collection
+            .count_documents(doc! { "current_school_id": { "$exists": false } })
+            .await?;
+
+        // 🔹 Fix for recent 30 days
+        let thirty_days_ago_chrono = Utc::now() - Duration::days(30);
+        let thirty_days_ago_system: SystemTime = thirty_days_ago_chrono.into();
+        let thirty_days_ago_bson = BsonDateTime::from_system_time(thirty_days_ago_system);
+
+        let recent_30_days_count = self
+            .collection
+            .count_documents(doc! { "created_at": { "$gte": thirty_days_ago_bson } })
+            .await?;
+
+        Ok(UserStats {
+            total: total as i64,
+            male: male as i64,
+            female: female as i64,
+            other: other as i64,
+            admins: admins as i64,
+            staff: staff as i64,
+            students: students as i64,
+            teachers: teachers as i64,
+            assigned_school: assigned_school as i64,
+            no_school: no_school as i64,
+            recent_30_days: recent_30_days_count as i64,
+        })
     }
 }

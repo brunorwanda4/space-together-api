@@ -119,6 +119,42 @@ async fn onboarding_user(
     }
 }
 
+#[post("/refresh")]
+async fn refresh_token(req: HttpRequest, db: web::Data<Database>) -> impl Responder {
+    let repo = UserRepo::new(db.get_ref());
+    let service = AuthService::new(&repo);
+
+    // Extract token from Authorization header
+    let token = match req.headers().get("Authorization") {
+        Some(hv) => match hv.to_str() {
+            Ok(s) => {
+                if let Some(stripped) = s.strip_prefix("Bearer ") {
+                    stripped.to_string()
+                } else {
+                    s.to_string()
+                }
+            }
+            Err(_) => {
+                return HttpResponse::Unauthorized().json(ReqErrModel {
+                    message: "Invalid authorization header".to_string(),
+                })
+            }
+        },
+        None => {
+            return HttpResponse::Unauthorized().json(ReqErrModel {
+                message: "Missing authorization header".to_string(),
+            })
+        }
+    };
+
+    match service.refresh_token(&token).await {
+        Ok(new_token) => HttpResponse::Ok().json(serde_json::json!({
+            "accessToken": new_token
+        })),
+        Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(register_user);
     cfg.service(login_user);
@@ -127,6 +163,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/auth")
             .wrap(JwtMiddleware)
-            .service(onboarding_user),
+            .service(onboarding_user)
+            .service(refresh_token),
     );
 }

@@ -117,4 +117,25 @@ impl<'a> AuthService<'a> {
 
         Ok((new_token, updated_user))
     }
+
+    pub async fn refresh_token(&self, token: &str) -> Result<String, String> {
+        // remove "Bearer " if present
+        let token_clean = token.replace("Bearer ", "");
+        let claims = verify_jwt(&token_clean).ok_or_else(|| "Invalid token".to_string())?;
+
+        // get user from DB to ensure still valid
+        let user_id = &claims.user.id;
+        let user = self
+            .repo
+            .find_by_id(&crate::models::id_model::IdType::from_string(user_id))
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "User not found".to_string())?;
+
+        // create a fresh token
+        let dto = crate::mappers::user_mapper::to_auth_dto(&user);
+        let new_token = crate::utils::jwt::create_jwt(&dto);
+
+        Ok(new_token)
+    }
 }

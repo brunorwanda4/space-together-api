@@ -1,5 +1,6 @@
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpResponse, Responder};
 use mongodb::Database;
+use serde::Deserialize;
 
 use crate::{
     domain::{
@@ -11,13 +12,34 @@ use crate::{
     services::user_service::UserService,
 };
 
+#[derive(Deserialize)]
+struct UserQuery {
+    filter: Option<String>,
+    limit: Option<i64>,
+    skip: Option<i64>,
+}
+
 #[get("")]
-async fn get_all_users(db: web::Data<Database>) -> impl Responder {
+async fn get_all_users(query: web::Query<UserQuery>, db: web::Data<Database>) -> impl Responder {
     let repo = UserRepo::new(db.get_ref());
     let service = UserService::new(&repo);
 
-    match service.get_all_users().await {
+    match service
+        .get_all_users(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(users) => HttpResponse::Ok().json(users),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/stats")]
+async fn get_user_stats(db: web::Data<Database>) -> impl Responder {
+    let repo = UserRepo::new(db.get_ref());
+    let service = UserService::new(&repo);
+
+    match service.get_user_stats().await {
+        Ok(stats) => HttpResponse::Ok().json(stats),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -144,9 +166,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     // Public routes
     cfg.service(
         web::scope("/users")
-            .service(get_all_users)
+            .service(get_user_stats)
             .service(get_user_by_username)
             .service(get_user_by_id)
+            .service(get_all_users)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_user)
             .service(update_user)

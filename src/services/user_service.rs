@@ -1,5 +1,5 @@
 use crate::{
-    domain::user::{UpdateUserDto, User},
+    domain::user::{UpdateUserDto, User, UserStats},
     errors::AppError,
     models::id_model::IdType,
     repositories::user_repo::UserRepo,
@@ -23,9 +23,22 @@ impl<'a> UserService<'a> {
     }
 
     /// Get all users
-    pub async fn get_all_users(&self) -> Result<Vec<User>, String> {
-        let users = self.repo.get_all_users().await.map_err(|e| e.message)?;
+    pub async fn get_all_users(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<User>, String> {
+        let users = self
+            .repo
+            .get_all_users(filter, limit, skip)
+            .await
+            .map_err(|e| e.message)?;
         Ok(sanitize_users(users))
+    }
+
+    pub async fn get_user_stats(&self) -> Result<UserStats, String> {
+        self.repo.get_user_stats().await.map_err(|e| e.message)
     }
 
     /// Create a new user
