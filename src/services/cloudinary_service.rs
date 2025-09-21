@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::{collections::HashMap, env, io::Write};
 use tempfile::NamedTempFile;
-use tokio::io::AsyncReadExt; // ✅ needed for hex encoding
+use tokio::io::AsyncReadExt; // ✅ needed for file reading
 
 const MAX_SIZE: usize = 5 * 1024 * 1024; // 5MB for images
 
@@ -57,7 +57,7 @@ impl CloudinaryService {
 
         let mut hasher = Sha1::new();
         hasher.update(string_to_sign.as_bytes());
-        hex::encode(hasher.finalize()) // ✅ now works
+        hex::encode(hasher.finalize())
     }
 
     /// Save file temporarily (for multipart uploads)
@@ -93,87 +93,101 @@ impl CloudinaryService {
         Ok(temp_file)
     }
 
-    /// Upload image to Cloudinary (accepts file path as `&str`)
-    /// Upload image to Cloudinary (accepts file path, base64, or URL)
-    pub async fn upload_to_cloudinary(
-        file_path_or_base64_or_url: &str,
-    ) -> Result<CloudinaryResponse, String> {
+    /// Upload image to Cloudinary (accepts: base64, URL, or existing file path)
+    pub async fn upload_to_cloudinary(input: &str) -> Result<CloudinaryResponse, String> {
         let client = Client::new();
         let cloud_name = CloudinaryService::env_loader("CLOUDINARY_CLOUD_NAME");
         let api_secret = CloudinaryService::env_loader("CLOUDINARY_API_SECRET");
         let api_key = CloudinaryService::env_loader("CLOUDINARY_API_KEY");
         let timestamp = chrono::Utc::now().timestamp();
 
-        let (public_id, buffer): (String, Vec<u8>) =
-            if file_path_or_base64_or_url.starts_with("data:") {
-                // ---------- Base64 ----------
-                let parts: Vec<&str> = file_path_or_base64_or_url.split(',').collect();
-                if parts.len() != 2 {
-                    return Err("Invalid base64 data".to_string());
-                }
+        let (public_id, buffer): (String, Vec<u8>) = if input.starts_with("data:") {
+            // ---------- Data URI (data:image/png;base64,xxxx) ----------
+            CloudinaryService::decode_base64_input(input, timestamp)?
+        } else if input
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "+/=\n".contains(c))
+        {
+            // ---------- Raw Base64 (no data: prefix) ----------
+            let decoded = STANDARD
+                .decode(input)
+                .map_err(|e| format!("Failed to decode raw base64: {}", e))?;
+            let public_id = format!("base64_upload_{}", timestamp);
+            (public_id, decoded)
+        } else if input.starts_with("http://") || input.starts_with("https://") {
+            // ---------- Remote URL ----------
+            let res = client
+                .get(input)
+                .send()
+                .await
+                .map_err(|e| format!("Failed to fetch image from URL: {}", e))?;
 
-                let mime_type_part = parts[0];
-                let ext = if mime_type_part.contains("jpeg") {
-                    "jpg"
-                } else if mime_type_part.contains("png") {
-                    "png"
-                } else if mime_type_part.contains("gif") {
-                    "gif"
-                } else {
-                    "bin"
-                };
+            if !res.status().is_success() {
+                return Err(format!(
+                    "Failed to download image (status {}): {}",
+                    res.status(),
+                    res.text().await.unwrap_or_default()
+                ));
+            }
 
-                let public_id = format!("upload_{}", timestamp);
-                let decoded = STANDARD
-                    .decode(parts[1])
-                    .map_err(|_| "Failed to decode base64 image".to_string())?;
+            let bytes = res
+                .bytes()
+                .await
+                .map_err(|e| format!("Failed to read image bytes: {}", e))?;
 
-                (format!("{}.{}", public_id, ext), decoded)
-            } else if file_path_or_base64_or_url.starts_with("http://")
-                || file_path_or_base64_or_url.starts_with("https://")
-            {
-                // ---------- URL ----------
-                let res = client
-                    .get(file_path_or_base64_or_url)
-                    .send()
-                    .await
-                    .map_err(|e| format!("Failed to fetch image from URL: {}", e))?;
+            let public_id = format!("url_upload_{}", timestamp);
+            (public_id, bytes.to_vec())
+        } else if input.starts_with("blob:http://localhost")
+            || input.starts_with("blob:https://localhost")
+        {
+            // ---------- Blob URL from Localhost ----------
+            // Browser-only blobs can’t be read by the server directly.
+            // But if frontend sends the blob as URL, try fetching it like a normal HTTP resource.
+            let res = client
+                .get(input)
+                .send()
+                .await
+                .map_err(|e| format!("Failed to fetch image from blob URL: {}", e))?;
 
-                if !res.status().is_success() {
-                    return Err(format!(
-                        "Failed to download image (status {}): {}",
-                        res.status(),
-                        res.text().await.unwrap_or_default()
-                    ));
-                }
+            if !res.status().is_success() {
+                return Err(format!(
+                    "Failed to download blob (status {}): {}",
+                    res.status(),
+                    res.text().await.unwrap_or_default()
+                ));
+            }
 
-                let bytes = res
-                    .bytes()
-                    .await
-                    .map_err(|e| format!("Failed to read image bytes: {}", e))?;
+            let bytes = res
+                .bytes()
+                .await
+                .map_err(|e| format!("Failed to read blob bytes: {}", e))?;
 
-                let public_id = format!("url_upload_{}", timestamp);
-                (public_id, bytes.to_vec())
-            } else {
-                // ---------- Local file ----------
-                let path = std::path::Path::new(file_path_or_base64_or_url);
-                let public_id = path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or("file")
-                    .to_string();
+            let public_id = format!("blob_upload_{}", timestamp);
+            (public_id, bytes.to_vec())
+        } else {
+            // ---------- Local file path ----------
+            let path = std::path::Path::new(input);
+            if !path.exists() {
+                return Err(format!("Invalid file path: {}", input));
+            }
 
-                let mut file = tokio::fs::File::open(path)
-                    .await
-                    .map_err(|e| format!("Failed to open file ({}): {}", public_id, e))?;
+            let public_id = path
+                .file_stem()
+                .and_then(|name| name.to_str())
+                .unwrap_or("file")
+                .to_string();
 
-                let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer)
-                    .await
-                    .map_err(|e| format!("Failed to read file ({}): {}", public_id, e))?;
+            let mut file = tokio::fs::File::open(path)
+                .await
+                .map_err(|e| format!("Failed to open file ({}): {}", public_id, e))?;
 
-                (public_id, buffer)
-            };
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)
+                .await
+                .map_err(|e| format!("Failed to read file ({}): {}", public_id, e))?;
+
+            (public_id, buffer)
+        };
 
         // ✅ Validate file size
         if buffer.len() > MAX_SIZE {
@@ -223,6 +237,32 @@ impl CloudinaryService {
             .map_err(|e| format!("Failed to parse Cloudinary response: {}", e))?;
 
         Ok(cloudinary_response)
+    }
+
+    /// Helper: decode base64 input into (public_id, buffer)
+    fn decode_base64_input(data_uri: &str, timestamp: i64) -> Result<(String, Vec<u8>), String> {
+        let parts: Vec<&str> = data_uri.split(',').collect();
+        if parts.len() != 2 {
+            return Err("Invalid base64 data".to_string());
+        }
+
+        let mime_type_part = parts[0];
+        let ext = if mime_type_part.contains("jpeg") {
+            "jpg"
+        } else if mime_type_part.contains("png") {
+            "png"
+        } else if mime_type_part.contains("gif") {
+            "gif"
+        } else {
+            "bin"
+        };
+
+        let public_id = format!("upload_{}", timestamp);
+        let decoded = STANDARD
+            .decode(parts[1])
+            .map_err(|_| "Failed to decode base64 image".to_string())?;
+
+        Ok((format!("{}.{}", public_id, ext), decoded))
     }
 
     /// Delete image from Cloudinary by public_id

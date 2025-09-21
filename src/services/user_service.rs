@@ -194,6 +194,9 @@ impl<'a> UserService<'a> {
         if let Some(bio) = updated_data.bio {
             user_to_update.bio = Some(bio);
         }
+        if let Some(disable) = updated_data.disable {
+            user_to_update.disable = Some(disable);
+        }
 
         user_to_update.updated_at = Some(Utc::now());
 

@@ -45,6 +45,7 @@ pub struct User {
     pub current_school_id: Option<ObjectId>,
 
     pub bio: Option<String>,
+    pub disable: Option<bool>,
 
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
@@ -67,6 +68,7 @@ pub struct UpdateUserDto {
     pub address: Option<Address>,
     pub current_school_id: Option<ObjectId>,
     pub bio: Option<String>,
+    pub disable: Option<bool>,
     pub updated_at: Option<DateTime<Utc>>,
 }
 

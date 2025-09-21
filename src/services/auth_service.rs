@@ -50,6 +50,7 @@ impl<'a> AuthService<'a> {
             age: None,
             address: None,
             current_school_id: None,
+            disable: None,
             bio: None,
             created_at: now,
             updated_at: now,

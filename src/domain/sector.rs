@@ -23,7 +23,7 @@ pub struct Sector {
     pub curriculum: Option<(i32, i32)>, // start-end years
     pub country: String,
     pub r#type: String, // global, international, local
-
+    pub disable: Option<bool>,
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
 
@@ -41,7 +41,7 @@ pub struct UpdateSector {
     pub curriculum: Option<(i32, i32)>, // start-end years
     pub country: Option<String>,
     pub r#type: Option<String>, // global, international, local
-
+    pub disable: Option<bool>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
 }

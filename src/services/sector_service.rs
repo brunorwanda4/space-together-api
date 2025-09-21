@@ -121,6 +121,10 @@ impl<'a> SectorService<'a> {
         if let Some(ref country) = updated_data.country {
             sector_to_update.country = country.clone();
         }
+        if let Some(ref disable) = updated_data.disable {
+            sector_to_update.disable = Some(*disable);
+        }
+
         if let Some(ref t) = updated_data.r#type {
             sector_to_update.r#type = t.clone();
         }
