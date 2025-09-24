@@ -1,5 +1,5 @@
 use crate::{
-    domain::trade::{Trade, TradeWithSector, UpdateTrade},
+    domain::trade::{Trade, TradeWithOthers, UpdateTrade},
     models::id_model::IdType,
     repositories::trade_repo::TradeRepo,
     services::sector_service::SectorService,
@@ -21,9 +21,9 @@ impl<'a> TradeService<'a> {
         self.repo.get_all_trades().await.map_err(|e| e.message)
     }
 
-    pub async fn get_all_trades_with_sector(&self) -> Result<Vec<TradeWithSector>, String> {
+    pub async fn get_all_trades_with_others(&self) -> Result<Vec<TradeWithOthers>, String> {
         self.repo
-            .get_all_trades_with_sector()
+            .get_all_trades_with_others()
             .await
             .map_err(|e| e.message)
     }
@@ -46,6 +46,16 @@ impl<'a> TradeService<'a> {
                 .get_sector_by_id(&sector_id_type)
                 .await
                 .map_err(|_| "Sector not found".to_string())?;
+        }
+
+        // ✅ Parent trade validation
+        if let Some(ref parent_trade_id) = new_trade.trade_id {
+            let parent_id_type = IdType::from_object_id(*parent_trade_id);
+            self.repo
+                .find_by_id(&parent_id_type)
+                .await
+                .map_err(|e| e.message.to_string())?
+                .ok_or("Parent trade not found".to_string())?;
         }
 
         // Set timestamps
@@ -84,6 +94,28 @@ impl<'a> TradeService<'a> {
             .ok_or_else(|| "Trade not found".to_string())
     }
 
+    pub async fn get_trade_by_id_with_others(
+        &self,
+        id: &IdType,
+    ) -> Result<TradeWithOthers, String> {
+        self.repo
+            .find_by_id_with_others(id)
+            .await
+            .map_err(|e| e.message)?
+            .ok_or_else(|| "Trade not found".to_string())
+    }
+
+    pub async fn get_trade_by_username_with_sector(
+        &self,
+        username: &str,
+    ) -> Result<TradeWithOthers, String> {
+        self.repo
+            .find_by_username_with_others(username)
+            .await
+            .map_err(|e| e.message)?
+            .ok_or_else(|| "Trade not found".to_string())
+    }
+
     /// Update a trade by id
     pub async fn update_trade(
         &self,
@@ -114,6 +146,21 @@ impl<'a> TradeService<'a> {
                 .get_sector_by_id(&sector_id_type)
                 .await
                 .map_err(|_| "Sector not found".to_string())?;
+        }
+
+        // ✅ Parent trade validation
+        if let Some(ref parent_trade_id) = updated_data.trade_id {
+            let parent_id_type = IdType::from_object_id(*parent_trade_id);
+            self.repo
+                .find_by_id(&parent_id_type)
+                .await
+                .map_err(|e| e.message.to_string())?
+                .ok_or("Parent trade not found".to_string())?;
+
+            // Prevent setting itself as its own parent
+            if trade_to_update.id == Some(*parent_trade_id) {
+                return Err("A trade cannot be its own parent".to_string());
+            }
         }
 
         // Update timestamp

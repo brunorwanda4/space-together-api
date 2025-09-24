@@ -1,11 +1,12 @@
-use crate::domain::trade::{Trade, TradeWithSector, UpdateTrade};
+use crate::domain::trade::{Trade, TradeWithOthers, UpdateTrade};
 use crate::errors::AppError;
+use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::models::id_model::IdType;
+use crate::utils::object_id::parse_object_id;
 
 use chrono::Utc;
-use futures::TryStreamExt;
 use mongodb::{
-    bson::{self, doc, oid::ObjectId},
+    bson::{self, doc, oid::ObjectId, Document},
     options::IndexOptions,
     Collection, Database, IndexModel,
 };
@@ -21,14 +22,55 @@ impl TradeRepo {
         }
     }
 
-    pub async fn find_by_id(&self, id: &IdType) -> Result<Option<Trade>, AppError> {
-        let obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse id: {}", e),
-        })?;
+    /// Common pipeline for joining sector and parent trade
+    fn trade_with_others_pipeline(match_stage: Document) -> Vec<Document> {
+        vec![
+            doc! { "$match": match_stage },
+            doc! {
+                "$lookup": {
+                    "from": "sectors",
+                    "localField": "sector_id",
+                    "foreignField": "_id",
+                    "as": "sector"
+                }
+            },
+            doc! { "$unwind": { "path": "$sector", "preserveNullAndEmptyArrays": true } },
+            doc! {
+                "$lookup": {
+                    "from": "trades",
+                    "localField": "trade_id",
+                    "foreignField": "_id",
+                    "as": "parent_trade"
+                }
+            },
+            // ✅ FIXED: use $cond to ensure null instead of {}
+            doc! {
+                "$addFields": {
+                    "parent_trade": {
+                        "$cond": {
+                            "if": { "$gt": [{ "$size": "$parent_trade" }, 0] },
+                            "then": { "$arrayElemAt": ["$parent_trade", 0] },
+                            "else": null
+                        }
+                    }
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "sectors",
+                    "localField": "parent_trade.sector_id",
+                    "foreignField": "_id",
+                    "as": "parent_trade.sector"
+                }
+            },
+            doc! { "$unwind": { "path": "$parent_trade.sector", "preserveNullAndEmptyArrays": true } },
+        ]
+    }
 
-        let filter = doc! { "_id": obj_id };
+    pub async fn find_by_id(&self, id: &IdType) -> Result<Option<Trade>, AppError> {
+        let obj_id = parse_object_id(id)?;
         self.collection
-            .find_one(filter)
+            .find_one(doc! { "_id": obj_id })
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to find trade by id: {}", e),
@@ -36,41 +78,39 @@ impl TradeRepo {
     }
 
     pub async fn find_by_username(&self, username: &str) -> Result<Option<Trade>, AppError> {
-        let filter = doc! { "username": username };
         self.collection
-            .find_one(filter)
+            .find_one(doc! { "username": username })
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to find trade by username: {}", e),
             })
     }
 
+    pub async fn find_by_id_with_others(
+        &self,
+        id: &IdType,
+    ) -> Result<Option<TradeWithOthers>, AppError> {
+        let obj_id = parse_object_id(id)?;
+        aggregate_single(
+            &self.collection.clone().clone_with_type::<Document>(), // convert to Document
+            Self::trade_with_others_pipeline(doc! { "_id": obj_id }),
+        )
+        .await
+    }
+
+    pub async fn find_by_username_with_others(
+        &self,
+        username: &str,
+    ) -> Result<Option<TradeWithOthers>, AppError> {
+        aggregate_single(
+            &self.collection.clone().clone_with_type::<Document>(),
+            Self::trade_with_others_pipeline(doc! { "username": username }),
+        )
+        .await
+    }
+
     pub async fn insert_trade(&self, trade: &Trade) -> Result<Trade, AppError> {
-        // Unique index for username
-        let username_index = IndexModel::builder()
-            .keys(doc! { "username": 1 })
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
-
-        // Non-unique index for sector_id (to quickly filter by sector)
-        let sector_index = IndexModel::builder()
-            .keys(doc! { "sector_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        self.collection
-            .create_index(username_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create username index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(sector_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create sector_id index: {}", e),
-            })?;
+        self.ensure_indexes().await?;
 
         let mut trade_to_insert = trade.clone();
         trade_to_insert.id = None;
@@ -89,7 +129,7 @@ impl TradeRepo {
             .inserted_id
             .as_object_id()
             .ok_or_else(|| AppError {
-                message: "Failed to get inserted trade id".to_string(),
+                message: "Failed to extract inserted trade id".to_string(),
             })?
             .to_owned();
 
@@ -100,81 +140,58 @@ impl TradeRepo {
             })
     }
 
-    pub async fn get_all_trades(&self) -> Result<Vec<Trade>, AppError> {
-        let pipeline = vec![doc! { "$sort": { "updated_at": -1 } }];
+    async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let username_index = IndexModel::builder()
+            .keys(doc! { "username": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build();
 
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
+        let sector_index = IndexModel::builder()
+            .keys(doc! { "sector_id": 1 })
+            .options(IndexOptions::builder().unique(false).build())
+            .build();
+
+        self.collection
+            .create_index(username_index)
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to fetch trades: {}", e),
+                message: format!("Failed to create username index: {}", e),
             })?;
 
-        let mut trades = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate trades: {}", e),
-        })? {
-            let trade: Trade = bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize trade: {}", e),
+        self.collection
+            .create_index(sector_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create sector index: {}", e),
             })?;
-            trades.push(trade);
-        }
 
-        Ok(trades)
+        Ok(())
     }
 
-    pub async fn get_all_trades_with_sector(&self) -> Result<Vec<TradeWithSector>, AppError> {
-        let pipeline = vec![
-            doc! { "$sort": { "updated_at": -1 } },
-            doc! {
-                "$lookup": {
-                    "from": "sectors",          // collection name
-                    "localField": "sector_id",  // field in trades
-                    "foreignField": "_id",      // field in sectors
-                    "as": "sector"
-                }
-            },
-            doc! {
-                "$unwind": {
-                    "path": "$sector",
-                    "preserveNullAndEmptyArrays": true
-                }
-            },
-        ];
+    pub async fn get_all_trades(&self) -> Result<Vec<Trade>, AppError> {
+        aggregate_many(
+            &self.collection.clone().clone_with_type::<Document>(),
+            vec![doc! { "$sort": { "updated_at": -1 } }],
+        )
+        .await
+    }
 
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch trades with sector: {}", e),
-            })?;
-
-        let mut trades = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate trades with sector: {}", e),
-        })? {
-            let trade: TradeWithSector = bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize TradeWithSector: {}", e),
-            })?;
-            trades.push(trade);
-        }
-
-        Ok(trades)
+    pub async fn get_all_trades_with_others(&self) -> Result<Vec<TradeWithOthers>, AppError> {
+        aggregate_many(
+            &self.collection.clone().clone_with_type::<Document>(),
+            Self::trade_with_others_pipeline(doc! { "$expr": { "$ne": ["$_id", null] }}),
+        )
+        .await
     }
 
     pub async fn update_trade(&self, id: &IdType, update: &UpdateTrade) -> Result<Trade, AppError> {
-        let obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse id: {}", e),
-        })?;
-
-        let mut update_doc = bson::to_document(update).map_err(|e| AppError {
+        let obj_id = parse_object_id(id)?;
+        let update_doc = bson::to_document(update).map_err(|e| AppError {
             message: format!("Failed to convert update trade to document: {}", e),
         })?;
 
-        // 🔥 Remove all `null` fields so they don’t overwrite existing values
-        update_doc = update_doc
+        // 🔥 Remove all `null` fields
+        let mut update_doc: Document = update_doc
             .into_iter()
             .filter(|(_, v)| !matches!(v, bson::Bson::Null))
             .collect();
@@ -197,10 +214,7 @@ impl TradeRepo {
     }
 
     pub async fn delete_trade(&self, id: &IdType) -> Result<(), AppError> {
-        let obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse id: {}", e),
-        })?;
-
+        let obj_id = parse_object_id(id)?;
         let result = self
             .collection
             .delete_one(doc! { "_id": obj_id })
@@ -214,7 +228,6 @@ impl TradeRepo {
                 message: "No trade deleted; trade may not exist".to_string(),
             });
         }
-
         Ok(())
     }
 }

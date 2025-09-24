@@ -3,6 +3,7 @@ mod config;
 mod domain;
 mod errors;
 mod guards;
+mod helpers;
 mod mappers;
 mod middleware;
 mod models;

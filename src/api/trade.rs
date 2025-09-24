@@ -22,12 +22,12 @@ async fn get_all_trades(db: web::Data<Database>) -> impl Responder {
     }
 }
 
-#[get("/trades-with-sector")]
-async fn get_all_trades_with_sector(db: web::Data<Database>) -> impl Responder {
+#[get("/others")]
+async fn get_all_trades_with_others(db: web::Data<Database>) -> impl Responder {
     let repo = TradeRepo::new(db.get_ref());
     let service = TradeService::new(&repo);
 
-    match service.get_all_trades_with_sector().await {
+    match service.get_all_trades_with_others().await {
         Ok(trades) => HttpResponse::Ok().json(trades),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -58,6 +58,38 @@ async fn get_trades_by_username(
 
     match service.get_trade_by_username(&username).await {
         Ok(trades) => HttpResponse::Ok().json(trades),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/others/{id}")]
+async fn get_trade_by_id_with_others(
+    path: web::Path<String>,
+    db: web::Data<Database>,
+) -> impl Responder {
+    let repo = TradeRepo::new(db.get_ref());
+    let service = TradeService::new(&repo);
+
+    let trade_id = IdType::from_string(path.into_inner());
+
+    match service.get_trade_by_id_with_others(&trade_id).await {
+        Ok(trade_with_sector) => HttpResponse::Ok().json(trade_with_sector),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/username/others/{username}")]
+async fn get_trades_by_username_with_others(
+    path: web::Path<String>,
+    db: web::Data<Database>,
+) -> impl Responder {
+    let repo = TradeRepo::new(db.get_ref());
+    let service = TradeService::new(&repo);
+
+    let username = path.into_inner();
+
+    match service.get_trade_by_username_with_sector(&username).await {
+        Ok(trade_with_sector) => HttpResponse::Ok().json(trade_with_sector),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
 }
@@ -153,8 +185,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/trades")
             // Public routes
             .service(get_all_trades)
+            .service(get_all_trades_with_others)
+            .service(get_trades_by_username_with_others)
+            .service(get_trade_by_id_with_others)
             .service(get_trades_by_username)
-            .service(get_all_trades_with_sector)
             .service(get_trade_by_id)
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

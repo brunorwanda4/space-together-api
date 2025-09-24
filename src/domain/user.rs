@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::models::object_id_serde;
+use crate::helpers::object_id_helpers;
 
 use super::{address::Address, age::Age, gender::Gender, user_role::UserRole};
 
@@ -11,8 +11,8 @@ pub struct User {
     #[serde(
         rename = "_id",
         alias = "id",
-        serialize_with = "object_id_serde::serialize",
-        deserialize_with = "object_id_serde::deserialize",
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
@@ -37,8 +37,8 @@ pub struct User {
     pub address: Option<Address>,
 
     #[serde(
-        serialize_with = "object_id_serde::serialize",
-        deserialize_with = "object_id_serde::deserialize",
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]

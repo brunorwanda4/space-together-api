@@ -1,3 +1,4 @@
+pub mod main_class_repo;
 pub mod sector_repo;
 pub mod student_repo;
 pub mod trade_repo;
