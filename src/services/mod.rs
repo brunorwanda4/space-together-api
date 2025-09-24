@@ -3,4 +3,5 @@ pub mod cloudinary_service;
 pub mod database_status_service;
 pub mod sector_service;
 pub mod student_service;
+pub mod trade_service;
 pub mod user_service;

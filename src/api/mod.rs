@@ -4,6 +4,7 @@ mod auth;
 mod database_status;
 mod sector;
 mod students;
+mod trade;
 mod users;
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
@@ -12,4 +13,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     sector::init(cfg);
     auth::init(cfg);
     users::init(cfg);
+    trade::init(cfg);
 }

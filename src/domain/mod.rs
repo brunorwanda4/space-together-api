@@ -6,5 +6,6 @@ pub mod database_status;
 pub mod gender;
 pub mod sector;
 pub mod student;
+pub mod trade;
 pub mod user;
 pub mod user_role;
