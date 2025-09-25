@@ -1,5 +1,5 @@
 use crate::{
-    domain::main_class::{MainClass, MainClassWithOthers, UpdateMainClass},
+    domain::main_class::{MainClass, MainClassWithOthers, MainClassWithTrade, UpdateMainClass},
     models::id_model::IdType,
     repositories::main_class_repo::MainClassRepo,
     services::trade_service::TradeService,
@@ -18,6 +18,10 @@ impl<'a> MainClassService<'a> {
             repo,
             trade_service,
         }
+    }
+
+    pub async fn get_all_with_trade(&self) -> Result<Vec<MainClassWithTrade>, String> {
+        self.repo.get_all_with_trade().await.map_err(|e| e.message)
     }
 
     /// Get all main classes

@@ -2,7 +2,10 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::{domain::trade::TradeWithOthers, helpers::object_id_helpers};
+use crate::{
+    domain::trade::{Trade, TradeWithOthers},
+    helpers::object_id_helpers,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MainClass {
@@ -53,4 +56,13 @@ pub struct MainClassWithOthers {
 
     #[serde(default)]
     pub trade: Option<TradeWithOthers>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MainClassWithTrade {
+    #[serde(flatten)]
+    pub main_class: MainClass,
+
+    #[serde(default)]
+    pub trade: Option<Trade>,
 }

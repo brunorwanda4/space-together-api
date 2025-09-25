@@ -1,4 +1,6 @@
-use crate::domain::main_class::{MainClass, MainClassWithOthers, UpdateMainClass};
+use crate::domain::main_class::{
+    MainClass, MainClassWithOthers, MainClassWithTrade, UpdateMainClass,
+};
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::models::id_model::IdType;
@@ -20,6 +22,30 @@ impl MainClassRepo {
         Self {
             collection: db.collection::<MainClass>("main_classes"),
         }
+    }
+
+    fn main_class_with_trade_pipeline(match_stage: Document) -> Vec<Document> {
+        vec![
+            doc! { "$match": match_stage },
+            doc! {
+                "$lookup": {
+                    "from": "trades",
+                    "localField": "trade_id",
+                    "foreignField": "_id",
+                    "as": "trade"
+                }
+            },
+            doc! { "$unwind": { "path": "$trade", "preserveNullAndEmptyArrays": true } },
+        ]
+    }
+
+    pub async fn get_all_with_trade(&self) -> Result<Vec<MainClassWithTrade>, AppError> {
+        aggregate_many(&self.collection.clone().clone_with_type::<Document>(), {
+            let mut pipeline = Self::main_class_with_trade_pipeline(doc! {});
+            pipeline.insert(0, doc! { "$sort": { "updated_at": -1 } });
+            pipeline
+        })
+        .await
     }
 
     fn main_class_with_others_pipeline(match_stage: Document) -> Vec<Document> {

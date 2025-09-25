@@ -11,6 +11,19 @@ use crate::{
     services::{main_class_service::MainClassService, trade_service::TradeService},
 };
 
+#[get("/trade")]
+async fn get_all_main_classes_with_trade(db: web::Data<Database>) -> impl Responder {
+    let repo = MainClassRepo::new(db.get_ref());
+    let trade_repo = TradeRepo::new(db.get_ref());
+    let trade_service = TradeService::new(&trade_repo);
+    let service = MainClassService::new(&repo, &trade_service);
+
+    match service.get_all_with_trade().await {
+        Ok(items) => HttpResponse::Ok().json(items),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
 #[get("")]
 async fn get_all_main_classes(db: web::Data<Database>) -> impl Responder {
     let repo = MainClassRepo::new(db.get_ref());
@@ -178,6 +191,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/main-classes")
             // Public routes
             .service(get_all_main_classes)
+            .service(get_all_main_classes_with_trade)
             .service(get_main_class_by_username)
             .service(get_main_class_by_username_with_others)
             .service(get_main_class_by_id_with_others)
