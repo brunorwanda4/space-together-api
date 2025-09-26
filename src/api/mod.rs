@@ -5,6 +5,7 @@ mod database_status;
 mod main_class;
 mod sector;
 mod students;
+mod subjects;
 mod trade;
 mod users;
 
@@ -16,4 +17,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     users::init(cfg);
     trade::init(cfg);
     main_class::init(cfg);
+    subjects::main_subject::init(cfg);
+    subjects::subject_topic::init(cfg);
+    subjects::learning_outcome::init(cfg);
+    subjects::subject_progress_configs::init(cfg);
+    subjects::subject_learning_material::init(cfg);
+    subjects::subject_grading_schemes::init(cfg);
 }

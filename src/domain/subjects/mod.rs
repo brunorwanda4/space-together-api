@@ -1,0 +1,10 @@
+pub mod class_subject;
+pub mod learning_outcome;
+pub mod main_subject;
+pub mod subject_category;
+pub mod subject_competency_block;
+pub mod subject_contributor;
+pub mod subject_grading_schemes;
+pub mod subject_learning_material;
+pub mod subject_progress_tracking_config;
+pub mod subject_topic;

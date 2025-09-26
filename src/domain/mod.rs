@@ -7,6 +7,7 @@ pub mod gender;
 pub mod main_class;
 pub mod sector;
 pub mod student;
+pub mod subjects;
 pub mod trade;
 pub mod user;
 pub mod user_role;
