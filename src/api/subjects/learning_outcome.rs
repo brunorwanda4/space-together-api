@@ -33,6 +33,19 @@ async fn get_outcome_by_id(path: web::Path<String>, db: web::Data<Database>) -> 
     }
 }
 
+#[get("/title/{title}")]
+async fn get_outcome_by_title(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
+    let repo = LearningOutcomeRepo::new(db.get_ref());
+    let service = LearningOutcomeService::new(&repo);
+
+    let title = path.into_inner();
+
+    match service.get_outcome_by_title(&title).await {
+        Ok(outcome) => HttpResponse::Ok().json(outcome),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
 #[post("")]
 async fn create_outcome(
     user: web::ReqData<AuthUserDto>,
@@ -112,6 +125,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/learning-outcomes")
             // Public routes
             .service(get_all_outcomes) // GET /learning-outcomes
+            .service(get_outcome_by_title) // GET /learning-outcomes/title/{title}
             .service(get_outcome_by_id) // GET /learning-outcomes/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

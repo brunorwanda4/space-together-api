@@ -1,5 +1,6 @@
 use crate::domain::subjects::subject_learning_material::{
-    SubjectLearningMaterial, UpdateSubjectLearningMaterial,
+    SubjectLearningMaterial, SubjectLearningMaterialRole, SubjectMaterialType,
+    UpdateSubjectLearningMaterial,
 };
 use crate::errors::AppError;
 use crate::models::id_model::IdType;
@@ -8,6 +9,7 @@ use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::{
     bson::{self, doc, oid::ObjectId},
+    options::IndexOptions,
     Collection, Database, IndexModel,
 };
 
@@ -20,6 +22,29 @@ impl SubjectLearningMaterialRepo {
         Self {
             collection: db.collection::<SubjectLearningMaterial>("subject_learning_materials"),
         }
+    }
+
+    /// Ensure indexes for better query performance and uniqueness
+    pub async fn init_indexes(&self) -> Result<(), AppError> {
+        // Index on reference_id
+        let reference_index = IndexModel::builder()
+            .keys(doc! { "reference_id": 1 })
+            .build();
+
+        // Compound index: role + reference_id (faster lookups per subject/topic type)
+        let compound_index = IndexModel::builder()
+            .keys(doc! { "role": 1, "reference_id": 1 })
+            .options(IndexOptions::builder().build())
+            .build();
+
+        self.collection
+            .create_indexes([reference_index, compound_index])
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create indexes: {}", e),
+            })?;
+
+        Ok(())
     }
 
     /// Find by id
@@ -40,18 +65,18 @@ impl SubjectLearningMaterialRepo {
             })
     }
 
-    /// Find by subject_id
-    pub async fn find_by_subject_id(
+    /// Find by reference_id (regardless of role)
+    pub async fn find_by_reference_id(
         &self,
-        subject_id: &IdType,
+        reference_id: &IdType,
     ) -> Result<Vec<SubjectLearningMaterial>, AppError> {
-        let obj_id = ObjectId::parse_str(subject_id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse subject_id: {}", e),
+        let obj_id = ObjectId::parse_str(reference_id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse reference_id: {}", e),
         })?;
 
-        let filter = doc! { "subject_id": obj_id };
+        let filter = doc! { "reference_id": obj_id };
         let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
-            message: format!("Failed to find learning materials by subject_id: {}", e),
+            message: format!("Failed to find learning materials by reference_id: {}", e),
         })?;
 
         let mut materials = Vec::new();
@@ -64,29 +89,60 @@ impl SubjectLearningMaterialRepo {
         Ok(materials)
     }
 
-    /// Find active materials by subject_id
-    pub async fn find_active_by_subject_id(
+    /// Find by role + reference_id
+    pub async fn find_by_role_and_reference(
         &self,
-        subject_id: &IdType,
+        role: &SubjectLearningMaterialRole,
+        reference_id: &IdType,
     ) -> Result<Vec<SubjectLearningMaterial>, AppError> {
-        let obj_id = ObjectId::parse_str(subject_id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse subject_id: {}", e),
+        let obj_id = ObjectId::parse_str(reference_id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse reference_id: {}", e),
         })?;
 
         let filter = doc! {
-            "subject_id": obj_id,
+            "role": bson::to_bson(role).map_err(|e| AppError {
+                message: format!("Failed to serialize role: {}", e),
+            })?,
+            "reference_id": obj_id
+        };
+
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to find materials by role and reference_id: {}", e),
+        })?;
+
+        let mut materials = Vec::new();
+        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate learning materials: {}", e),
+        })? {
+            materials.push(result);
+        }
+
+        Ok(materials)
+    }
+
+    /// Find active materials by role + reference_id
+    pub async fn find_active(
+        &self,
+        role: &SubjectLearningMaterialRole,
+        reference_id: &IdType,
+    ) -> Result<Vec<SubjectLearningMaterial>, AppError> {
+        let obj_id = ObjectId::parse_str(reference_id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse reference_id: {}", e),
+        })?;
+
+        let filter = doc! {
+            "role": bson::to_bson(role).unwrap(),
+            "reference_id": obj_id,
             "is_active": true
         };
+
         let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
-            message: format!(
-                "Failed to find active learning materials by subject_id: {}",
-                e
-            ),
+            message: format!("Failed to find active materials: {}", e),
         })?;
 
         let mut materials = Vec::new();
         while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate learning materials: {}", e),
+            message: format!("Failed to iterate active materials: {}", e),
         })? {
             materials.push(result);
         }
@@ -94,32 +150,30 @@ impl SubjectLearningMaterialRepo {
         Ok(materials)
     }
 
-    /// Find by material_type and subject_id
-    pub async fn find_by_type_and_subject(
+    /// Find by material_type + role + reference_id
+    pub async fn find_by_type_and_reference(
         &self,
-        material_type: &crate::domain::subjects::subject_learning_material::SubjectMaterialType,
-        subject_id: &IdType,
+        material_type: &SubjectMaterialType,
+        role: &SubjectLearningMaterialRole,
+        reference_id: &IdType,
     ) -> Result<Vec<SubjectLearningMaterial>, AppError> {
-        let obj_id = ObjectId::parse_str(subject_id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse subject_id: {}", e),
+        let obj_id = ObjectId::parse_str(reference_id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse reference_id: {}", e),
         })?;
 
         let filter = doc! {
-            "subject_id": obj_id,
-            "material_type": bson::to_bson(material_type).map_err(|e| AppError {
-                message: format!("Failed to serialize material_type: {}", e),
-            })?
+            "material_type": bson::to_bson(material_type).unwrap(),
+            "role": bson::to_bson(role).unwrap(),
+            "reference_id": obj_id
         };
+
         let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
-            message: format!(
-                "Failed to find learning materials by type and subject: {}",
-                e
-            ),
+            message: format!("Failed to find by type and reference_id: {}", e),
         })?;
 
         let mut materials = Vec::new();
         while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate learning materials: {}", e),
+            message: format!("Failed to iterate type + reference_id materials: {}", e),
         })? {
             materials.push(result);
         }
@@ -132,26 +186,7 @@ impl SubjectLearningMaterialRepo {
         &self,
         material: &SubjectLearningMaterial,
     ) -> Result<SubjectLearningMaterial, AppError> {
-        // Index for better performance
-        let subject_id_index = IndexModel::builder().keys(doc! { "subject_id": 1 }).build();
-
-        let active_materials_index = IndexModel::builder()
-            .keys(doc! { "subject_id": 1, "is_active": 1 })
-            .build();
-
-        self.collection
-            .create_index(subject_id_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create subject_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(active_materials_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create active materials index: {}", e),
-            })?;
+        self.init_indexes().await?;
 
         let mut material_to_insert = material.clone();
         material_to_insert.id = None;
@@ -181,30 +216,6 @@ impl SubjectLearningMaterialRepo {
             })
     }
 
-    /// Get all learning materials (latest updated first)
-    pub async fn get_all_materials(&self) -> Result<Vec<SubjectLearningMaterial>, AppError> {
-        let mut cursor = self.collection.find(doc! {}).await.map_err(|e| AppError {
-            message: format!("Failed to fetch learning materials: {}", e),
-        })?;
-
-        let mut materials = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate learning materials: {}", e),
-        })? {
-            materials.push(result);
-        }
-
-        // Sort by updated_at descending (latest updated first)
-        materials.sort_by(|a, b| match (&b.updated_at, &a.updated_at) {
-            (Some(b_dt), Some(a_dt)) => b_dt.cmp(a_dt),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
-        });
-
-        Ok(materials)
-    }
-
     /// Update learning material
     pub async fn update_material(
         &self,
@@ -215,18 +226,15 @@ impl SubjectLearningMaterialRepo {
             message: format!("Failed to parse id: {}", e),
         })?;
 
-        // Convert struct -> Document
         let mut update_doc = bson::to_document(&update).map_err(|e| AppError {
             message: format!("Failed to serialize update: {}", e),
         })?;
 
-        // Remove `_id` and null values
         update_doc = update_doc
             .into_iter()
             .filter(|(k, v)| k != "_id" && !matches!(v, bson::Bson::Null))
             .collect();
 
-        // Always refresh updated_at
         update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
 
         let update_query = doc! { "$set": update_doc };
@@ -243,7 +251,7 @@ impl SubjectLearningMaterialRepo {
         })
     }
 
-    /// Delete learning material
+    /// Delete material
     pub async fn delete_material(&self, id: &IdType) -> Result<(), AppError> {
         let obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
             message: format!("Failed to parse id: {}", e),
@@ -264,29 +272,5 @@ impl SubjectLearningMaterialRepo {
         }
 
         Ok(())
-    }
-
-    /// Bulk find by subject_ids
-    pub async fn find_by_subject_ids(
-        &self,
-        subject_ids: &[ObjectId],
-    ) -> Result<Vec<SubjectLearningMaterial>, AppError> {
-        if subject_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let filter = doc! { "subject_id": { "$in": subject_ids } };
-        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
-            message: format!("Failed to find learning materials by subject_ids: {}", e),
-        })?;
-
-        let mut materials = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate learning materials: {}", e),
-        })? {
-            materials.push(result);
-        }
-
-        Ok(materials)
     }
 }

@@ -14,6 +14,16 @@ impl<'a> MainSubjectService<'a> {
     pub fn new(repo: &'a MainSubjectRepo) -> Self {
         Self { repo }
     }
+    // get by main class id
+    pub async fn get_subjects_by_main_class_id(
+        &self,
+        id: &IdType,
+    ) -> Result<Vec<MainSubject>, String> {
+        self.repo
+            .find_by_main_class_id(id)
+            .await
+            .map_err(|e| e.message.clone())
+    }
 
     /// Get all subjects
     pub async fn get_all_subjects(&self) -> Result<Vec<MainSubject>, String> {

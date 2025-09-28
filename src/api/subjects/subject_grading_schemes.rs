@@ -1,14 +1,21 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
-use mongodb::Database;
+use mongodb::{bson::oid::ObjectId, Database};
 use std::collections::HashMap;
 
 use crate::{
-    domain::auth_user::AuthUserDto,
-    domain::subjects::subject_category::SubjectTypeFor,
-    domain::subjects::subject_grading_schemes::{
-        SubjectGradingScheme, SubjectGradingType, UpdateSubjectGradingScheme,
+    domain::{
+        auth_user::AuthUserDto,
+        subjects::{
+            subject_category::SubjectTypeFor,
+            subject_grading_schemes::{
+                DefaultLetterGrade, SubjectGradingScheme, SubjectGradingType,
+                UpdateSubjectGradingScheme,
+            },
+        },
     },
-    models::{id_model::IdType, request_error_model::ReqErrModel},
+    models::{
+        api_request_model::ReferenceIdsRequest, id_model::IdType, request_error_model::ReqErrModel,
+    },
     repositories::subjects::subject_grading_schemes_repo::SubjectGradingSchemesRepo,
     services::subjects::subject_grading_schemes_service::SubjectGradingSchemesService,
 };
@@ -47,7 +54,7 @@ async fn get_scheme_by_subject_id(
 
     let subject_id = IdType::from_string(path.into_inner());
 
-    match service.get_scheme_by_main_subject_id(&subject_id).await {
+    match service.get_scheme_by_reference_id(&subject_id).await {
         Ok(scheme) => HttpResponse::Ok().json(scheme),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
@@ -65,7 +72,7 @@ async fn get_scheme_by_subject_and_role(
     let subject_id = IdType::from_string(subject_id_str);
 
     // Parse role from string
-    let role = match role_str.to_lowercase().as_str() {
+    let role = match role_str.as_str() {
         "MainSubject" => SubjectTypeFor::MainSubject,
         "ClassSubject" => SubjectTypeFor::ClassSubject,
         _ => {
@@ -187,10 +194,10 @@ async fn create_scheme(
     }
 }
 
-#[post("/subject/{subject_id}/default")]
-async fn create_default_scheme(
+#[post("/default/letter-grade")]
+async fn create_default_letter_grade_scheme(
     user: web::ReqData<AuthUserDto>,
-    path: web::Path<String>,
+    data: web::Json<DefaultLetterGrade>,
     db: web::Data<Database>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
@@ -204,20 +211,34 @@ async fn create_default_scheme(
     let repo = SubjectGradingSchemesRepo::new(db.get_ref());
     let service = SubjectGradingSchemesService::new(&repo);
 
-    let subject_id = IdType::from_string(path.into_inner());
+    match service
+        .get_or_create_default_scheme(data.into_inner(), SubjectGradingType::LetterGrade)
+        .await
+    {
+        Ok(scheme) => HttpResponse::Created().json(scheme),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
 
-    // Parse the logged user's id (String) into a MongoDB ObjectId; return BadRequest if invalid
-    let user_oid = match mongodb::bson::oid::ObjectId::parse_str(&logged_user.id) {
-        Ok(oid) => oid,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(ReqErrModel {
-                message: "Invalid user id".to_string(),
-            });
-        }
-    };
+#[post("/default/percentage")]
+async fn create_default_percentage_scheme(
+    user: web::ReqData<AuthUserDto>,
+    data: web::Json<DefaultLetterGrade>,
+    db: web::Data<Database>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+
+    if let Err(err) = crate::guards::role_guard::check_admin(&logged_user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err.to_string()
+        }));
+    }
+
+    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let service = SubjectGradingSchemesService::new(&repo);
 
     match service
-        .get_or_create_default_scheme(&subject_id, Some(user_oid))
+        .get_or_create_default_scheme(data.into_inner(), SubjectGradingType::Percentage)
         .await
     {
         Ok(scheme) => HttpResponse::Created().json(scheme),
@@ -276,21 +297,50 @@ async fn delete_scheme(
     }
 }
 
+#[post("/by-reference-ids")]
+async fn get_scheme_by_reference_ids(
+    data: web::Json<ReferenceIdsRequest>,
+    db: web::Data<Database>,
+) -> impl Responder {
+    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let service = SubjectGradingSchemesService::new(&repo);
+
+    // Parse into ObjectIds
+    let mut object_ids = Vec::new();
+    for id_str in &data.reference_ids {
+        match ObjectId::parse_str(id_str) {
+            Ok(oid) => object_ids.push(oid),
+            Err(_) => {
+                return HttpResponse::BadRequest().json(ReqErrModel {
+                    message: format!("Invalid ObjectId: {}", id_str),
+                });
+            }
+        }
+    }
+
+    match service.get_schemes_by_reference_ids(&object_ids).await {
+        Ok(configs) => HttpResponse::Ok().json(configs),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/subject-grading-schemes")
             // Public routes
             .service(get_all_schemes) // GET /subject-grading-schemes
-            .service(get_scheme_by_id) // GET /subject-grading-schemes/{id}
+            .service(get_scheme_by_reference_ids) // POST /subject-grading-schemes/by-reference-ids
             .service(get_scheme_by_subject_id) // GET /subject-grading-schemes/subject/{subject_id}
             .service(get_scheme_by_subject_and_role) // GET /subject-grading-schemes/subject/{subject_id}/role/{role}
             .service(get_schemes_by_type) // GET /subject-grading-schemes/type/{scheme_type}
             .service(calculate_grade) // POST /subject-grading-schemes/{id}/calculate-grade
             .service(check_passing_grade) // POST /subject-grading-schemes/{id}/check-passing
+            .service(get_scheme_by_id) // GET /subject-grading-schemes/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_scheme) // POST /subject-grading-schemes
-            .service(create_default_scheme) // POST /subject-grading-schemes/subject/{subject_id}/default
+            .service(create_default_letter_grade_scheme) // POST /subject-grading-schemes/default/letter-grade
+            .service(create_default_percentage_scheme) // POST /subject-grading-schemes/default/percentage
             .service(update_scheme) // PUT /subject-grading-schemes/{id}
             .service(delete_scheme), // DELETE /subject-grading-schemes/{id}
     );

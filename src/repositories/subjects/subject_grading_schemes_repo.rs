@@ -38,21 +38,21 @@ impl SubjectGradingSchemesRepo {
             })
     }
 
-    /// Find by main_subject_id
-    pub async fn find_by_main_subject_id(
+    /// Find by reference_id
+    pub async fn find_by_reference_id(
         &self,
-        main_subject_id: &IdType,
+        reference_id: &IdType,
     ) -> Result<Option<SubjectGradingScheme>, AppError> {
-        let obj_id = ObjectId::parse_str(main_subject_id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse main_subject_id: {}", e),
+        let obj_id = ObjectId::parse_str(reference_id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse reference_id: {}", e),
         })?;
 
-        let filter = doc! { "main_subject_id": obj_id };
+        let filter = doc! { "reference_id": obj_id };
         self.collection
             .find_one(filter)
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to find grading scheme by main_subject_id: {}", e),
+                message: format!("Failed to find grading scheme by reference_id: {}", e),
             })
     }
 
@@ -85,9 +85,9 @@ impl SubjectGradingSchemesRepo {
         &self,
         scheme: &SubjectGradingScheme,
     ) -> Result<SubjectGradingScheme, AppError> {
-        // Unique index on main_subject_id + role combination
+        // Unique index on reference_id + role combination
         let subject_role_index = IndexModel::builder()
-            .keys(doc! { "main_subject_id": 1, "role": 1 })
+            .keys(doc! { "reference_id": 1, "role": 1 })
             .options(IndexOptions::builder().unique(true).build())
             .build();
 
@@ -213,18 +213,18 @@ impl SubjectGradingSchemesRepo {
         Ok(())
     }
 
-    /// Bulk find by main_subject_ids
-    pub async fn find_by_main_subject_ids(
+    /// Bulk find by reference_ids
+    pub async fn find_by_reference_ids(
         &self,
-        main_subject_ids: &[ObjectId],
+        reference_ids: &[ObjectId],
     ) -> Result<Vec<SubjectGradingScheme>, AppError> {
-        if main_subject_ids.is_empty() {
+        if reference_ids.is_empty() {
             return Ok(Vec::new());
         }
 
-        let filter = doc! { "main_subject_id": { "$in": main_subject_ids } };
+        let filter = doc! { "reference_id": { "$in": reference_ids } };
         let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
-            message: format!("Failed to find grading schemes by main_subject_ids: {}", e),
+            message: format!("Failed to find grading schemes by reference_ids: {}", e),
         })?;
 
         let mut schemes = Vec::new();
@@ -237,18 +237,18 @@ impl SubjectGradingSchemesRepo {
         Ok(schemes)
     }
 
-    /// Find by main_subject_id and role
+    /// Find by reference_id and role
     pub async fn find_by_subject_and_role(
         &self,
-        main_subject_id: &IdType,
+        reference_id: &IdType,
         role: &crate::domain::subjects::subject_category::SubjectTypeFor,
     ) -> Result<Option<SubjectGradingScheme>, AppError> {
-        let obj_id = ObjectId::parse_str(main_subject_id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse main_subject_id: {}", e),
+        let obj_id = ObjectId::parse_str(reference_id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse reference_id: {}", e),
         })?;
 
         let filter = doc! {
-            "main_subject_id": obj_id,
+            "reference_id": obj_id,
             "role": bson::to_bson(role).map_err(|e| AppError {
                 message: format!("Failed to serialize role: {}", e),
             })?

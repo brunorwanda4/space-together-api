@@ -36,6 +36,32 @@ impl MainSubjectRepo {
             })
     }
 
+    /// Find all main subjects that contain a specific main class ID
+    pub async fn find_by_main_class_id(
+        &self,
+        main_class_id: &IdType,
+    ) -> Result<Vec<MainSubject>, AppError> {
+        let obj_id = ObjectId::parse_str(main_class_id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse id: {}", e),
+        })?;
+        let filter = doc! {
+            "main_class_ids": obj_id
+        };
+
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to find main subjects by main class ID: {}", e),
+        })?;
+
+        let mut subjects = Vec::new();
+        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate main subjects: {}", e),
+        })? {
+            subjects.push(result);
+        }
+
+        Ok(subjects)
+    }
+
     /// Find by code
     pub async fn find_by_code(&self, code: &str) -> Result<Option<MainSubject>, AppError> {
         let filter = doc! { "code": code };
@@ -115,7 +141,6 @@ impl MainSubjectRepo {
         Ok(subjects)
     }
 
-    /// Update main subject
     /// Update main subject
     pub async fn update_subject(
         &self,

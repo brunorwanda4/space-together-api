@@ -4,7 +4,10 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::{domain::subjects::subject_category::SubjectTypeFor, helpers::object_id_helpers};
+use crate::{
+    domain::subjects::subject_category::SubjectTypeFor, helpers::object_id_helpers,
+    models::id_model::IdType,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SubjectGradingScheme {
@@ -24,7 +27,7 @@ pub struct SubjectGradingScheme {
         skip_serializing_if = "Option::is_none",
         default
     )]
-    pub main_subject_id: Option<ObjectId>,
+    pub reference_id: Option<ObjectId>,
     pub scheme_type: SubjectGradingType,
     pub grade_boundaries: HashMap<String, f32>,
     pub assessment_weights: HashMap<String, f32>,
@@ -75,10 +78,7 @@ pub struct UpdateSubjectGradingScheme {
 
 // Default grading schemes for common scenarios
 impl SubjectGradingScheme {
-    pub fn default_letter_grade(
-        main_subject_id: Option<ObjectId>,
-        created_by: Option<ObjectId>,
-    ) -> Self {
+    pub fn default_letter_grade(default: DefaultLetterGrade) -> Self {
         let mut grade_boundaries = HashMap::new();
         grade_boundaries.insert("A".to_string(), 90.0);
         grade_boundaries.insert("B".to_string(), 80.0);
@@ -94,22 +94,22 @@ impl SubjectGradingScheme {
 
         Self {
             id: None,
-            main_subject_id,
-            scheme_type: SubjectGradingType::LetterGrade,
+            reference_id: match default.reference_id {
+                IdType::ObjectId(oid) => Some(oid),
+                IdType::String(s) => ObjectId::parse_str(&s).ok(),
+            },
+            scheme_type: SubjectGradingType::Percentage,
             grade_boundaries,
             assessment_weights,
             minimum_passing_grade: "D".to_string(),
-            role: SubjectTypeFor::MainSubject,
-            created_by,
+            role: default.role,
+            created_by: default.created_by,
             created_at: None,
             updated_at: None,
         }
     }
 
-    pub fn default_percentage(
-        main_subject_id: Option<ObjectId>,
-        created_by: Option<ObjectId>,
-    ) -> Self {
+    pub fn default_percentage(default: DefaultLetterGrade) -> Self {
         let mut grade_boundaries = HashMap::new();
         grade_boundaries.insert("Excellent".to_string(), 90.0);
         grade_boundaries.insert("Good".to_string(), 80.0);
@@ -124,15 +124,25 @@ impl SubjectGradingScheme {
 
         Self {
             id: None,
-            main_subject_id,
+            reference_id: match default.reference_id {
+                IdType::ObjectId(oid) => Some(oid),
+                IdType::String(s) => ObjectId::parse_str(&s).ok(),
+            },
             scheme_type: SubjectGradingType::Percentage,
             grade_boundaries,
             assessment_weights,
             minimum_passing_grade: "Pass".to_string(),
-            role: SubjectTypeFor::MainSubject,
-            created_by,
+            role: default.role,
+            created_by: default.created_by,
             created_at: None,
             updated_at: None,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DefaultLetterGrade {
+    pub reference_id: IdType,
+    pub role: SubjectTypeFor,
+    pub created_by: Option<ObjectId>,
 }

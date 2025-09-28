@@ -72,10 +72,10 @@ impl<'a> SubjectTopicService<'a> {
         if let Some(order) = updated_data.order {
             topic_to_update.order = order;
         }
-        if let Some(lo_id) = updated_data.learning_outcome_id.clone() {
+        if let Some(lo_id) = updated_data.learning_outcome_id {
             topic_to_update.learning_outcome_id = Some(lo_id);
         }
-        if let Some(parent_id) = updated_data.parent_topic_id.clone() {
+        if let Some(parent_id) = updated_data.parent_topic_id {
             topic_to_update.parent_topic_id = Some(parent_id);
         }
 

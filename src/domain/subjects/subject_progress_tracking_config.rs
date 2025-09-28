@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::helpers::object_id_helpers;
+use crate::{helpers::object_id_helpers, models::id_model::IdType};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SubjectProgressTrackingConfig {
@@ -16,18 +16,23 @@ pub struct SubjectProgressTrackingConfig {
     )]
     pub id: Option<ObjectId>,
 
+    /// This stores the ID of the related entity
+    /// If role = MainSubject → this is a main_subject_id
+    /// If role = ClassSubject → this is a class_subject_id
+    /// If role = SubjectTopic → this is a subject_topic_id
     #[serde(
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",
         default
     )]
-    pub main_subject_id: Option<ObjectId>,
+    pub reference_id: Option<ObjectId>,
     pub track_attendance: bool,
     pub track_assignments: bool,
     pub track_topic_coverage: bool,
     pub track_skill_acquisition: bool,
     pub thresholds: SubjectProgressThresholds,
+    pub role: SubjectProgressTrackingConfigType,
 
     #[serde(
         serialize_with = "object_id_helpers::serialize",
@@ -42,6 +47,12 @@ pub struct SubjectProgressTrackingConfig {
 
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum SubjectProgressTrackingConfigType {
+    MainSubject,
+    ClassSubject,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -74,4 +85,11 @@ pub struct UpdateSubjectProgressThresholds {
     pub satisfactory: Option<f64>,
     pub needs_improvement: Option<f64>,
     pub at_risk: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DefaultSubjectProgressThresholds {
+    pub reference_id: IdType,
+    pub role: SubjectProgressTrackingConfigType,
+    pub created_by: Option<ObjectId>,
 }

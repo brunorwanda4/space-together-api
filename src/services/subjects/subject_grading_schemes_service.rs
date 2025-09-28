@@ -1,6 +1,6 @@
 use crate::{
     domain::subjects::subject_grading_schemes::{
-        SubjectGradingScheme, SubjectGradingType, UpdateSubjectGradingScheme,
+        DefaultLetterGrade, SubjectGradingScheme, SubjectGradingType, UpdateSubjectGradingScheme,
     },
     models::id_model::IdType,
     repositories::subjects::subject_grading_schemes_repo::SubjectGradingSchemesRepo,
@@ -29,10 +29,10 @@ impl<'a> SubjectGradingSchemesService<'a> {
         mut new_scheme: SubjectGradingScheme,
     ) -> Result<SubjectGradingScheme, String> {
         // ✅ Check if scheme already exists for this subject and role
-        if let (Some(main_subject_id), role) =
-            (new_scheme.main_subject_id.as_ref(), new_scheme.role.clone())
+        if let (Some(reference_id), role) =
+            (new_scheme.reference_id.as_ref(), new_scheme.role.clone())
         {
-            let subject_id_type = IdType::from_object_id(main_subject_id.clone());
+            let subject_id_type = IdType::from_object_id(*reference_id);
             if let Ok(Some(_)) = self
                 .repo
                 .find_by_subject_and_role(&subject_id_type, &role)
@@ -43,9 +43,7 @@ impl<'a> SubjectGradingSchemesService<'a> {
         }
 
         // ✅ Validate grading scheme data
-        if let Err(validation_error) = self.validate_grading_scheme(&new_scheme) {
-            return Err(validation_error);
-        }
+        self.validate_grading_scheme(&new_scheme)?;
 
         let now = Some(Utc::now());
         new_scheme.created_at = now;
@@ -71,26 +69,26 @@ impl<'a> SubjectGradingSchemesService<'a> {
             .ok_or_else(|| "Grading scheme not found".to_string())
     }
 
-    /// Get grading scheme by main_subject_id
-    pub async fn get_scheme_by_main_subject_id(
+    /// Get grading scheme by reference_id
+    pub async fn get_scheme_by_reference_id(
         &self,
-        main_subject_id: &IdType,
+        reference_id: &IdType,
     ) -> Result<SubjectGradingScheme, String> {
         self.repo
-            .find_by_main_subject_id(main_subject_id)
+            .find_by_reference_id(reference_id)
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "Grading scheme not found for this subject".to_string())
     }
 
-    /// Get grading scheme by main_subject_id and role
+    /// Get grading scheme by reference_id and role
     pub async fn get_scheme_by_subject_and_role(
         &self,
-        main_subject_id: &IdType,
+        reference_id: &IdType,
         role: &crate::domain::subjects::subject_category::SubjectTypeFor,
     ) -> Result<SubjectGradingScheme, String> {
         self.repo
-            .find_by_subject_and_role(main_subject_id, role)
+            .find_by_subject_and_role(reference_id, role)
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "Grading scheme not found for this subject and role".to_string())
@@ -123,26 +121,16 @@ impl<'a> SubjectGradingSchemesService<'a> {
 
         // ✅ Validate updated data if provided
         if let Some(ref grade_boundaries) = updated_data.grade_boundaries {
-            if let Err(validation_error) =
-                self.validate_grade_boundaries(grade_boundaries, &scheme.scheme_type)
-            {
-                return Err(validation_error);
-            }
+            self.validate_grade_boundaries(grade_boundaries, &scheme.scheme_type)?
         }
 
         if let Some(ref assessment_weights) = updated_data.assessment_weights {
-            if let Err(validation_error) = self.validate_assessment_weights(assessment_weights) {
-                return Err(validation_error);
-            }
+            self.validate_assessment_weights(assessment_weights)?
         }
 
         // ✅ Validate minimum passing grade if provided
         if let Some(ref min_grade) = updated_data.minimum_passing_grade {
-            if let Err(validation_error) =
-                self.validate_minimum_passing_grade(min_grade, &scheme.grade_boundaries)
-            {
-                return Err(validation_error);
-            }
+            self.validate_minimum_passing_grade(min_grade, &scheme.grade_boundaries)?
         }
 
         let updated_scheme = self
@@ -158,13 +146,13 @@ impl<'a> SubjectGradingSchemesService<'a> {
         self.repo.delete_scheme(id).await.map_err(|e| e.message)
     }
 
-    /// Bulk get schemes by main_subject_ids
-    pub async fn get_schemes_by_main_subject_ids(
+    /// Bulk get schemes by reference_ids
+    pub async fn get_schemes_by_reference_ids(
         &self,
-        main_subject_ids: &[ObjectId],
+        reference_ids: &[ObjectId],
     ) -> Result<Vec<SubjectGradingScheme>, String> {
         self.repo
-            .find_by_main_subject_ids(main_subject_ids)
+            .find_by_reference_ids(reference_ids)
             .await
             .map_err(|e| e.message)
     }
@@ -212,18 +200,19 @@ impl<'a> SubjectGradingSchemesService<'a> {
     /// Get or create default scheme for a subject
     pub async fn get_or_create_default_scheme(
         &self,
-        main_subject_id: &IdType,
-        created_by: Option<ObjectId>,
+        default: DefaultLetterGrade,
+        scheme_type: SubjectGradingType,
     ) -> Result<SubjectGradingScheme, String> {
         // Try to get existing scheme
-        match self.get_scheme_by_main_subject_id(main_subject_id).await {
+        match self.get_scheme_by_reference_id(&default.reference_id).await {
             Ok(scheme) => Ok(scheme),
             Err(_) => {
-                // Create default letter grade scheme if not exists
-                let obj_id =
-                    ObjectId::parse_str(main_subject_id.as_string()).map_err(|e| e.to_string())?;
-                let default_scheme =
-                    SubjectGradingScheme::default_letter_grade(Some(obj_id), created_by);
+                let default_scheme = match scheme_type {
+                    SubjectGradingType::Percentage => {
+                        SubjectGradingScheme::default_percentage(default)
+                    }
+                    _ => SubjectGradingScheme::default_letter_grade(default),
+                };
 
                 self.create_scheme(default_scheme).await
             }

@@ -9,6 +9,22 @@ use crate::{
     services::subjects::main_subject_service::MainSubjectService,
 };
 
+#[get("/main-class/{id}")]
+async fn get_subjects_by_main_class_id(
+    path: web::Path<String>,
+    db: web::Data<Database>,
+) -> impl Responder {
+    let repo = MainSubjectRepo::new(db.get_ref());
+    let service = MainSubjectService::new(&repo);
+
+    let subject_id = IdType::from_string(path.into_inner());
+
+    match service.get_subjects_by_main_class_id(&subject_id).await {
+        Ok(subject) => HttpResponse::Ok().json(subject),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
 #[get("")]
 async fn get_all_subjects(db: web::Data<Database>) -> impl Responder {
     let repo = MainSubjectRepo::new(db.get_ref());
@@ -28,6 +44,18 @@ async fn get_subject_by_id(path: web::Path<String>, db: web::Data<Database>) -> 
     let subject_id = IdType::from_string(path.into_inner());
 
     match service.get_subject_by_id(&subject_id).await {
+        Ok(subject) => HttpResponse::Ok().json(subject),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/code/{code}")]
+async fn get_subject_by_code(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
+    let repo = MainSubjectRepo::new(db.get_ref());
+    let service = MainSubjectService::new(&repo);
+    let code = path.into_inner();
+
+    match service.get_subject_by_code(&code).await {
         Ok(subject) => HttpResponse::Ok().json(subject),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
@@ -112,6 +140,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/main-subjects")
             // Public routes
             .service(get_all_subjects) // GET /main-subjects
+            .service(get_subjects_by_main_class_id) // GET /main-subjects/main-class/{id}
+            .service(get_subject_by_code) // GET /main-subjects/code/{code}
             .service(get_subject_by_id) // GET /main-subjects/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

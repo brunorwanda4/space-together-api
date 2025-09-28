@@ -1,6 +1,7 @@
 use crate::{
     domain::subjects::subject_progress_tracking_config::{
-        SubjectProgressTrackingConfig, UpdateSubjectProgressTrackingConfig,
+        DefaultSubjectProgressThresholds, SubjectProgressTrackingConfig,
+        SubjectProgressTrackingConfigType, UpdateSubjectProgressTrackingConfig,
     },
     models::id_model::IdType,
     repositories::subjects::subject_progress_configs_repo::SubjectProgressConfigsRepo,
@@ -27,18 +28,16 @@ impl<'a> SubjectProgressConfigsService<'a> {
         &self,
         mut new_config: SubjectProgressTrackingConfig,
     ) -> Result<SubjectProgressTrackingConfig, String> {
-        // ✅ Check if config already exists for this main_subject_id
-        if let Some(main_subject_id) = &new_config.main_subject_id {
-            let id_type = IdType::from_object_id(main_subject_id.clone());
-            if let Ok(Some(_)) = self.repo.find_by_main_subject_id(&id_type).await {
-                return Err("Progress config already exists for this subject".to_string());
+        // ✅ Check if config already exists for this reference_id
+        if let Some(reference_id) = &new_config.reference_id {
+            let id_type = IdType::from_object_id(*reference_id);
+            if let Ok(Some(_)) = self.repo.find_by_reference_id(&id_type).await {
+                return Err("Progress config already exists for this reference".to_string());
             }
         }
 
         // Validate thresholds
-        if let Err(threshold_error) = self.validate_thresholds(&new_config.thresholds) {
-            return Err(threshold_error);
-        }
+        self.validate_thresholds(&new_config.thresholds)?;
 
         let now = Some(Utc::now());
         new_config.created_at = now;
@@ -67,16 +66,16 @@ impl<'a> SubjectProgressConfigsService<'a> {
             .ok_or_else(|| "Progress config not found".to_string())
     }
 
-    /// Get progress config by main_subject_id
-    pub async fn get_config_by_main_subject_id(
+    /// Get progress config by reference_id
+    pub async fn get_config_by_reference_id(
         &self,
-        main_subject_id: &IdType,
+        reference_id: &IdType,
     ) -> Result<SubjectProgressTrackingConfig, String> {
         self.repo
-            .find_by_main_subject_id(main_subject_id)
+            .find_by_reference_id(reference_id)
             .await
             .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Progress config not found for this subject".to_string())
+            .ok_or_else(|| "Progress config not found for this reference".to_string())
     }
 
     /// Update a progress config by id
@@ -95,7 +94,6 @@ impl<'a> SubjectProgressConfigsService<'a> {
 
         // Validate thresholds if they're being updated
         if let Some(ref upd_thresholds) = updated_data.thresholds {
-            // Merge update thresholds with existing config thresholds to get effective values for validation
             let effective_thresholds = crate::domain::subjects::subject_progress_tracking_config::SubjectProgressThresholds {
                 satisfactory: upd_thresholds.satisfactory.unwrap_or(config.thresholds.satisfactory),
                 needs_improvement: upd_thresholds.needs_improvement.unwrap_or(config.thresholds.needs_improvement),
@@ -104,8 +102,7 @@ impl<'a> SubjectProgressConfigsService<'a> {
             self.validate_thresholds(&effective_thresholds)?
         }
 
-        // Prevent changing main_subject_id to one that already has a config
-        // (Note: main_subject_id is not in UpdateSubjectProgressTrackingConfig by design)
+        // Prevent changing reference_id (not allowed in Update struct)
 
         let updated_config = self
             .repo
@@ -120,13 +117,13 @@ impl<'a> SubjectProgressConfigsService<'a> {
         self.repo.delete_config(id).await.map_err(|e| e.message)
     }
 
-    /// Bulk get configs by main_subject_ids
-    pub async fn get_configs_by_main_subject_ids(
+    /// Bulk get configs by reference_ids
+    pub async fn get_configs_by_reference_ids(
         &self,
-        main_subject_ids: &[ObjectId],
+        reference_ids: &[ObjectId],
     ) -> Result<Vec<SubjectProgressTrackingConfig>, String> {
         self.repo
-            .find_by_main_subject_ids(main_subject_ids)
+            .find_by_reference_ids(reference_ids)
             .await
             .map_err(|e| e.message)
     }
@@ -136,7 +133,6 @@ impl<'a> SubjectProgressConfigsService<'a> {
         &self,
         thresholds: &crate::domain::subjects::subject_progress_tracking_config::SubjectProgressThresholds,
     ) -> Result<(), String> {
-        // Ensure thresholds are in valid range (0.0 - 100.0)
         if thresholds.satisfactory < 0.0 || thresholds.satisfactory > 100.0 {
             return Err("Satisfactory threshold must be between 0.0 and 100.0".to_string());
         }
@@ -147,7 +143,6 @@ impl<'a> SubjectProgressConfigsService<'a> {
             return Err("At risk threshold must be between 0.0 and 100.0".to_string());
         }
 
-        // Ensure thresholds are in correct order: satisfactory > needs_improvement > at_risk
         if thresholds.satisfactory <= thresholds.needs_improvement {
             return Err(
                 "Satisfactory threshold must be greater than needs improvement threshold"
@@ -163,20 +158,19 @@ impl<'a> SubjectProgressConfigsService<'a> {
         Ok(())
     }
 
-    /// Get or create default config for a subject
+    /// Get or create default config for a reference
     pub async fn get_or_create_default_config(
         &self,
-        main_subject_id: &IdType,
-        created_by: Option<ObjectId>,
+        default: DefaultSubjectProgressThresholds,
     ) -> Result<SubjectProgressTrackingConfig, String> {
         // Try to get existing config
-        match self.get_config_by_main_subject_id(main_subject_id).await {
+        match self.get_config_by_reference_id(&default.reference_id).await {
             Ok(config) => Ok(config),
             Err(_) => {
                 // Create default config if not exists
                 let default_config = SubjectProgressTrackingConfig {
                     id: None,
-                    main_subject_id: Some(ObjectId::parse_str(main_subject_id.as_string()).map_err(|e| e.to_string())?),
+                    reference_id: Some(ObjectId::parse_str(default.reference_id.as_string()).map_err(|e| e.to_string())?),
                     track_attendance: true,
                     track_assignments: true,
                     track_topic_coverage: true,
@@ -186,7 +180,8 @@ impl<'a> SubjectProgressConfigsService<'a> {
                         needs_improvement: 60.0,
                         at_risk: 40.0,
                     },
-                    created_by,
+                    role: SubjectProgressTrackingConfigType::MainSubject,
+                    created_by: default.created_by,
                     created_at: None,
                     updated_at: None,
                 };

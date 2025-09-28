@@ -23,6 +23,65 @@ impl SubjectProgressConfigsRepo {
         }
     }
 
+    /// Ensure unique index on reference_id
+    pub async fn init_indexes(&self) -> Result<(), AppError> {
+        let index_model = IndexModel::builder()
+            .keys(doc! { "reference_id": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build();
+
+        self.collection
+            .create_index(index_model)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create unique reference_id index: {}", e),
+            })?;
+
+        Ok(())
+    }
+
+    /// Find by reference_id
+    pub async fn find_by_reference_id(
+        &self,
+        reference_id: &IdType,
+    ) -> Result<Option<SubjectProgressTrackingConfig>, AppError> {
+        let obj_id = ObjectId::parse_str(reference_id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse reference_id: {}", e),
+        })?;
+
+        let filter = doc! { "reference_id": obj_id };
+        self.collection
+            .find_one(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find progress config by reference_id: {}", e),
+            })
+    }
+
+    /// Find many by reference_ids
+    pub async fn find_by_reference_ids(
+        &self,
+        reference_ids: &[ObjectId],
+    ) -> Result<Vec<SubjectProgressTrackingConfig>, AppError> {
+        if reference_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let filter = doc! { "reference_id": { "$in": reference_ids } };
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to find progress configs by reference_ids: {}", e),
+        })?;
+
+        let mut configs = Vec::new();
+        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate progress configs: {}", e),
+        })? {
+            configs.push(result);
+        }
+
+        Ok(configs)
+    }
+
     /// Find by id
     pub async fn find_by_id(
         &self,
@@ -41,41 +100,12 @@ impl SubjectProgressConfigsRepo {
             })
     }
 
-    /// Find by main_subject_id
-    pub async fn find_by_main_subject_id(
-        &self,
-        main_subject_id: &IdType,
-    ) -> Result<Option<SubjectProgressTrackingConfig>, AppError> {
-        let obj_id = ObjectId::parse_str(main_subject_id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse main_subject_id: {}", e),
-        })?;
-
-        let filter = doc! { "main_subject_id": obj_id };
-        self.collection
-            .find_one(filter)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find progress config by main_subject_id: {}", e),
-            })
-    }
-
     /// Insert new progress config
     pub async fn insert_config(
         &self,
         config: &SubjectProgressTrackingConfig,
     ) -> Result<SubjectProgressTrackingConfig, AppError> {
-        // Unique index on main_subject_id
-        let main_subject_index = IndexModel::builder()
-            .keys(doc! { "main_subject_id": 1 })
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
-
-        self.collection
-            .create_index(main_subject_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create unique main_subject_id index: {}", e),
-            })?;
+        self.init_indexes().await?;
 
         let mut config_to_insert = config.clone();
         config_to_insert.id = None;
@@ -190,29 +220,5 @@ impl SubjectProgressConfigsRepo {
         }
 
         Ok(())
-    }
-
-    /// Bulk find by main_subject_ids
-    pub async fn find_by_main_subject_ids(
-        &self,
-        main_subject_ids: &[ObjectId],
-    ) -> Result<Vec<SubjectProgressTrackingConfig>, AppError> {
-        if main_subject_ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let filter = doc! { "main_subject_id": { "$in": main_subject_ids } };
-        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
-            message: format!("Failed to find progress configs by main_subject_ids: {}", e),
-        })?;
-
-        let mut configs = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate progress configs: {}", e),
-        })? {
-            configs.push(result);
-        }
-
-        Ok(configs)
     }
 }
