@@ -1,17 +1,18 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
-use mongodb::Database;
 
 use crate::{
+    config::state::AppState,
     domain::auth_user::AuthUserDto,
     domain::subjects::learning_outcome::{LearningOutcome, UpdateLearningOutcome},
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::subjects::learning_outcome_repo::LearningOutcomeRepo,
+    services::event_service::EventService,
     services::subjects::learning_outcome_service::LearningOutcomeService,
 };
 
 #[get("")]
-async fn get_all_outcomes(db: web::Data<Database>) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(db.get_ref());
+async fn get_all_outcomes(state: web::Data<AppState>) -> impl Responder {
+    let repo = LearningOutcomeRepo::new(&state.db);
     let service = LearningOutcomeService::new(&repo);
 
     match service.get_all_outcomes().await {
@@ -21,8 +22,8 @@ async fn get_all_outcomes(db: web::Data<Database>) -> impl Responder {
 }
 
 #[get("/{id}")]
-async fn get_outcome_by_id(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(db.get_ref());
+async fn get_outcome_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+    let repo = LearningOutcomeRepo::new(&state.db);
     let service = LearningOutcomeService::new(&repo);
 
     let outcome_id = IdType::from_string(path.into_inner());
@@ -34,8 +35,11 @@ async fn get_outcome_by_id(path: web::Path<String>, db: web::Data<Database>) -> 
 }
 
 #[get("/title/{title}")]
-async fn get_outcome_by_title(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(db.get_ref());
+async fn get_outcome_by_title(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = LearningOutcomeRepo::new(&state.db);
     let service = LearningOutcomeService::new(&repo);
 
     let title = path.into_inner();
@@ -50,7 +54,7 @@ async fn get_outcome_by_title(path: web::Path<String>, db: web::Data<Database>) 
 async fn create_outcome(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<LearningOutcome>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -60,11 +64,28 @@ async fn create_outcome(
         }));
     }
 
-    let repo = LearningOutcomeRepo::new(db.get_ref());
+    let repo = LearningOutcomeRepo::new(&state.db);
     let service = LearningOutcomeService::new(&repo);
 
     match service.create_outcome(data.into_inner()).await {
-        Ok(outcome) => HttpResponse::Created().json(outcome),
+        Ok(outcome) => {
+            // 🔔 Broadcast real-time event
+            let outcome_clone = outcome.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = outcome_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "learning_outcome",
+                        &id.to_hex(),
+                        &outcome_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(outcome)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -74,7 +95,7 @@ async fn update_outcome(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<UpdateLearningOutcome>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -85,11 +106,28 @@ async fn update_outcome(
     }
 
     let outcome_id = IdType::from_string(path.into_inner());
-    let repo = LearningOutcomeRepo::new(db.get_ref());
+    let repo = LearningOutcomeRepo::new(&state.db);
     let service = LearningOutcomeService::new(&repo);
 
     match service.update_outcome(&outcome_id, data.into_inner()).await {
-        Ok(outcome) => HttpResponse::Ok().json(outcome),
+        Ok(outcome) => {
+            // 🔔 Broadcast real-time event
+            let outcome_clone = outcome.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = outcome_clone.id {
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "learning_outcome",
+                        &id.to_hex(),
+                        &outcome_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Ok().json(outcome)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -98,7 +136,7 @@ async fn update_outcome(
 async fn delete_outcome(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -109,13 +147,34 @@ async fn delete_outcome(
     }
 
     let outcome_id = IdType::from_string(path.into_inner());
-    let repo = LearningOutcomeRepo::new(db.get_ref());
+    let repo = LearningOutcomeRepo::new(&state.db);
     let service = LearningOutcomeService::new(&repo);
 
+    // Get outcome before deletion for broadcasting
+    let outcome_before_delete = repo.find_by_id(&outcome_id).await.ok().flatten();
+
     match service.delete_outcome(&outcome_id).await {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
-            "message": "Learning outcome deleted successfully"
-        })),
+        Ok(_) => {
+            // 🔔 Broadcast real-time event
+            if let Some(outcome) = outcome_before_delete {
+                let state_clone = state.clone();
+                actix_rt::spawn(async move {
+                    if let Some(id) = outcome.id {
+                        EventService::broadcast_deleted(
+                            &state_clone,
+                            "learning_outcome",
+                            &id.to_hex(),
+                            &outcome,
+                        )
+                        .await;
+                    }
+                });
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "Learning outcome deleted successfully"
+            }))
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }

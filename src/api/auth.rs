@@ -1,7 +1,7 @@
 use actix_web::{get, patch, post, web, HttpMessage, HttpRequest, HttpResponse, Responder};
-use mongodb::Database;
 
 use crate::{
+    config::state::AppState,
     domain::{
         auth::{LoginUser, RegisterUser},
         auth_user::AuthUserDto,
@@ -14,8 +14,11 @@ use crate::{
 };
 
 #[post("/register")]
-async fn register_user(data: web::Json<RegisterUser>, db: web::Data<Database>) -> impl Responder {
-    let repo = UserRepo::new(db.get_ref());
+async fn register_user(
+    data: web::Json<RegisterUser>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = UserRepo::new(&state.db);
     let service = AuthService::new(&repo);
 
     match service.register(data.into_inner()).await {
@@ -35,8 +38,8 @@ async fn register_user(data: web::Json<RegisterUser>, db: web::Data<Database>) -
 }
 
 #[post("/login")]
-async fn login_user(data: web::Json<LoginUser>, db: web::Data<Database>) -> impl Responder {
-    let repo = UserRepo::new(db.get_ref());
+async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> impl Responder {
+    let repo = UserRepo::new(&state.db);
     let service = AuthService::new(&repo);
 
     match service.login(data.into_inner()).await {
@@ -56,8 +59,8 @@ async fn login_user(data: web::Json<LoginUser>, db: web::Data<Database>) -> impl
 }
 
 #[get("/me")]
-async fn get_me(req: HttpRequest, db: web::Data<Database>) -> impl Responder {
-    let repo = UserRepo::new(db.get_ref());
+async fn get_me(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
+    let repo = UserRepo::new(&state.db);
     let service = AuthService::new(&repo);
 
     let token = match req.headers().get("Authorization") {
@@ -85,7 +88,7 @@ async fn get_me(req: HttpRequest, db: web::Data<Database>) -> impl Responder {
 async fn onboarding_user(
     req: HttpRequest,
     data: web::Json<UpdateUserDto>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = match req.extensions().get::<AuthUserDto>() {
         Some(u) => u.clone(),
@@ -96,7 +99,7 @@ async fn onboarding_user(
         }
     };
 
-    let repo = UserRepo::new(db.get_ref());
+    let repo = UserRepo::new(&state.db);
     let user_service = UserService::new(&repo);
     let auth_service = AuthService::new(&repo);
 
@@ -120,8 +123,8 @@ async fn onboarding_user(
 }
 
 #[post("/refresh")]
-async fn refresh_token(req: HttpRequest, db: web::Data<Database>) -> impl Responder {
-    let repo = UserRepo::new(db.get_ref());
+async fn refresh_token(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
+    let repo = UserRepo::new(&state.db);
     let service = AuthService::new(&repo);
 
     // Extract token from Authorization header

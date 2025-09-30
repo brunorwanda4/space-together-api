@@ -2,7 +2,10 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::helpers::object_id_helpers;
+use crate::{
+    domain::subjects::subject_learning_material::SubjectLearningMaterial,
+    helpers::object_id_helpers,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SubjectTopic {
@@ -63,4 +66,13 @@ pub struct UpdateSubjectTopic {
 
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SubjectTopicWithOthers {
+    #[serde(flatten)]
+    pub topic: SubjectTopic,
+
+    #[serde(default)]
+    pub learning_materials: Option<Vec<SubjectLearningMaterial>>,
 }

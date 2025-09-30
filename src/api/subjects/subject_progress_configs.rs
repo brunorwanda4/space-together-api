@@ -1,8 +1,8 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use mongodb::bson::oid::ObjectId;
-use mongodb::Database;
 
 use crate::{
+    config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
         subjects::subject_progress_tracking_config::{
@@ -14,12 +14,13 @@ use crate::{
         api_request_model::ReferenceIdsRequest, id_model::IdType, request_error_model::ReqErrModel,
     },
     repositories::subjects::subject_progress_configs_repo::SubjectProgressConfigsRepo,
+    services::event_service::EventService,
     services::subjects::subject_progress_configs_service::SubjectProgressConfigsService,
 };
 
 #[get("")]
-async fn get_all_configs(db: web::Data<Database>) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+async fn get_all_configs(state: web::Data<AppState>) -> impl Responder {
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
     match service.get_all_configs().await {
@@ -29,8 +30,8 @@ async fn get_all_configs(db: web::Data<Database>) -> impl Responder {
 }
 
 #[get("/{id}")]
-async fn get_config_by_id(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+async fn get_config_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
     let config_id = IdType::from_string(path.into_inner());
@@ -44,9 +45,9 @@ async fn get_config_by_id(path: web::Path<String>, db: web::Data<Database>) -> i
 #[get("/subject/{subject_id}")]
 async fn get_config_by_subject_id(
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
     let subject_id = IdType::from_string(path.into_inner());
@@ -61,7 +62,7 @@ async fn get_config_by_subject_id(
 async fn create_config(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<SubjectProgressTrackingConfig>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -71,11 +72,28 @@ async fn create_config(
         }));
     }
 
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
     match service.create_config(data.into_inner()).await {
-        Ok(config) => HttpResponse::Created().json(config),
+        Ok(config) => {
+            // 🔔 Broadcast real-time event
+            let config_clone = config.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = config_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "subject_progress_config",
+                        &id.to_hex(),
+                        &config_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(config)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -84,7 +102,7 @@ async fn create_config(
 async fn create_default_config(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<DefaultSubjectProgressThresholds>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -94,14 +112,31 @@ async fn create_default_config(
         }));
     }
 
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
     match service
         .get_or_create_default_config(data.into_inner())
         .await
     {
-        Ok(config) => HttpResponse::Created().json(config),
+        Ok(config) => {
+            // 🔔 Broadcast real-time event
+            let config_clone = config.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = config_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "subject_progress_config",
+                        &id.to_hex(),
+                        &config_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(config)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -111,7 +146,7 @@ async fn update_config(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<UpdateSubjectProgressTrackingConfig>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -122,11 +157,28 @@ async fn update_config(
     }
 
     let config_id = IdType::from_string(path.into_inner());
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
     match service.update_config(&config_id, data.into_inner()).await {
-        Ok(config) => HttpResponse::Ok().json(config),
+        Ok(config) => {
+            // 🔔 Broadcast real-time event
+            let config_clone = config.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = config_clone.id {
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "subject_progress_config",
+                        &id.to_hex(),
+                        &config_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Ok().json(config)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -135,7 +187,7 @@ async fn update_config(
 async fn delete_config(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -146,13 +198,34 @@ async fn delete_config(
     }
 
     let config_id = IdType::from_string(path.into_inner());
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
+    // Get config before deletion for broadcasting
+    let config_before_delete = repo.find_by_id(&config_id).await.ok().flatten();
+
     match service.delete_config(&config_id).await {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
-            "message": "Progress config deleted successfully"
-        })),
+        Ok(_) => {
+            // 🔔 Broadcast real-time event
+            if let Some(config) = config_before_delete {
+                let state_clone = state.clone();
+                actix_rt::spawn(async move {
+                    if let Some(id) = config.id {
+                        EventService::broadcast_deleted(
+                            &state_clone,
+                            "subject_progress_config",
+                            &id.to_hex(),
+                            &config,
+                        )
+                        .await;
+                    }
+                });
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "Progress config deleted successfully"
+            }))
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -160,9 +233,9 @@ async fn delete_config(
 #[post("/by-reference-ids")]
 async fn get_configs_by_reference_ids(
     data: web::Json<ReferenceIdsRequest>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
     // Parse into ObjectIds
@@ -187,9 +260,9 @@ async fn get_configs_by_reference_ids(
 #[get("/reference/{id}")]
 async fn get_config_by_reference_id(
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(db.get_ref());
+    let repo = SubjectProgressConfigsRepo::new(&state.db);
     let service = SubjectProgressConfigsService::new(&repo);
 
     let reference_id = IdType::from_string(path.into_inner());

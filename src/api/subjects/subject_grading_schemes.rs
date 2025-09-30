@@ -1,8 +1,9 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
-use mongodb::{bson::oid::ObjectId, Database};
+use mongodb::bson::oid::ObjectId;
 use std::collections::HashMap;
 
 use crate::{
+    config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
         subjects::{
@@ -17,12 +18,13 @@ use crate::{
         api_request_model::ReferenceIdsRequest, id_model::IdType, request_error_model::ReqErrModel,
     },
     repositories::subjects::subject_grading_schemes_repo::SubjectGradingSchemesRepo,
+    services::event_service::EventService,
     services::subjects::subject_grading_schemes_service::SubjectGradingSchemesService,
 };
 
 #[get("")]
-async fn get_all_schemes(db: web::Data<Database>) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+async fn get_all_schemes(state: web::Data<AppState>) -> impl Responder {
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service.get_all_schemes().await {
@@ -32,8 +34,8 @@ async fn get_all_schemes(db: web::Data<Database>) -> impl Responder {
 }
 
 #[get("/{id}")]
-async fn get_scheme_by_id(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+async fn get_scheme_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     let scheme_id = IdType::from_string(path.into_inner());
@@ -47,9 +49,9 @@ async fn get_scheme_by_id(path: web::Path<String>, db: web::Data<Database>) -> i
 #[get("/subject/{subject_id}")]
 async fn get_scheme_by_subject_id(
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     let subject_id = IdType::from_string(path.into_inner());
@@ -63,9 +65,9 @@ async fn get_scheme_by_subject_id(
 #[get("/subject/{subject_id}/role/{role}")]
 async fn get_scheme_by_subject_and_role(
     path: web::Path<(String, String)>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     let (subject_id_str, role_str) = path.into_inner();
@@ -92,8 +94,11 @@ async fn get_scheme_by_subject_and_role(
 }
 
 #[get("/type/{scheme_type}")]
-async fn get_schemes_by_type(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+async fn get_schemes_by_type(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     let scheme_type_str = path.into_inner();
@@ -121,9 +126,9 @@ async fn get_schemes_by_type(path: web::Path<String>, db: web::Data<Database>) -
 async fn calculate_grade(
     path: web::Path<String>,
     data: web::Json<HashMap<String, f32>>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     let scheme_id = IdType::from_string(path.into_inner());
@@ -144,9 +149,9 @@ async fn calculate_grade(
 async fn check_passing_grade(
     path: web::Path<String>,
     data: web::Json<HashMap<String, String>>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     let scheme_id = IdType::from_string(path.into_inner());
@@ -175,7 +180,7 @@ async fn check_passing_grade(
 async fn create_scheme(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<SubjectGradingScheme>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -185,11 +190,28 @@ async fn create_scheme(
         }));
     }
 
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service.create_scheme(data.into_inner()).await {
-        Ok(scheme) => HttpResponse::Created().json(scheme),
+        Ok(scheme) => {
+            // 🔔 Broadcast real-time event
+            let scheme_clone = scheme.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = scheme_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "subject_grading_scheme",
+                        &id.to_hex(),
+                        &scheme_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(scheme)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -198,7 +220,7 @@ async fn create_scheme(
 async fn create_default_letter_grade_scheme(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<DefaultLetterGrade>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -208,14 +230,31 @@ async fn create_default_letter_grade_scheme(
         }));
     }
 
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service
         .get_or_create_default_scheme(data.into_inner(), SubjectGradingType::LetterGrade)
         .await
     {
-        Ok(scheme) => HttpResponse::Created().json(scheme),
+        Ok(scheme) => {
+            // 🔔 Broadcast real-time event
+            let scheme_clone = scheme.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = scheme_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "subject_grading_scheme",
+                        &id.to_hex(),
+                        &scheme_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(scheme)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -224,7 +263,7 @@ async fn create_default_letter_grade_scheme(
 async fn create_default_percentage_scheme(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<DefaultLetterGrade>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -234,14 +273,31 @@ async fn create_default_percentage_scheme(
         }));
     }
 
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service
         .get_or_create_default_scheme(data.into_inner(), SubjectGradingType::Percentage)
         .await
     {
-        Ok(scheme) => HttpResponse::Created().json(scheme),
+        Ok(scheme) => {
+            // 🔔 Broadcast real-time event
+            let scheme_clone = scheme.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = scheme_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "subject_grading_scheme",
+                        &id.to_hex(),
+                        &scheme_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(scheme)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -251,7 +307,7 @@ async fn update_scheme(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<UpdateSubjectGradingScheme>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -262,11 +318,28 @@ async fn update_scheme(
     }
 
     let scheme_id = IdType::from_string(path.into_inner());
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service.update_scheme(&scheme_id, data.into_inner()).await {
-        Ok(scheme) => HttpResponse::Ok().json(scheme),
+        Ok(scheme) => {
+            // 🔔 Broadcast real-time event
+            let scheme_clone = scheme.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = scheme_clone.id {
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "subject_grading_scheme",
+                        &id.to_hex(),
+                        &scheme_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Ok().json(scheme)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -275,7 +348,7 @@ async fn update_scheme(
 async fn delete_scheme(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -286,13 +359,34 @@ async fn delete_scheme(
     }
 
     let scheme_id = IdType::from_string(path.into_inner());
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
+    // Get scheme before deletion for broadcasting
+    let scheme_before_delete = repo.find_by_id(&scheme_id).await.ok().flatten();
+
     match service.delete_scheme(&scheme_id).await {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
-            "message": "Grading scheme deleted successfully"
-        })),
+        Ok(_) => {
+            // 🔔 Broadcast real-time event
+            if let Some(scheme) = scheme_before_delete {
+                let state_clone = state.clone();
+                actix_rt::spawn(async move {
+                    if let Some(id) = scheme.id {
+                        EventService::broadcast_deleted(
+                            &state_clone,
+                            "subject_grading_scheme",
+                            &id.to_hex(),
+                            &scheme,
+                        )
+                        .await;
+                    }
+                });
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "Grading scheme deleted successfully"
+            }))
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -300,9 +394,9 @@ async fn delete_scheme(
 #[post("/by-reference-ids")]
 async fn get_scheme_by_reference_ids(
     data: web::Json<ReferenceIdsRequest>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(db.get_ref());
+    let repo = SubjectGradingSchemesRepo::new(&state.db);
     let service = SubjectGradingSchemesService::new(&repo);
 
     // Parse into ObjectIds

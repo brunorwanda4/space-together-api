@@ -1,7 +1,7 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
-use mongodb::Database;
 
 use crate::{
+    config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
         subjects::subject_learning_material::{
@@ -10,12 +10,16 @@ use crate::{
     },
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::subjects::subject_learning_material_repo::SubjectLearningMaterialRepo,
+    services::event_service::EventService,
     services::subjects::subject_learning_material_service::SubjectLearningMaterialService,
 };
 
 #[get("/reference/{reference_id}")]
-async fn get_by_reference_id(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+async fn get_by_reference_id(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
     let reference_id = IdType::from_string(path.into_inner());
@@ -29,9 +33,9 @@ async fn get_by_reference_id(path: web::Path<String>, db: web::Data<Database>) -
 #[get("/role/{role}/reference/{reference_id}")]
 async fn get_by_role_and_reference(
     path: web::Path<(String, String)>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
     let (role_str, reference_id_str) = path.into_inner();
@@ -61,9 +65,9 @@ async fn get_by_role_and_reference(
 #[get("/active/role/{role}/reference/{reference_id}")]
 async fn get_active_materials(
     path: web::Path<(String, String)>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
     let (role_str, reference_id_str) = path.into_inner();
@@ -90,9 +94,9 @@ async fn get_active_materials(
 #[get("/type/{material_type}/role/{role}/reference/{reference_id}")]
 async fn get_by_type_and_reference(
     path: web::Path<(String, String, String)>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
     let (material_type_str, role_str, reference_id_str) = path.into_inner();
@@ -130,8 +134,8 @@ async fn get_by_type_and_reference(
 }
 
 #[get("/{id}")]
-async fn get_material_by_id(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+async fn get_material_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
     let material_id = IdType::from_string(path.into_inner());
@@ -146,7 +150,7 @@ async fn get_material_by_id(path: web::Path<String>, db: web::Data<Database>) ->
 async fn create_material(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<SubjectLearningMaterial>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -156,11 +160,28 @@ async fn create_material(
         }));
     }
 
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
     match service.create_material(data.into_inner()).await {
-        Ok(material) => HttpResponse::Created().json(material),
+        Ok(material) => {
+            // 🔔 Broadcast real-time event
+            let material_clone = material.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = material_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "subject_learning_material",
+                        &id.to_hex(),
+                        &material_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(material)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -170,7 +191,7 @@ async fn update_material(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<UpdateSubjectLearningMaterial>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -181,14 +202,31 @@ async fn update_material(
     }
 
     let material_id = IdType::from_string(path.into_inner());
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
     match service
         .update_material(&material_id, data.into_inner())
         .await
     {
-        Ok(material) => HttpResponse::Ok().json(material),
+        Ok(material) => {
+            // 🔔 Broadcast real-time event
+            let material_clone = material.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = material_clone.id {
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "subject_learning_material",
+                        &id.to_hex(),
+                        &material_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Ok().json(material)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -197,7 +235,7 @@ async fn update_material(
 async fn toggle_material_status(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<(String, bool)>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -209,14 +247,31 @@ async fn toggle_material_status(
 
     let (material_id_str, is_active) = path.into_inner();
     let material_id = IdType::from_string(material_id_str);
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
     match service
         .toggle_material_status(&material_id, is_active)
         .await
     {
-        Ok(material) => HttpResponse::Ok().json(material),
+        Ok(material) => {
+            // 🔔 Broadcast real-time event for status change
+            let material_clone = material.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = material_clone.id {
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "subject_learning_material",
+                        &id.to_hex(),
+                        &material_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Ok().json(material)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -225,7 +280,7 @@ async fn toggle_material_status(
 async fn delete_material(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -236,13 +291,34 @@ async fn delete_material(
     }
 
     let material_id = IdType::from_string(path.into_inner());
-    let repo = SubjectLearningMaterialRepo::new(db.get_ref());
+    let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
+    // Get material before deletion for broadcasting
+    let material_before_delete = repo.find_by_id(&material_id).await.ok().flatten();
+
     match service.delete_material(&material_id).await {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
-            "message": "Learning material deleted successfully"
-        })),
+        Ok(_) => {
+            // 🔔 Broadcast real-time event
+            if let Some(material) = material_before_delete {
+                let state_clone = state.clone();
+                actix_rt::spawn(async move {
+                    if let Some(id) = material.id {
+                        EventService::broadcast_deleted(
+                            &state_clone,
+                            "subject_learning_material",
+                            &id.to_hex(),
+                            &material,
+                        )
+                        .await;
+                    }
+                });
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "Learning material deleted successfully"
+            }))
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }

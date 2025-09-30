@@ -1,17 +1,18 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
-use mongodb::Database;
 
 use crate::{
+    config::state::AppState,
     domain::auth_user::AuthUserDto,
     domain::subjects::subject_topic::{SubjectTopic, UpdateSubjectTopic},
     models::{id_model::IdType, request_error_model::ReqErrModel},
-    repositories::subjects::subject_topic_repo::SubjectTopicRepo, // ✅ repository
-    services::subjects::subject_topic_service::SubjectTopicService, // ✅ service
+    repositories::subjects::subject_topic_repo::SubjectTopicRepo,
+    services::event_service::EventService,
+    services::subjects::subject_topic_service::SubjectTopicService,
 };
 
 #[get("")]
-async fn get_all_subject_topics(db: web::Data<Database>) -> impl Responder {
-    let repo = SubjectTopicRepo::new(db.get_ref());
+async fn get_all_subject_topics(state: web::Data<AppState>) -> impl Responder {
+    let repo = SubjectTopicRepo::new(&state.db);
     let service = SubjectTopicService::new(&repo);
 
     match service.get_all_topics().await {
@@ -23,9 +24,9 @@ async fn get_all_subject_topics(db: web::Data<Database>) -> impl Responder {
 #[get("/{id}")]
 async fn get_subject_topic_by_id(
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectTopicRepo::new(db.get_ref());
+    let repo = SubjectTopicRepo::new(&state.db);
     let service = SubjectTopicService::new(&repo);
 
     let topic_id = IdType::from_string(path.into_inner());
@@ -40,7 +41,7 @@ async fn get_subject_topic_by_id(
 async fn create_subject_topic(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<SubjectTopic>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -51,11 +52,28 @@ async fn create_subject_topic(
         }));
     }
 
-    let repo = SubjectTopicRepo::new(db.get_ref());
+    let repo = SubjectTopicRepo::new(&state.db);
     let service = SubjectTopicService::new(&repo);
 
     match service.create_topic(data.into_inner()).await {
-        Ok(topic) => HttpResponse::Created().json(topic),
+        Ok(topic) => {
+            // 🔔 Broadcast real-time event
+            let topic_clone = topic.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = topic_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "subject_topic",
+                        &id.to_hex(),
+                        &topic_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(topic)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -65,7 +83,7 @@ async fn update_subject_topic(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<UpdateSubjectTopic>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -76,11 +94,28 @@ async fn update_subject_topic(
     }
 
     let topic_id = IdType::from_string(path.into_inner());
-    let repo = SubjectTopicRepo::new(db.get_ref());
+    let repo = SubjectTopicRepo::new(&state.db);
     let service = SubjectTopicService::new(&repo);
 
     match service.update_topic(&topic_id, data.into_inner()).await {
-        Ok(topic) => HttpResponse::Ok().json(topic),
+        Ok(topic) => {
+            // 🔔 Broadcast real-time event
+            let topic_clone = topic.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = topic_clone.id {
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "subject_topic",
+                        &id.to_hex(),
+                        &topic_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Ok().json(topic)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -89,7 +124,7 @@ async fn update_subject_topic(
 async fn delete_subject_topic(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -100,13 +135,34 @@ async fn delete_subject_topic(
     }
 
     let topic_id = IdType::from_string(path.into_inner());
-    let repo = SubjectTopicRepo::new(db.get_ref());
+    let repo = SubjectTopicRepo::new(&state.db);
     let service = SubjectTopicService::new(&repo);
 
+    // Get topic before deletion for broadcasting
+    let topic_before_delete = repo.find_by_id(&topic_id).await.ok().flatten();
+
     match service.delete_topic(&topic_id).await {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
-            "message": "Subject topic deleted successfully"
-        })),
+        Ok(_) => {
+            // 🔔 Broadcast real-time event
+            if let Some(topic) = topic_before_delete {
+                let state_clone = state.clone();
+                actix_rt::spawn(async move {
+                    if let Some(id) = topic.id {
+                        EventService::broadcast_deleted(
+                            &state_clone,
+                            "subject_topic",
+                            &id.to_hex(),
+                            &topic,
+                        )
+                        .await;
+                    }
+                });
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "Subject topic deleted successfully"
+            }))
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }

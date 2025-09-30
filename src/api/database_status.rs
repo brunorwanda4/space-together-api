@@ -1,12 +1,12 @@
 use actix_web::{get, web, HttpResponse, Responder};
-use mongodb::Database;
 
 use crate::{
-    models::request_error_model::ReqErrModel, services::database_status_service::get_database_stats,
+    config::state::AppState, models::request_error_model::ReqErrModel,
+    services::database_status_service::get_database_stats,
 };
 
 #[get("/status")]
-pub async fn db_status(_: web::Data<Database>) -> impl Responder {
+pub async fn db_status(_: web::Data<AppState>) -> impl Responder {
     let service = get_database_stats().await;
 
     match service {

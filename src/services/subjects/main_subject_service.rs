@@ -1,5 +1,5 @@
 use crate::{
-    domain::subjects::main_subject::{MainSubject, UpdateMainSubject},
+    domain::subjects::main_subject::{MainSubject, MainSubjectWithOthers, UpdateMainSubject},
     models::id_model::IdType,
     repositories::subjects::main_subject_repo::MainSubjectRepo,
 };
@@ -21,6 +21,16 @@ impl<'a> MainSubjectService<'a> {
     ) -> Result<Vec<MainSubject>, String> {
         self.repo
             .find_by_main_class_id(id)
+            .await
+            .map_err(|e| e.message.clone())
+    }
+    // get main subject and other with main subject id
+    pub async fn get_subjects_with_others_by_main_subject_id(
+        &self,
+        id: &IdType,
+    ) -> Result<Option<MainSubjectWithOthers>, String> {
+        self.repo
+            .find_by_id_with_others(id)
             .await
             .map_err(|e| e.message.clone())
     }

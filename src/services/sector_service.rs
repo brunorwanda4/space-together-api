@@ -3,6 +3,7 @@ use crate::{
     models::id_model::IdType,
     repositories::sector_repo::SectorRepo,
     services::cloudinary_service::CloudinaryService,
+    utils::names::is_valid_username,
 };
 use chrono::Utc;
 use mongodb::bson::oid::ObjectId;
@@ -23,6 +24,8 @@ impl<'a> SectorService<'a> {
 
     /// Create a new sector
     pub async fn create_sector(&self, mut new_sector: Sector) -> Result<Sector, String> {
+        is_valid_username(&new_sector.username)?;
+
         if let Ok(Some(_)) = self.repo.find_by_username(&new_sector.username).await {
             return Err("username already exists".to_string());
         }
@@ -78,6 +81,10 @@ impl<'a> SectorService<'a> {
         id: &IdType,
         updated_data: UpdateSector,
     ) -> Result<Sector, String> {
+        if let Some(ref username) = updated_data.username {
+            is_valid_username(username)?;
+        }
+
         let mut sector_to_update = self
             .repo
             .find_by_id(id)

@@ -1,17 +1,18 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
-use mongodb::Database;
 
 use crate::{
+    config::state::AppState,
     domain::auth_user::AuthUserDto,
     domain::sector::{Sector, UpdateSector},
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::sector_repo::SectorRepo,
+    services::event_service::EventService,
     services::sector_service::SectorService,
 };
 
 #[get("")]
-async fn get_all_sectors(db: web::Data<Database>) -> impl Responder {
-    let repo = SectorRepo::new(db.get_ref());
+async fn get_all_sectors(state: web::Data<AppState>) -> impl Responder {
+    let repo = SectorRepo::new(&state.db);
     let service = SectorService::new(&repo);
 
     match service.get_all_sectors().await {
@@ -21,8 +22,8 @@ async fn get_all_sectors(db: web::Data<Database>) -> impl Responder {
 }
 
 #[get("/{id}")]
-async fn get_sector_by_id(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = SectorRepo::new(db.get_ref());
+async fn get_sector_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+    let repo = SectorRepo::new(&state.db);
     let service = SectorService::new(&repo);
 
     let sector_id = IdType::from_string(path.into_inner());
@@ -36,9 +37,9 @@ async fn get_sector_by_id(path: web::Path<String>, db: web::Data<Database>) -> i
 #[get("/username/{username}")]
 async fn get_sector_by_username(
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SectorRepo::new(db.get_ref());
+    let repo = SectorRepo::new(&state.db);
     let service = SectorService::new(&repo);
 
     let username = path.into_inner();
@@ -53,7 +54,7 @@ async fn get_sector_by_username(
 async fn create_sector(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<Sector>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -63,11 +64,28 @@ async fn create_sector(
         }));
     }
 
-    let repo = SectorRepo::new(db.get_ref());
+    let repo = SectorRepo::new(&state.db);
     let service = SectorService::new(&repo);
 
     match service.create_sector(data.into_inner()).await {
-        Ok(sector) => HttpResponse::Created().json(sector),
+        Ok(sector) => {
+            // 🔔 Broadcast real-time event WITHOUT modifying service
+            let sector_clone = sector.clone();
+            let state_clone = state.clone();
+            actix_web::rt::spawn(async move {
+                if let Some(id) = sector_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "sector",
+                        &id.to_hex(),
+                        &sector_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(sector)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -77,7 +95,7 @@ async fn update_sector(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<UpdateSector>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -88,11 +106,28 @@ async fn update_sector(
     }
 
     let sector_id = IdType::from_string(path.into_inner());
-    let repo = SectorRepo::new(db.get_ref());
+    let repo = SectorRepo::new(&state.db);
     let service = SectorService::new(&repo);
 
     match service.update_sector(&sector_id, data.into_inner()).await {
-        Ok(sector) => HttpResponse::Ok().json(sector),
+        Ok(sector) => {
+            // 🔔 Broadcast real-time event WITHOUT modifying service
+            let sector_clone = sector.clone();
+            let state_clone = state.clone();
+            actix_web::rt::spawn(async move {
+                if let Some(id) = sector_clone.id {
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "sector",
+                        &id.to_hex(),
+                        &sector_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Ok().json(sector)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -101,7 +136,7 @@ async fn update_sector(
 async fn delete_sector(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -112,13 +147,34 @@ async fn delete_sector(
     }
 
     let sector_id = IdType::from_string(path.into_inner());
-    let repo = SectorRepo::new(db.get_ref());
+    let repo = SectorRepo::new(&state.db);
     let service = SectorService::new(&repo);
 
+    // Get sector before deletion for broadcasting
+    let sector_before_delete = repo.find_by_id(&sector_id).await.ok().flatten();
+
     match service.delete_sector(&sector_id).await {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
-            "message": "Sector deleted successfully"
-        })),
+        Ok(_) => {
+            // 🔔 Broadcast real-time event WITHOUT modifying service
+            if let Some(sector) = sector_before_delete {
+                let state_clone = state.clone();
+                actix_web::rt::spawn(async move {
+                    if let Some(id) = sector.id {
+                        EventService::broadcast_deleted(
+                            &state_clone,
+                            "sector",
+                            &id.to_hex(),
+                            &sector,
+                        )
+                        .await;
+                    }
+                });
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "Sector deleted successfully"
+            }))
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }

@@ -2,6 +2,7 @@ use actix_web::web;
 
 mod auth;
 mod database_status;
+mod events;
 mod main_class;
 mod sector;
 mod students;
@@ -17,6 +18,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     users::init(cfg);
     trade::init(cfg);
     main_class::init(cfg);
+    events::init(cfg);
     subjects::main_subject::init(cfg);
     subjects::subject_topic::init(cfg);
     subjects::learning_outcome::init(cfg);

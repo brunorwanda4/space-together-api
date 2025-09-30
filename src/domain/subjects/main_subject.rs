@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     domain::subjects::{
-        subject_category::SubjectCategory, subject_contributor::SubjectContributor,
+        learning_outcome::LearningOutcomeWithOthers, subject_category::SubjectCategory,
+        subject_contributor::SubjectContributor, subject_grading_schemes::SubjectGradingScheme,
+        subject_progress_tracking_config::SubjectProgressTrackingConfig,
     },
     helpers::object_id_helpers,
 };
@@ -79,4 +81,19 @@ pub struct UpdateMainSubject {
     pub ending_year: Option<DateTime<Utc>>,
     pub created_by: Option<ObjectId>,
     pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MainSubjectWithOthers {
+    #[serde(flatten)]
+    pub subject: MainSubject,
+
+    #[serde(default)]
+    pub learning_outcome: Option<Vec<LearningOutcomeWithOthers>>,
+
+    #[serde(default)]
+    pub progress_tracking_config: Option<SubjectProgressTrackingConfig>,
+
+    #[serde(default)]
+    pub grading_schemes: Option<SubjectGradingScheme>,
 }

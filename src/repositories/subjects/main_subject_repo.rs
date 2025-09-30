@@ -1,11 +1,14 @@
-use crate::domain::subjects::main_subject::{MainSubject, UpdateMainSubject};
+use crate::domain::subjects::main_subject::{
+    MainSubject, MainSubjectWithOthers, UpdateMainSubject,
+};
 use crate::errors::AppError;
+use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::models::id_model::IdType;
 
 use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{self, doc, oid::ObjectId},
+    bson::{self, doc, oid::ObjectId, Document},
     options::IndexOptions,
     Collection, Database, IndexModel,
 };
@@ -19,6 +22,188 @@ impl MainSubjectRepo {
         Self {
             collection: db.collection::<MainSubject>("main_subjects"),
         }
+    }
+
+    /// Common pipeline for joining all related collections
+    fn main_subject_with_others_pipeline(match_stage: Document) -> Vec<Document> {
+        vec![
+            doc! { "$match": match_stage },
+            // Lookup learning outcomes
+            doc! {
+                "$lookup": {
+                    "from": "learning_outcomes",
+                    "localField": "_id",
+                    "foreignField": "subject_id",
+                    "as": "learning_outcome"
+                }
+            },
+            // Lookup progress tracking config
+            doc! {
+                "$lookup": {
+                    "from": "subject_progress_configs",
+                    "let": { "subject_id": "$_id" },
+                    "pipeline": [
+                        doc! {
+                            "$match": {
+                                "$expr": {
+                                    "$and": [
+                                        { "$eq": ["$reference_id", "$$subject_id"] },
+                                        { "$eq": ["$role", "MainSubject"] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    "as": "progress_tracking_config_arr"
+                }
+            },
+            // Convert progress tracking config array to single object
+            doc! {
+                "$addFields": {
+                    "progress_tracking_config": {
+                        "$arrayElemAt": ["$progress_tracking_config_arr", 0]
+                    }
+                }
+            },
+            // Lookup grading schemes
+            doc! {
+                "$lookup": {
+                    "from": "subject_grading_schemes",
+                    "let": { "subject_id": "$_id" },
+                    "pipeline": [
+                        doc! {
+                            "$match": {
+                                "$expr": {
+                                    "$and": [
+                                        { "$eq": ["$reference_id", "$$subject_id"] },
+                                        { "$eq": ["$role", "MainSubject"] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    "as": "grading_schemes_arr"
+                }
+            },
+            // Convert grading schemes array to single object
+            doc! {
+                "$addFields": {
+                    "grading_schemes": {
+                        "$arrayElemAt": ["$grading_schemes_arr", 0]
+                    }
+                }
+            },
+            // Remove temporary arrays
+            doc! {
+                "$project": {
+                    "progress_tracking_config_arr": 0,
+                    "grading_schemes_arr": 0
+                }
+            },
+            // Now lookup topics for each learning outcome and then learning materials for each topic
+            doc! {
+                "$addFields": {
+                    "learning_outcome": {
+                        "$map": {
+                            "input": "$learning_outcome",
+                            "as": "lo",
+                            "in": {
+                                "$mergeObjects": [
+                                    "$$lo",
+                                    {
+                                        "topics": {
+                                            "$map": {
+                                                "input": {
+                                                    "$filter": {
+                                                        "input": {
+                                                            "$let": {
+                                                                "vars": {
+                                                                    "lo_id": "$$lo._id"
+                                                                },
+                                                                "in": {
+                                                                    "$arrayElemAt": [
+                                                                        {
+                                                                            "$lookup": {
+                                                                                "from": "topics",
+                                                                                "localField": "$$lo_id",
+                                                                                "foreignField": "learning_outcome_id",
+                                                                                "as": "topics"
+                                                                            }
+                                                                        },
+                                                                        "topics"
+                                                                    ]
+                                                                }
+                                                            }
+                                                        },
+                                                        "as": "topic",
+                                                        "cond": { "$ne": ["$$topic", null] }
+                                                    }
+                                                },
+                                                "as": "topic",
+                                                "in": {
+                                                    "$mergeObjects": [
+                                                        "$$topic",
+                                                        {
+                                                            "learning_materials": {
+                                                                "$filter": {
+                                                                    "input": {
+                                                                        "$let": {
+                                                                            "vars": {
+                                                                                "topic_id": "$$topic._id"
+                                                                            },
+                                                                            "in": {
+                                                                                "$arrayElemAt": [
+                                                                                    {
+                                                                                        "$lookup": {
+                                                                                            "from": "subject_learning_materials",
+                                                                                            "localField": "$$topic_id",
+                                                                                            "foreignField": "reference_id",
+                                                                                            "as": "learning_materials"
+                                                                                        }
+                                                                                    },
+                                                                                    "learning_materials"
+                                                                                ]
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    "as": "lm",
+                                                                    "cond": {
+                                                                        "$and": [
+                                                                            { "$eq": ["$$lm.role", "SubjectTopic"] },
+                                                                            { "$ne": ["$$lm", null] }
+                                                                        ]
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+        ]
+    }
+
+    /// Find by id with all related collections
+    pub async fn find_by_id_with_others(
+        &self,
+        id: &IdType,
+    ) -> Result<Option<MainSubjectWithOthers>, AppError> {
+        let obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
+            message: format!("Failed to parse id: {}", e),
+        })?;
+
+        aggregate_single(
+            &self.collection.clone().clone_with_type::<Document>(),
+            Self::main_subject_with_others_pipeline(doc! { "_id": obj_id }),
+        )
+        .await
     }
 
     /// Find by id
@@ -71,6 +256,17 @@ impl MainSubjectRepo {
             .map_err(|e| AppError {
                 message: format!("Failed to find main subject by code: {}", e),
             })
+    }
+
+    /// Get all main subjects with all related collections
+    pub async fn get_all_subjects_with_others(
+        &self,
+    ) -> Result<Vec<MainSubjectWithOthers>, AppError> {
+        aggregate_many(
+            &self.collection.clone().clone_with_type::<Document>(),
+            Self::main_subject_with_others_pipeline(doc! {}),
+        )
+        .await
     }
 
     /// Insert new main subject
