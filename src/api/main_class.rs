@@ -1,20 +1,23 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
-use mongodb::Database;
 
 use crate::{
+    config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
         main_class::{MainClass, UpdateMainClass},
     },
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::{main_class_repo::MainClassRepo, trade_repo::TradeRepo},
-    services::{main_class_service::MainClassService, trade_service::TradeService},
+    services::{
+        event_service::EventService, main_class_service::MainClassService,
+        trade_service::TradeService,
+    },
 };
 
 #[get("/trade")]
-async fn get_all_main_classes_with_trade(db: web::Data<Database>) -> impl Responder {
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+async fn get_all_main_classes_with_trade(state: web::Data<AppState>) -> impl Responder {
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -25,9 +28,9 @@ async fn get_all_main_classes_with_trade(db: web::Data<Database>) -> impl Respon
 }
 
 #[get("")]
-async fn get_all_main_classes(db: web::Data<Database>) -> impl Responder {
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+async fn get_all_main_classes(state: web::Data<AppState>) -> impl Responder {
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -38,9 +41,12 @@ async fn get_all_main_classes(db: web::Data<Database>) -> impl Responder {
 }
 
 #[get("/{id}")]
-async fn get_main_class_by_id(path: web::Path<String>, db: web::Data<Database>) -> impl Responder {
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+async fn get_main_class_by_id(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -55,10 +61,10 @@ async fn get_main_class_by_id(path: web::Path<String>, db: web::Data<Database>) 
 #[get("/username/{username}")]
 async fn get_main_class_by_username(
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -70,13 +76,13 @@ async fn get_main_class_by_username(
     }
 }
 
-#[get("/others/{username}")]
+#[get("/others/{id}")]
 async fn get_main_class_by_id_with_others(
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -91,10 +97,10 @@ async fn get_main_class_by_id_with_others(
 #[get("/username/others/{username}")]
 async fn get_main_class_by_username_with_others(
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -110,7 +116,7 @@ async fn get_main_class_by_username_with_others(
 async fn create_main_class(
     user: web::ReqData<AuthUserDto>,
     data: web::Json<MainClass>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -120,13 +126,30 @@ async fn create_main_class(
         }));
     }
 
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
     match service.create_main_class(data.into_inner()).await {
-        Ok(item) => HttpResponse::Created().json(item),
+        Ok(item) => {
+            // 🔔 Broadcast real-time event
+            let item_clone = item.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = item_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "main_class",
+                        &id.to_hex(),
+                        &item_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Created().json(item)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -136,7 +159,7 @@ async fn update_main_class(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<UpdateMainClass>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -147,13 +170,30 @@ async fn update_main_class(
     }
 
     let id = IdType::from_string(path.into_inner());
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
     match service.update(&id, data.into_inner()).await {
-        Ok(item) => HttpResponse::Ok().json(item),
+        Ok(item) => {
+            // 🔔 Broadcast real-time event
+            let item_clone = item.clone();
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                if let Some(id) = item_clone.id {
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "main_class",
+                        &id.to_hex(),
+                        &item_clone,
+                    )
+                    .await;
+                }
+            });
+
+            HttpResponse::Ok().json(item)
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
@@ -162,7 +202,7 @@ async fn update_main_class(
 async fn delete_main_class(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    db: web::Data<Database>,
+    state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -173,15 +213,36 @@ async fn delete_main_class(
     }
 
     let id = IdType::from_string(path.into_inner());
-    let repo = MainClassRepo::new(db.get_ref());
-    let trade_repo = TradeRepo::new(db.get_ref());
+    let repo = MainClassRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db);
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
+    // Get main_class before deletion for broadcasting
+    let main_class_before_delete = repo.find_by_id(&id).await.ok().flatten();
+
     match service.delete(&id).await {
-        Ok(_) => HttpResponse::Ok().json(serde_json::json!({
-            "message": "MainClass deleted successfully"
-        })),
+        Ok(_) => {
+            // 🔔 Broadcast real-time event
+            if let Some(main_class) = main_class_before_delete {
+                let state_clone = state.clone();
+                actix_rt::spawn(async move {
+                    if let Some(id) = main_class.id {
+                        EventService::broadcast_deleted(
+                            &state_clone,
+                            "main_class",
+                            &id.to_hex(),
+                            &main_class,
+                        )
+                        .await;
+                    }
+                });
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "MainClass deleted successfully"
+            }))
+        }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
