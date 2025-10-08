@@ -40,6 +40,13 @@ impl<'a> MainSubjectService<'a> {
         self.repo.get_all_subjects().await.map_err(|e| e.message)
     }
 
+    pub async fn get_all_subjects_with_others(&self) -> Result<Vec<MainSubjectWithOthers>, String> {
+        self.repo
+            .get_all_subjects_with_others()
+            .await
+            .map_err(|e| e.message)
+    }
+
     /// Create a new subject
     pub async fn create_subject(
         &self,

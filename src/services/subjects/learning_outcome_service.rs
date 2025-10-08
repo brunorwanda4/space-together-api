@@ -1,5 +1,7 @@
 use crate::{
-    domain::subjects::learning_outcome::{LearningOutcome, UpdateLearningOutcome},
+    domain::subjects::learning_outcome::{
+        LearningOutcome, LearningOutcomeWithOthers, UpdateLearningOutcome,
+    },
     models::id_model::IdType,
     repositories::subjects::learning_outcome_repo::LearningOutcomeRepo,
 };
@@ -20,14 +22,62 @@ impl<'a> LearningOutcomeService<'a> {
         self.repo.get_all_outcomes().await.map_err(|e| e.message)
     }
 
+    pub async fn get_outcome_with_topics_by_id(
+        &self,
+        id: &IdType,
+    ) -> Result<LearningOutcomeWithOthers, String> {
+        self.repo
+            .find_by_id_with_topics(id)
+            .await
+            .map_err(|e| e.message.clone())?
+            .ok_or_else(|| "Learning outcome not found".to_string())
+    }
+
+    /// ✅ Get all learning outcomes for a subject with topics + materials
+    pub async fn get_outcomes_with_topics_by_subject(
+        &self,
+        subject_id: &IdType,
+    ) -> Result<Vec<LearningOutcomeWithOthers>, String> {
+        self.repo
+            .find_by_subject_with_topics(subject_id)
+            .await
+            .map_err(|e| e.message)
+    }
+
+    /// Get by subject id
+    pub async fn get_by_subject_id(
+        &self,
+        subject_id: &IdType,
+    ) -> Result<Vec<LearningOutcome>, String> {
+        self.repo
+            .find_by_subject_id(subject_id)
+            .await
+            .map_err(|e| e.message)
+    }
+
     /// Create a new learning outcome
     pub async fn create_outcome(
         &self,
         mut new_outcome: LearningOutcome,
     ) -> Result<LearningOutcome, String> {
-        // ✅ Check if outcome title already exists for the same subject
+        // 🚫 Prevent duplicate titles within same subject
         if let Ok(Some(_)) = self.repo.find_by_title(&new_outcome.title).await {
             return Err("Learning outcome title already exists".to_string());
+        }
+
+        // 🚫 Prevent invalid order
+        if new_outcome.order <= 0 {
+            return Err("Order must be greater than 0".to_string());
+        }
+
+        // 🚫 Prevent duplicate order for the same subject
+        if let Some(subject_id) = &new_outcome.subject_id {
+            if let Ok(Some(_)) = self.repo.find_by_order(subject_id, new_outcome.order).await {
+                return Err(format!(
+                    "Learning outcome order {} already exists for this subject",
+                    new_outcome.order
+                ));
+            }
         }
 
         let now = Some(Utc::now());
@@ -69,7 +119,7 @@ impl<'a> LearningOutcomeService<'a> {
         id: &IdType,
         updated_data: UpdateLearningOutcome,
     ) -> Result<LearningOutcome, String> {
-        // Fetch learning outcome
+        // Fetch existing outcome
         let outcome = self
             .repo
             .find_by_id(id)
@@ -77,11 +127,30 @@ impl<'a> LearningOutcomeService<'a> {
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "Learning outcome not found".to_string())?;
 
-        // Prevent duplicate titles if title is being updated
+        // 🚫 Prevent duplicate titles
         if let Some(ref new_title) = updated_data.title {
             if outcome.title != *new_title {
                 if let Ok(Some(_)) = self.repo.find_by_title(new_title).await {
                     return Err("Learning outcome title already exists".to_string());
+                }
+            }
+        }
+
+        // 🚫 Prevent invalid order
+        if let Some(new_order) = updated_data.order {
+            if new_order <= 0 {
+                return Err("Order must be greater than 0".to_string());
+            }
+
+            if let Some(subject_id) = outcome.subject_id {
+                if let Ok(Some(existing)) = self.repo.find_by_order(&subject_id, new_order).await {
+                    // Make sure it’s not the same record
+                    if existing.id != outcome.id {
+                        return Err(format!(
+                            "Learning outcome order {} already exists for this subject",
+                            new_order
+                        ));
+                    }
                 }
             }
         }

@@ -37,6 +37,46 @@ async fn get_subject_topic_by_id(
     }
 }
 
+#[get("/learning-outcome/{learning_outcome_id}")]
+async fn get_topics_by_learning_outcome(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = SubjectTopicRepo::new(&state.db);
+    let service = SubjectTopicService::new(&repo);
+
+    let learning_outcome_id = IdType::from_string(path.into_inner());
+
+    match service
+        .get_topics_by_learning_outcome_and_parent(&learning_outcome_id, None)
+        .await
+    {
+        Ok(topics) => HttpResponse::Ok().json(topics),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/learning-outcome/{learning_outcome_id}/parent/{parent_topic_id}")]
+async fn get_topics_by_learning_outcome_and_parent(
+    path: web::Path<(String, String)>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let (learning_outcome_str, parent_topic_str) = path.into_inner();
+    let learning_outcome_id = IdType::from_string(learning_outcome_str);
+    let parent_topic_id = IdType::from_string(parent_topic_str);
+
+    let repo = SubjectTopicRepo::new(&state.db);
+    let service = SubjectTopicService::new(&repo);
+
+    match service
+        .get_topics_by_learning_outcome_and_parent(&learning_outcome_id, Some(&parent_topic_id))
+        .await
+    {
+        Ok(topics) => HttpResponse::Ok().json(topics),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
 #[post("")]
 async fn create_subject_topic(
     user: web::ReqData<AuthUserDto>,
@@ -172,6 +212,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/subject-topics")
             // Public routes
             .service(get_all_subject_topics) // GET /subject-topics
+            .service(get_topics_by_learning_outcome) // /subject-topics/learning-outcome/{learning_outcome_id}
+            .service(get_topics_by_learning_outcome_and_parent) //subject-topics/learning-outcome/{learning_outcome_id}/parent/{parent_topic_id}
             .service(get_subject_topic_by_id) // GET /subject-topics/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

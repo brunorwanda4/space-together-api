@@ -69,6 +69,17 @@ async fn get_subject_with_others_by_id(
     }
 }
 
+#[get("/others")]
+async fn get_all_subjects_with_others(state: web::Data<AppState>) -> impl Responder {
+    let repo = MainSubjectRepo::new(&state.db);
+    let service = MainSubjectService::new(&repo);
+
+    match service.get_all_subjects_with_others().await {
+        Ok(subject) => HttpResponse::Ok().json(subject),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
 #[get("/code/{code}")]
 async fn get_subject_by_code(
     path: web::Path<String>,
@@ -220,6 +231,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_all_subjects) // GET /main-subjects
             .service(get_subjects_by_main_class_id) // GET /main-subjects/main-class/{id}
             .service(get_subject_by_code) // GET /main-subjects/code/{code}
+            .service(get_all_subjects_with_others) // GET /main-subjects/others
             .service(get_subject_with_others_by_id) // GET /main-subjects/others/{id}
             .service(get_subject_by_id) // GET /main-subjects/{id}
             // Protected routes

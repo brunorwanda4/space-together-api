@@ -21,6 +21,50 @@ async fn get_all_outcomes(state: web::Data<AppState>) -> impl Responder {
     }
 }
 
+#[get("/subject/{id}")]
+async fn get_by_subject_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+    let repo = LearningOutcomeRepo::new(&state.db);
+    let service = LearningOutcomeService::new(&repo);
+    let subject_id = IdType::from_string(path.into_inner());
+    match service.get_by_subject_id(&subject_id).await {
+        Ok(outcomes) => HttpResponse::Ok().json(outcomes),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/subject/others/{id}")]
+async fn get_outcomes_with_topics_by_subject(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = LearningOutcomeRepo::new(&state.db);
+    let service = LearningOutcomeService::new(&repo);
+    let subject_id = IdType::from_string(path.into_inner());
+
+    match service
+        .get_outcomes_with_topics_by_subject(&subject_id)
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/others/{id}")]
+async fn get_outcome_with_topics_by_id(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = LearningOutcomeRepo::new(&state.db);
+    let service = LearningOutcomeService::new(&repo);
+    let id = IdType::from_string(path.into_inner());
+
+    match service.get_outcome_with_topics_by_id(&id).await {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
 #[get("/{id}")]
 async fn get_outcome_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
     let repo = LearningOutcomeRepo::new(&state.db);
@@ -184,7 +228,10 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/learning-outcomes")
             // Public routes
             .service(get_all_outcomes) // GET /learning-outcomes
+            .service(get_by_subject_id) // GET /learning-outcomes/subject/{id}
             .service(get_outcome_by_title) // GET /learning-outcomes/title/{title}
+            .service(get_outcomes_with_topics_by_subject) // GET /learning-outcomes/subject/others/{id}
+            .service(get_outcome_with_topics_by_id) // GET /learning-outcomes/others/{id}
             .service(get_outcome_by_id) // GET /learning-outcomes/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

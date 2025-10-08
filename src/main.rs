@@ -7,6 +7,7 @@ mod helpers;
 mod mappers;
 mod middleware;
 mod models;
+mod pipeline;
 mod repositories;
 mod services;
 mod utils;

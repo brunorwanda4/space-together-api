@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 
 use crate::{
     domain::subjects::{
@@ -10,6 +11,7 @@ use crate::{
     helpers::object_id_helpers,
 };
 
+/// Main Learning Outcome struct
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LearningOutcome {
     #[serde(
@@ -44,6 +46,7 @@ pub struct LearningOutcome {
         default
     )]
     pub prerequisites: Option<Vec<ObjectId>>, // Reference other outcomes
+
     pub is_mandatory: Option<bool>,
 
     #[serde(
@@ -61,6 +64,7 @@ pub struct LearningOutcome {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+/// Update struct for LearningOutcome
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateLearningOutcome {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,11 +98,38 @@ pub struct UpdateLearningOutcome {
     pub is_mandatory: Option<bool>,
 }
 
+/// LearningOutcome with nested topics
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LearningOutcomeWithOthers {
     #[serde(flatten)]
     pub learning_out: LearningOutcome,
 
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_topics_option")]
     pub topics: Option<Vec<SubjectTopicWithOthers>>,
+}
+
+/// Custom deserializer for topics
+fn deserialize_topics_option<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<SubjectTopicWithOthers>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Array(arr) => {
+            let topics: Vec<SubjectTopicWithOthers> = arr
+                .into_iter()
+                .map(|v| serde_json::from_value(v).map_err(serde::de::Error::custom))
+                .collect::<Result<_, _>>()?;
+            Ok(Some(topics))
+        }
+        Value::Object(map) => {
+            let topic: SubjectTopicWithOthers =
+                serde_json::from_value(Value::Object(map)).map_err(serde::de::Error::custom)?;
+            Ok(Some(vec![topic]))
+        }
+        Value::Null => Ok(None),
+        _ => Err(serde::de::Error::custom("invalid type for topics")),
+    }
 }

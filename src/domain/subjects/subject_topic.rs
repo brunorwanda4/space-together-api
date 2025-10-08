@@ -71,7 +71,9 @@ pub struct UpdateSubjectTopic {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SubjectTopicWithOthers {
     #[serde(flatten)]
-    pub topic: SubjectTopic,
+    pub topic: SubjectTopic, // merge fields of SubjectTopic at top level
+
+    pub sub_topics: Option<Vec<SubjectTopicWithOthers>>, // nested array, do NOT flatten
 
     #[serde(default)]
     pub learning_materials: Option<Vec<SubjectLearningMaterial>>,
