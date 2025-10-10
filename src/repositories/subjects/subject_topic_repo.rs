@@ -23,18 +23,20 @@ impl SubjectTopicRepo {
     }
 
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
-        let index1 = IndexModel::builder()
-            .keys(doc! { "learning_outcome_id": 1, "order": 1 })
-            .options(IndexOptions::builder().unique(true).sparse(true).build())
+        // Unique index: one learning outcome can't have two topics with the same order
+        let index = IndexModel::builder()
+            .keys(doc! { "learning_outcome_id": 1, "learning_outcome_id" : 1, "order": 1 })
+            .options(IndexOptions::builder().unique(true).build())
             .build();
 
-        let index2 = IndexModel::builder()
-            .keys(doc! { "parent_topic_id": 1, "order": 1 })
-            .options(IndexOptions::builder().unique(true).sparse(true).build())
+        // Optionally, a normal (non-unique) index on parent_topic_id for faster lookups
+        let parent_index = IndexModel::builder()
+            .keys(doc! { "parent_topic_id": 1, "learning_outcome_id" : 1, "order" : 1 })
+            .options(IndexOptions::builder().build())
             .build();
 
         self.collection
-            .create_indexes(vec![index1, index2])
+            .create_indexes(vec![index, parent_index])
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to create indexes: {}", e),

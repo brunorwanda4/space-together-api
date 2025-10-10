@@ -215,9 +215,9 @@ async fn delete_outcome(
                 });
             }
 
-            HttpResponse::Ok().json(serde_json::json!({
-                "message": "Learning outcome deleted successfully"
-            }))
+            HttpResponse::Ok().json(ReqErrModel {
+                message: "Learning outcome deleted successfully".to_string(),
+            })
         }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
