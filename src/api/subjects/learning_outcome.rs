@@ -12,7 +12,7 @@ use crate::{
 
 #[get("")]
 async fn get_all_outcomes(state: web::Data<AppState>) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
 
     match service.get_all_outcomes().await {
@@ -23,7 +23,7 @@ async fn get_all_outcomes(state: web::Data<AppState>) -> impl Responder {
 
 #[get("/subject/{id}")]
 async fn get_by_subject_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
     let subject_id = IdType::from_string(path.into_inner());
     match service.get_by_subject_id(&subject_id).await {
@@ -37,7 +37,7 @@ async fn get_outcomes_with_topics_by_subject(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
     let subject_id = IdType::from_string(path.into_inner());
 
@@ -55,7 +55,7 @@ async fn get_outcome_with_topics_by_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
     let id = IdType::from_string(path.into_inner());
 
@@ -67,7 +67,7 @@ async fn get_outcome_with_topics_by_id(
 
 #[get("/{id}")]
 async fn get_outcome_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
 
     let outcome_id = IdType::from_string(path.into_inner());
@@ -83,7 +83,7 @@ async fn get_outcome_by_title(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
 
     let title = path.into_inner();
@@ -108,7 +108,7 @@ async fn create_outcome(
         }));
     }
 
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
 
     match service.create_outcome(data.into_inner()).await {
@@ -150,7 +150,7 @@ async fn update_outcome(
     }
 
     let outcome_id = IdType::from_string(path.into_inner());
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
 
     match service.update_outcome(&outcome_id, data.into_inner()).await {
@@ -191,7 +191,7 @@ async fn delete_outcome(
     }
 
     let outcome_id = IdType::from_string(path.into_inner());
-    let repo = LearningOutcomeRepo::new(&state.db);
+    let repo = LearningOutcomeRepo::new(&state.db.main_db());
     let service = LearningOutcomeService::new(&repo);
 
     // Get outcome before deletion for broadcasting

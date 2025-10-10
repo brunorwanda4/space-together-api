@@ -14,7 +14,7 @@ use crate::{
 
 #[get("")]
 async fn get_all_trades(state: web::Data<AppState>) -> impl Responder {
-    let repo = TradeRepo::new(&state.db);
+    let repo = TradeRepo::new(&state.db.main_db());
     let service = TradeService::new(&repo);
 
     match service.get_all_trades().await {
@@ -25,7 +25,7 @@ async fn get_all_trades(state: web::Data<AppState>) -> impl Responder {
 
 #[get("/others")]
 async fn get_all_trades_with_others(state: web::Data<AppState>) -> impl Responder {
-    let repo = TradeRepo::new(&state.db);
+    let repo = TradeRepo::new(&state.db.main_db());
     let service = TradeService::new(&repo);
 
     match service.get_all_trades_with_others().await {
@@ -36,7 +36,7 @@ async fn get_all_trades_with_others(state: web::Data<AppState>) -> impl Responde
 
 #[get("/{id}")]
 async fn get_trade_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = TradeRepo::new(&state.db);
+    let repo = TradeRepo::new(&state.db.main_db());
     let service = TradeService::new(&repo);
 
     let trade_id = IdType::from_string(path.into_inner());
@@ -52,7 +52,7 @@ async fn get_trades_by_username(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = TradeRepo::new(&state.db);
+    let repo = TradeRepo::new(&state.db.main_db());
     let service = TradeService::new(&repo);
 
     let username = path.into_inner();
@@ -68,7 +68,7 @@ async fn get_trade_by_id_with_others(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = TradeRepo::new(&state.db);
+    let repo = TradeRepo::new(&state.db.main_db());
     let service = TradeService::new(&repo);
 
     let trade_id = IdType::from_string(path.into_inner());
@@ -84,7 +84,7 @@ async fn get_trades_by_username_with_others(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = TradeRepo::new(&state.db);
+    let repo = TradeRepo::new(&state.db.main_db());
     let service = TradeService::new(&repo);
 
     let username = path.into_inner();
@@ -109,10 +109,10 @@ async fn create_trade(
         }));
     }
 
-    let trade_repo = TradeRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
 
-    let sector_repo = SectorRepo::new(&state.db);
+    let sector_repo = SectorRepo::new(&state.db.main_db());
     let sector_service = SectorService::new(&sector_repo);
 
     match trade_service
@@ -157,10 +157,10 @@ async fn update_trade(
     }
 
     let trade_id = IdType::from_string(path.into_inner());
-    let trade_repo = TradeRepo::new(&state.db);
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
 
-    let sector_repo = SectorRepo::new(&state.db);
+    let sector_repo = SectorRepo::new(&state.db.main_db());
     let sector_service = SectorService::new(&sector_repo);
 
     match trade_service
@@ -204,7 +204,7 @@ async fn delete_trade(
     }
 
     let trade_id = IdType::from_string(path.into_inner());
-    let repo = TradeRepo::new(&state.db);
+    let repo = TradeRepo::new(&state.db.main_db());
     let service = TradeService::new(&repo);
 
     // Get trade before deletion for broadcasting

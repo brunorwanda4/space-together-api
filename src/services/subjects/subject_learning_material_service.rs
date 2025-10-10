@@ -293,11 +293,11 @@ impl<'a> SubjectLearningMaterialService<'a> {
 
             actix_rt::spawn(async move {
                 // Find which learning outcome this topic belongs to
-                let topic_repo = SubjectTopicRepo::new(&state_clone.db);
+                let topic_repo = SubjectTopicRepo::new(&state_clone.db.main_db());
                 if let Ok(Some(topic)) = topic_repo.find_by_id(&reference_id_type).await {
                     if let Some(learning_outcome_id) = topic.learning_outcome_id {
                         // Fetch and broadcast the updated learning outcome
-                        let lo_repo = LearningOutcomeRepo::new(&state_clone.db);
+                        let lo_repo = LearningOutcomeRepo::new(&state_clone.db.main_db());
                         if let Ok(Some(updated_lo)) = lo_repo
                             .find_by_id_with_topics(&IdType::from_object_id(learning_outcome_id))
                             .await

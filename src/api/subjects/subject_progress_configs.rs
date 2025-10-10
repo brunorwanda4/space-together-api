@@ -20,7 +20,7 @@ use crate::{
 
 #[get("")]
 async fn get_all_configs(state: web::Data<AppState>) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     match service.get_all_configs().await {
@@ -31,7 +31,7 @@ async fn get_all_configs(state: web::Data<AppState>) -> impl Responder {
 
 #[get("/{id}")]
 async fn get_config_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     let config_id = IdType::from_string(path.into_inner());
@@ -47,7 +47,7 @@ async fn get_config_by_subject_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     let subject_id = IdType::from_string(path.into_inner());
@@ -72,7 +72,7 @@ async fn create_config(
         }));
     }
 
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     match service.create_config(data.into_inner()).await {
@@ -112,7 +112,7 @@ async fn create_default_config(
         }));
     }
 
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     match service
@@ -157,7 +157,7 @@ async fn update_config(
     }
 
     let config_id = IdType::from_string(path.into_inner());
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     match service.update_config(&config_id, data.into_inner()).await {
@@ -198,7 +198,7 @@ async fn delete_config(
     }
 
     let config_id = IdType::from_string(path.into_inner());
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     // Get config before deletion for broadcasting
@@ -235,7 +235,7 @@ async fn get_configs_by_reference_ids(
     data: web::Json<ReferenceIdsRequest>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     // Parse into ObjectIds
@@ -262,7 +262,7 @@ async fn get_config_by_reference_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectProgressConfigsRepo::new(&state.db);
+    let repo = SubjectProgressConfigsRepo::new(&state.db.main_db());
     let service = SubjectProgressConfigsService::new(&repo);
 
     let reference_id = IdType::from_string(path.into_inner());

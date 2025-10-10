@@ -24,7 +24,7 @@ use crate::{
 
 #[get("")]
 async fn get_all_schemes(state: web::Data<AppState>) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service.get_all_schemes().await {
@@ -35,7 +35,7 @@ async fn get_all_schemes(state: web::Data<AppState>) -> impl Responder {
 
 #[get("/{id}")]
 async fn get_scheme_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     let scheme_id = IdType::from_string(path.into_inner());
@@ -51,7 +51,7 @@ async fn get_scheme_by_subject_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     let subject_id = IdType::from_string(path.into_inner());
@@ -67,7 +67,7 @@ async fn get_scheme_by_subject_and_role(
     path: web::Path<(String, String)>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     let (subject_id_str, role_str) = path.into_inner();
@@ -98,7 +98,7 @@ async fn get_schemes_by_type(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     let scheme_type_str = path.into_inner();
@@ -128,7 +128,7 @@ async fn calculate_grade(
     data: web::Json<HashMap<String, f32>>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     let scheme_id = IdType::from_string(path.into_inner());
@@ -151,7 +151,7 @@ async fn check_passing_grade(
     data: web::Json<HashMap<String, String>>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     let scheme_id = IdType::from_string(path.into_inner());
@@ -190,7 +190,7 @@ async fn create_scheme(
         }));
     }
 
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service.create_scheme(data.into_inner()).await {
@@ -230,7 +230,7 @@ async fn create_default_letter_grade_scheme(
         }));
     }
 
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service
@@ -273,7 +273,7 @@ async fn create_default_percentage_scheme(
         }));
     }
 
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service
@@ -318,7 +318,7 @@ async fn update_scheme(
     }
 
     let scheme_id = IdType::from_string(path.into_inner());
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     match service.update_scheme(&scheme_id, data.into_inner()).await {
@@ -359,7 +359,7 @@ async fn delete_scheme(
     }
 
     let scheme_id = IdType::from_string(path.into_inner());
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     // Get scheme before deletion for broadcasting
@@ -396,7 +396,7 @@ async fn get_scheme_by_reference_ids(
     data: web::Json<ReferenceIdsRequest>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectGradingSchemesRepo::new(&state.db);
+    let repo = SubjectGradingSchemesRepo::new(&state.db.main_db());
     let service = SubjectGradingSchemesService::new(&repo);
 
     // Parse into ObjectIds

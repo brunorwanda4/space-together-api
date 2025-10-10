@@ -15,7 +15,7 @@ async fn get_subjects_by_main_class_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
     let subject_id = IdType::from_string(path.into_inner());
@@ -28,7 +28,7 @@ async fn get_subjects_by_main_class_id(
 
 #[get("")]
 async fn get_all_subjects(state: web::Data<AppState>) -> impl Responder {
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
     match service.get_all_subjects().await {
@@ -39,7 +39,7 @@ async fn get_all_subjects(state: web::Data<AppState>) -> impl Responder {
 
 #[get("/{id}")]
 async fn get_subject_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
     let subject_id = IdType::from_string(path.into_inner());
@@ -55,7 +55,7 @@ async fn get_subject_with_others_by_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
     let subject_id = IdType::from_string(path.into_inner());
@@ -71,7 +71,7 @@ async fn get_subject_with_others_by_id(
 
 #[get("/others")]
 async fn get_all_subjects_with_others(state: web::Data<AppState>) -> impl Responder {
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
     match service.get_all_subjects_with_others().await {
@@ -85,7 +85,7 @@ async fn get_subject_by_code(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
     let code = path.into_inner();
 
@@ -109,7 +109,7 @@ async fn create_subject(
         }));
     }
 
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
     match service.create_subject(data.into_inner()).await {
@@ -151,7 +151,7 @@ async fn update_subject(
     }
 
     let subject_id = IdType::from_string(path.into_inner());
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
     match service.update_subject(&subject_id, data.into_inner()).await {
@@ -192,7 +192,7 @@ async fn delete_subject(
     }
 
     let subject_id = IdType::from_string(path.into_inner());
-    let repo = MainSubjectRepo::new(&state.db);
+    let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
     // Get subject before deletion for broadcasting

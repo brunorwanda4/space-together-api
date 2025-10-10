@@ -9,12 +9,14 @@ use crate::{
     utils::bytes::format_bytes,
 };
 
-pub async fn get_database_stats() -> Result<DatabaseStats, String> {
+pub async fn get_database_stats(db_name: &str) -> Result<DatabaseStats, String> {
     let uri = env::var("MONGO_URI").expect("❌ MONGO_URI not set in .env");
-    let options = ClientOptions::parse(uri.clone()).await.unwrap();
-    let client = Client::with_options(options).unwrap();
+    let options = ClientOptions::parse(uri.clone())
+        .await
+        .map_err(|e| e.to_string())?;
+    let client = Client::with_options(options).map_err(|e| e.to_string())?;
 
-    let database = client.database("space_together");
+    let database = client.database(db_name);
     let mut total_documents = 0;
     let mut total_size_bytes = 0;
     let mut collections_stats = Vec::new();

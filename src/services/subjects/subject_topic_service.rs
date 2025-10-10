@@ -354,7 +354,7 @@ impl<'a> SubjectTopicService<'a> {
 
         actix_rt::spawn(async move {
             // Fetch the updated learning outcome with all its topics and materials
-            let repo = LearningOutcomeRepo::new(&state_clone.db);
+            let repo = LearningOutcomeRepo::new(&state_clone.db.main_db());
             if let Ok(Some(updated_lo)) = repo
                 .find_by_id_with_topics(&IdType::from_object_id(lo_id_clone))
                 .await

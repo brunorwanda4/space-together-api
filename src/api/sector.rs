@@ -12,7 +12,7 @@ use crate::{
 
 #[get("")]
 async fn get_all_sectors(state: web::Data<AppState>) -> impl Responder {
-    let repo = SectorRepo::new(&state.db);
+    let repo = SectorRepo::new(&state.db.main_db());
     let service = SectorService::new(&repo);
 
     match service.get_all_sectors().await {
@@ -23,7 +23,7 @@ async fn get_all_sectors(state: web::Data<AppState>) -> impl Responder {
 
 #[get("/{id}")]
 async fn get_sector_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = SectorRepo::new(&state.db);
+    let repo = SectorRepo::new(&state.db.main_db());
     let service = SectorService::new(&repo);
 
     let sector_id = IdType::from_string(path.into_inner());
@@ -39,7 +39,7 @@ async fn get_sector_by_username(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SectorRepo::new(&state.db);
+    let repo = SectorRepo::new(&state.db.main_db());
     let service = SectorService::new(&repo);
 
     let username = path.into_inner();
@@ -64,7 +64,7 @@ async fn create_sector(
         }));
     }
 
-    let repo = SectorRepo::new(&state.db);
+    let repo = SectorRepo::new(&state.db.main_db());
     let service = SectorService::new(&repo);
 
     match service.create_sector(data.into_inner()).await {
@@ -106,7 +106,7 @@ async fn update_sector(
     }
 
     let sector_id = IdType::from_string(path.into_inner());
-    let repo = SectorRepo::new(&state.db);
+    let repo = SectorRepo::new(&state.db.main_db());
     let service = SectorService::new(&repo);
 
     match service.update_sector(&sector_id, data.into_inner()).await {
@@ -147,7 +147,7 @@ async fn delete_sector(
     }
 
     let sector_id = IdType::from_string(path.into_inner());
-    let repo = SectorRepo::new(&state.db);
+    let repo = SectorRepo::new(&state.db.main_db());
     let service = SectorService::new(&repo);
 
     // Get sector before deletion for broadcasting

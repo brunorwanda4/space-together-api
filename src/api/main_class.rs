@@ -16,8 +16,8 @@ use crate::{
 
 #[get("/trade")]
 async fn get_all_main_classes_with_trade(state: web::Data<AppState>) -> impl Responder {
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -29,8 +29,8 @@ async fn get_all_main_classes_with_trade(state: web::Data<AppState>) -> impl Res
 
 #[get("")]
 async fn get_all_main_classes(state: web::Data<AppState>) -> impl Responder {
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -45,8 +45,8 @@ async fn get_main_class_by_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -63,8 +63,8 @@ async fn get_main_class_by_username(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -81,8 +81,8 @@ async fn get_main_class_by_id_with_others(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -99,8 +99,8 @@ async fn get_main_class_by_username_with_others(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -126,8 +126,8 @@ async fn create_main_class(
         }));
     }
 
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -170,8 +170,8 @@ async fn update_main_class(
     }
 
     let id = IdType::from_string(path.into_inner());
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
@@ -213,8 +213,8 @@ async fn delete_main_class(
     }
 
     let id = IdType::from_string(path.into_inner());
-    let repo = MainClassRepo::new(&state.db);
-    let trade_repo = TradeRepo::new(&state.db);
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 

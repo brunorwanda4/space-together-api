@@ -23,9 +23,9 @@ async fn main() -> std::io::Result<()> {
     config::logger::init();
 
     let port = env::var("PORT").unwrap_or("4666".to_string());
-    let db = config::db::init_db().await;
 
-    let state = web::Data::new(config::state::AppState::new(db));
+    let mongo_manager = config::db::init_mongo_manager().await;
+    let state = web::Data::new(config::state::AppState::new(mongo_manager.clone()));
 
     println!("🚀 Space-Together backend running on http://127.0.0.1:{port}");
     println!("📡 Real-time events: http://127.0.0.1:{port}/events/stream");
@@ -39,7 +39,10 @@ async fn main() -> std::io::Result<()> {
 
         App::new()
             .wrap(cors)
-            .app_data(state.clone()) // Use the unified app state
+            .wrap(crate::middleware::tenant_middleware::TenantMiddleware::new(
+                mongo_manager.clone(),
+            ))
+            .app_data(state.clone())
             .configure(api::init_routes)
     })
     .bind(("127.0.0.1", port.parse::<u16>().unwrap()))?

@@ -22,7 +22,7 @@ struct UserQuery {
 
 #[get("")]
 async fn get_all_users(query: web::Query<UserQuery>, state: web::Data<AppState>) -> impl Responder {
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = UserService::new(&repo);
 
     match service
@@ -36,7 +36,7 @@ async fn get_all_users(query: web::Query<UserQuery>, state: web::Data<AppState>)
 
 #[get("/stats")]
 async fn get_user_stats(state: web::Data<AppState>) -> impl Responder {
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = UserService::new(&repo);
 
     match service.get_user_stats().await {
@@ -47,7 +47,7 @@ async fn get_user_stats(state: web::Data<AppState>) -> impl Responder {
 
 #[get("/{id}")]
 async fn get_user_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = UserService::new(&repo);
 
     let user_id = IdType::from_string(path.into_inner());
@@ -63,7 +63,7 @@ async fn get_user_by_username(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = UserService::new(&repo);
 
     let username = path.into_inner();
@@ -88,7 +88,7 @@ async fn create_user(
         }));
     }
 
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = UserService::new(&repo);
 
     match service.create_user(data.into_inner()).await {
@@ -141,7 +141,7 @@ async fn update_user(
     }
 
     let target_user_id = IdType::from_string(target_user_id_str);
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = UserService::new(&repo);
 
     match service
@@ -188,7 +188,7 @@ async fn delete_user(
     }
 
     let target_user_id = IdType::from_string(target_user_id_str);
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = UserService::new(&repo);
 
     // Get user before deletion for broadcasting

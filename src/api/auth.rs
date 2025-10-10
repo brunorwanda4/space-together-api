@@ -18,7 +18,7 @@ async fn register_user(
     data: web::Json<RegisterUser>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = AuthService::new(&repo);
 
     match service.register(data.into_inner()).await {
@@ -39,7 +39,7 @@ async fn register_user(
 
 #[post("/login")]
 async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> impl Responder {
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = AuthService::new(&repo);
 
     match service.login(data.into_inner()).await {
@@ -60,7 +60,7 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
 
 #[get("/me")]
 async fn get_me(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = AuthService::new(&repo);
 
     let token = match req.headers().get("Authorization") {
@@ -99,7 +99,7 @@ async fn onboarding_user(
         }
     };
 
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let user_service = UserService::new(&repo);
     let auth_service = AuthService::new(&repo);
 
@@ -124,7 +124,7 @@ async fn onboarding_user(
 
 #[post("/refresh")]
 async fn refresh_token(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
-    let repo = UserRepo::new(&state.db);
+    let repo = UserRepo::new(&state.db.main_db());
     let service = AuthService::new(&repo);
 
     // Extract token from Authorization header

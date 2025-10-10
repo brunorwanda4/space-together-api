@@ -19,7 +19,7 @@ async fn get_by_reference_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     let reference_id = IdType::from_string(path.into_inner());
@@ -35,7 +35,7 @@ async fn get_by_role_and_reference(
     path: web::Path<(String, String)>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     let (role_str, reference_id_str) = path.into_inner();
@@ -67,7 +67,7 @@ async fn get_active_materials(
     path: web::Path<(String, String)>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     let (role_str, reference_id_str) = path.into_inner();
@@ -96,7 +96,7 @@ async fn get_by_type_and_reference(
     path: web::Path<(String, String, String)>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     let (material_type_str, role_str, reference_id_str) = path.into_inner();
@@ -135,7 +135,7 @@ async fn get_by_type_and_reference(
 
 #[get("/{id}")]
 async fn get_material_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     let material_id = IdType::from_string(path.into_inner());
@@ -160,7 +160,7 @@ async fn create_material(
         }));
     }
 
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     match service
@@ -205,7 +205,7 @@ async fn update_material(
     }
 
     let material_id = IdType::from_string(path.into_inner());
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     match service
@@ -250,7 +250,7 @@ async fn toggle_material_status(
 
     let (material_id_str, is_active) = path.into_inner();
     let material_id = IdType::from_string(material_id_str);
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     match service
@@ -294,7 +294,7 @@ async fn delete_material(
     }
 
     let material_id = IdType::from_string(path.into_inner());
-    let repo = SubjectLearningMaterialRepo::new(&state.db);
+    let repo = SubjectLearningMaterialRepo::new(&state.db.main_db());
     let service = SubjectLearningMaterialService::new(&repo);
 
     // Get material before deletion for broadcasting

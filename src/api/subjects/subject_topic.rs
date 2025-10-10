@@ -12,7 +12,7 @@ use crate::{
 
 #[get("")]
 async fn get_all_subject_topics(state: web::Data<AppState>) -> impl Responder {
-    let repo = SubjectTopicRepo::new(&state.db);
+    let repo = SubjectTopicRepo::new(&state.db.main_db());
     let service = SubjectTopicService::new(&repo);
 
     match service.get_all_topics().await {
@@ -26,7 +26,7 @@ async fn get_subject_topic_by_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectTopicRepo::new(&state.db);
+    let repo = SubjectTopicRepo::new(&state.db.main_db());
     let service = SubjectTopicService::new(&repo);
 
     let topic_id = IdType::from_string(path.into_inner());
@@ -42,7 +42,7 @@ async fn get_topics_by_learning_outcome(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let repo = SubjectTopicRepo::new(&state.db);
+    let repo = SubjectTopicRepo::new(&state.db.main_db());
     let service = SubjectTopicService::new(&repo);
 
     let learning_outcome_id = IdType::from_string(path.into_inner());
@@ -65,7 +65,7 @@ async fn get_topics_by_learning_outcome_and_parent(
     let learning_outcome_id = IdType::from_string(learning_outcome_str);
     let parent_topic_id = IdType::from_string(parent_topic_str);
 
-    let repo = SubjectTopicRepo::new(&state.db);
+    let repo = SubjectTopicRepo::new(&state.db.main_db());
     let service = SubjectTopicService::new(&repo);
 
     match service
@@ -92,7 +92,7 @@ async fn create_subject_topic(
         }));
     }
 
-    let repo = SubjectTopicRepo::new(&state.db);
+    let repo = SubjectTopicRepo::new(&state.db.main_db());
     let service = SubjectTopicService::new(&repo);
 
     match service
@@ -137,7 +137,7 @@ async fn update_subject_topic(
     }
 
     let topic_id = IdType::from_string(path.into_inner());
-    let repo = SubjectTopicRepo::new(&state.db);
+    let repo = SubjectTopicRepo::new(&state.db.main_db());
     let service = SubjectTopicService::new(&repo);
 
     match service
@@ -181,7 +181,7 @@ async fn delete_subject_topic(
     }
 
     let topic_id = IdType::from_string(path.into_inner());
-    let repo = SubjectTopicRepo::new(&state.db);
+    let repo = SubjectTopicRepo::new(&state.db.main_db());
     let service = SubjectTopicService::new(&repo);
 
     // Get topic before deletion for broadcasting
