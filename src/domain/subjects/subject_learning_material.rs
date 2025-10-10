@@ -51,11 +51,13 @@ pub struct SubjectLearningMaterial {
     pub is_active: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)] // Add PartialEq here
 pub enum SubjectLearningMaterialRole {
     MainSubject,
     ClassSubject,
     SubjectTopic,
+    LearningOutcome,
+    Subject,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -66,6 +68,10 @@ pub enum SubjectMaterialType {
     Note,
     ExternalLink,
     Document,
+    Text,
+    Image,
+    Audio,
+    Other,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

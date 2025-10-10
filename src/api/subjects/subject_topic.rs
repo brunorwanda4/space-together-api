@@ -95,9 +95,12 @@ async fn create_subject_topic(
     let repo = SubjectTopicRepo::new(&state.db);
     let service = SubjectTopicService::new(&repo);
 
-    match service.create_topic(data.into_inner()).await {
+    match service
+        .create_topic_with_events(data.into_inner(), &state)
+        .await
+    {
         Ok(topic) => {
-            // 🔔 Broadcast real-time event
+            // 🔔 Broadcast individual topic event (existing)
             let topic_clone = topic.clone();
             let state_clone = state.clone();
             actix_rt::spawn(async move {
@@ -137,9 +140,12 @@ async fn update_subject_topic(
     let repo = SubjectTopicRepo::new(&state.db);
     let service = SubjectTopicService::new(&repo);
 
-    match service.update_topic(&topic_id, data.into_inner()).await {
+    match service
+        .update_topic_with_events(&topic_id, data.into_inner(), &state)
+        .await
+    {
         Ok(topic) => {
-            // 🔔 Broadcast real-time event
+            // 🔔 Broadcast individual topic event (existing)
             let topic_clone = topic.clone();
             let state_clone = state.clone();
             actix_rt::spawn(async move {
@@ -181,9 +187,9 @@ async fn delete_subject_topic(
     // Get topic before deletion for broadcasting
     let topic_before_delete = repo.find_by_id(&topic_id).await.ok().flatten();
 
-    match service.delete_topic(&topic_id).await {
+    match service.delete_topic_with_events(&topic_id, &state).await {
         Ok(_) => {
-            // 🔔 Broadcast real-time event
+            // 🔔 Broadcast individual topic deletion event (existing)
             if let Some(topic) = topic_before_delete {
                 let state_clone = state.clone();
                 actix_rt::spawn(async move {

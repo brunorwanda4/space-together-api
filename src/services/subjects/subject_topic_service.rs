@@ -2,10 +2,14 @@ use chrono::Utc;
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
+    config::state::AppState,
     domain::subjects::subject_topic::{SubjectTopic, UpdateSubjectTopic},
     models::id_model::IdType,
+    repositories::subjects::learning_outcome_repo::LearningOutcomeRepo,
     repositories::subjects::subject_topic_repo::SubjectTopicRepo,
+    services::event_service::EventService,
 };
+use actix_web::web;
 
 pub struct SubjectTopicService<'a> {
     repo: &'a SubjectTopicRepo,
@@ -96,6 +100,25 @@ impl<'a> SubjectTopicService<'a> {
     }
 
     // ------------------------------------------------------------------
+    // ✅ CREATE WITH EVENTS
+    // ------------------------------------------------------------------
+
+    pub async fn create_topic_with_events(
+        &self,
+        new_topic: SubjectTopic,
+        state: &web::Data<AppState>,
+    ) -> Result<SubjectTopic, String> {
+        let topic = self.create_topic(new_topic).await?;
+
+        // 🔔 Broadcast learning outcome update if this topic belongs to one
+        if let Some(learning_outcome_id) = &topic.learning_outcome_id {
+            Self::broadcast_learning_outcome_update(state, learning_outcome_id).await;
+        }
+
+        Ok(topic)
+    }
+
+    // ------------------------------------------------------------------
     // ✅ UPDATE
     // ------------------------------------------------------------------
 
@@ -149,6 +172,66 @@ impl<'a> SubjectTopicService<'a> {
             .update_topic(id, &updated_data)
             .await
             .map_err(|e| e.message)
+    }
+
+    // ------------------------------------------------------------------
+    // ✅ UPDATE WITH EVENTS
+    // ------------------------------------------------------------------
+
+    pub async fn update_topic_with_events(
+        &self,
+        id: &IdType,
+        updated_data: UpdateSubjectTopic,
+        state: &web::Data<AppState>,
+    ) -> Result<SubjectTopic, String> {
+        let old_topic = self
+            .repo
+            .find_by_id(id)
+            .await
+            .map_err(|e| e.message.clone())?
+            .ok_or("Topic not found")?;
+        let updated_topic = self.update_topic(id, updated_data).await?;
+
+        // 🔔 Get all affected learning outcome IDs
+        let affected_lo_ids = self
+            .get_affected_learning_outcome_ids(&old_topic, &updated_topic)
+            .await?;
+
+        // Broadcast updates for all affected learning outcomes
+        for lo_id in affected_lo_ids {
+            Self::broadcast_learning_outcome_update(state, &lo_id).await;
+        }
+
+        Ok(updated_topic)
+    }
+
+    // ------------------------------------------------------------------
+    // ✅ DELETE WITH EVENTS
+    // ------------------------------------------------------------------
+
+    pub async fn delete_topic_with_events(
+        &self,
+        id: &IdType,
+        state: &web::Data<AppState>,
+    ) -> Result<(), String> {
+        let topic = self
+            .repo
+            .find_by_id(id)
+            .await
+            .map_err(|e| e.message.clone())?
+            .ok_or("Topic not found")?;
+
+        // Store learning outcome ID before deletion
+        let learning_outcome_id = topic.learning_outcome_id;
+
+        self.delete_topic(id).await?;
+
+        // 🔔 Broadcast learning outcome update if this topic belonged to one
+        if let Some(lo_id) = learning_outcome_id {
+            Self::broadcast_learning_outcome_update(state, &lo_id).await;
+        }
+
+        Ok(())
     }
 
     // ------------------------------------------------------------------
@@ -232,7 +315,58 @@ impl<'a> SubjectTopicService<'a> {
 
         Ok(topics.iter().find(|t| {
             (t.order - order).abs() < f32::EPSILON
-                && exclude_oid.is_none_or(|oid| t.id != Some(oid))
+                && exclude_oid.as_ref().map_or(true, |oid| t.id != Some(*oid))
         }))
+    }
+
+    async fn get_affected_learning_outcome_ids(
+        &self,
+        old_topic: &SubjectTopic,
+        new_topic: &SubjectTopic,
+    ) -> Result<Vec<ObjectId>, String> {
+        let mut affected_ids = Vec::new();
+
+        // Add old learning outcome ID if it changed
+        if let Some(old_lo_id) = old_topic.learning_outcome_id {
+            affected_ids.push(old_lo_id);
+        }
+
+        // Add new learning outcome ID if it's different
+        if let Some(new_lo_id) = new_topic.learning_outcome_id {
+            if Some(new_lo_id) != old_topic.learning_outcome_id {
+                affected_ids.push(new_lo_id);
+            }
+        }
+
+        // Remove duplicates
+        affected_ids.sort();
+        affected_ids.dedup();
+
+        Ok(affected_ids)
+    }
+
+    async fn broadcast_learning_outcome_update(
+        state: &web::Data<AppState>,
+        learning_outcome_id: &ObjectId,
+    ) {
+        let state_clone = state.clone();
+        let lo_id_clone = *learning_outcome_id;
+
+        actix_rt::spawn(async move {
+            // Fetch the updated learning outcome with all its topics and materials
+            let repo = LearningOutcomeRepo::new(&state_clone.db);
+            if let Ok(Some(updated_lo)) = repo
+                .find_by_id_with_topics(&IdType::from_object_id(lo_id_clone))
+                .await
+            {
+                EventService::broadcast_updated(
+                    &state_clone,
+                    "learning_outcome",
+                    &lo_id_clone.to_hex(),
+                    &updated_lo,
+                )
+                .await;
+            }
+        });
     }
 }

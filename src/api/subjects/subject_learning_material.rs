@@ -163,9 +163,12 @@ async fn create_material(
     let repo = SubjectLearningMaterialRepo::new(&state.db);
     let service = SubjectLearningMaterialService::new(&repo);
 
-    match service.create_material(data.into_inner()).await {
+    match service
+        .create_material_with_events(data.into_inner(), &state)
+        .await
+    {
         Ok(material) => {
-            // 🔔 Broadcast real-time event
+            // 🔔 Broadcast individual material event (existing)
             let material_clone = material.clone();
             let state_clone = state.clone();
             actix_rt::spawn(async move {
@@ -206,11 +209,11 @@ async fn update_material(
     let service = SubjectLearningMaterialService::new(&repo);
 
     match service
-        .update_material(&material_id, data.into_inner())
+        .update_material_with_events(&material_id, data.into_inner(), &state)
         .await
     {
         Ok(material) => {
-            // 🔔 Broadcast real-time event
+            // 🔔 Broadcast individual material event (existing)
             let material_clone = material.clone();
             let state_clone = state.clone();
             actix_rt::spawn(async move {
@@ -251,11 +254,11 @@ async fn toggle_material_status(
     let service = SubjectLearningMaterialService::new(&repo);
 
     match service
-        .toggle_material_status(&material_id, is_active)
+        .toggle_material_status_with_events(&material_id, is_active, &state)
         .await
     {
         Ok(material) => {
-            // 🔔 Broadcast real-time event for status change
+            // 🔔 Broadcast individual material event for status change (existing)
             let material_clone = material.clone();
             let state_clone = state.clone();
             actix_rt::spawn(async move {
@@ -297,9 +300,12 @@ async fn delete_material(
     // Get material before deletion for broadcasting
     let material_before_delete = repo.find_by_id(&material_id).await.ok().flatten();
 
-    match service.delete_material(&material_id).await {
+    match service
+        .delete_material_with_events(&material_id, &state)
+        .await
+    {
         Ok(_) => {
-            // 🔔 Broadcast real-time event
+            // 🔔 Broadcast individual material deletion event (existing)
             if let Some(material) = material_before_delete {
                 let state_clone = state.clone();
                 actix_rt::spawn(async move {
