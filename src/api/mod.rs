@@ -4,6 +4,7 @@ mod auth;
 mod database_status;
 mod events;
 mod main_class;
+mod school;
 mod sector;
 mod students;
 mod subjects;
@@ -25,4 +26,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     subjects::subject_progress_configs::init(cfg);
     subjects::subject_learning_material::init(cfg);
     subjects::subject_grading_schemes::init(cfg);
+    school::init(cfg);
 }

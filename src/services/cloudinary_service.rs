@@ -1,19 +1,14 @@
-use actix_multipart::Multipart;
-use actix_web::Error;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use dotenv::dotenv;
-use futures_util::StreamExt;
 use hex;
-use mime; // ✅ needed for MIME type checks
 use reqwest::{
     multipart::{self, Part},
     Client,
 };
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
-use std::{collections::HashMap, env, io::Write};
-use tempfile::NamedTempFile;
+use std::{collections::HashMap, env};
 use tokio::io::AsyncReadExt; // ✅ needed for file reading
 
 const MAX_SIZE: usize = 5 * 1024 * 1024; // 5MB for images
@@ -60,38 +55,38 @@ impl CloudinaryService {
         hex::encode(hasher.finalize())
     }
 
-    /// Save file temporarily (for multipart uploads)
-    pub async fn save_file(mut payload: Multipart) -> Result<NamedTempFile, Error> {
-        let mut total_size = 0;
-        let mut temp_file = NamedTempFile::new()?;
+    // Save file temporarily (for multipart uploads)
+    // pub async fn save_file(mut payload: Multipart) -> Result<NamedTempFile, Error> {
+    //     let mut total_size = 0;
+    //     let mut temp_file = NamedTempFile::new()?;
 
-        while let Some(field) = payload.next().await {
-            let mut field = field?;
+    //     while let Some(field) = payload.next().await {
+    //         let mut field = field?;
 
-            let content_type = field.content_type();
+    //         let content_type = field.content_type();
 
-            // Ensure it's an image
-            if let Some(content_type) = content_type {
-                if content_type.type_() != mime::IMAGE {
-                    return Err(actix_web::error::ErrorBadRequest(
-                        "Only image files allowed",
-                    ));
-                }
-            } else {
-                return Err(actix_web::error::ErrorBadRequest("Missing content type"));
-            }
+    //         // Ensure it's an image
+    //         if let Some(content_type) = content_type {
+    //             if content_type.type_() != mime::IMAGE {
+    //                 return Err(actix_web::error::ErrorBadRequest(
+    //                     "Only image files allowed",
+    //                 ));
+    //             }
+    //         } else {
+    //             return Err(actix_web::error::ErrorBadRequest("Missing content type"));
+    //         }
 
-            while let Some(chunk) = field.next().await {
-                let data = chunk?;
-                total_size += data.len();
-                if total_size > MAX_SIZE {
-                    return Err(actix_web::error::ErrorBadRequest("File size exceeded"));
-                }
-                temp_file.write_all(&data)?;
-            }
-        }
-        Ok(temp_file)
-    }
+    //         while let Some(chunk) = field.next().await {
+    //             let data = chunk?;
+    //             total_size += data.len();
+    //             if total_size > MAX_SIZE {
+    //                 return Err(actix_web::error::ErrorBadRequest("File size exceeded"));
+    //             }
+    //             temp_file.write_all(&data)?;
+    //         }
+    //     }
+    //     Ok(temp_file)
+    // }
 
     /// Upload image to Cloudinary (accepts: base64, URL, or existing file path)
     pub async fn upload_to_cloudinary(input: &str) -> Result<CloudinaryResponse, String> {

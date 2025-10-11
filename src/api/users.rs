@@ -1,5 +1,4 @@
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpResponse, Responder};
-use serde::Deserialize;
 
 use crate::{
     config::state::AppState,
@@ -7,21 +6,16 @@ use crate::{
         auth_user::AuthUserDto,
         user::{UpdateUserDto, User},
     },
-    models::{id_model::IdType, request_error_model::ReqErrModel},
+    models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::user_repo::UserRepo,
-    services::event_service::EventService,
-    services::user_service::UserService,
+    services::{event_service::EventService, user_service::UserService},
 };
 
-#[derive(Deserialize)]
-struct UserQuery {
-    filter: Option<String>,
-    limit: Option<i64>,
-    skip: Option<i64>,
-}
-
 #[get("")]
-async fn get_all_users(query: web::Query<UserQuery>, state: web::Data<AppState>) -> impl Responder {
+async fn get_all_users(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = UserRepo::new(&state.db.main_db());
     let service = UserService::new(&repo);
 

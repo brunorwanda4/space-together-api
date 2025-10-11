@@ -3,7 +3,6 @@ pub mod auth;
 pub mod auth_user;
 pub mod common_details;
 pub mod database_status;
-pub mod gender;
 pub mod main_class;
 pub mod school;
 pub mod sector;

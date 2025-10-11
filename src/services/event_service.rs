@@ -44,8 +44,8 @@ impl EventService {
             .await;
     }
 
-    /// Get connected clients count
-    pub async fn connected_clients_count(state: &web::Data<AppState>) -> usize {
-        state.event_bus.connected_clients_count().await
-    }
+    // Get connected clients count
+    // pub async fn connected_clients_count(state: &web::Data<AppState>) -> usize {
+    //     state.event_bus.connected_clients_count().await
+    // }
 }

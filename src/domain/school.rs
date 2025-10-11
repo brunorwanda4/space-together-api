@@ -8,6 +8,35 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum SchoolType {
+    Public,
+    Private,
+    Charter,
+    International,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum AffiliationType {
+    Government,
+    Religious,
+    NGO,
+    Independent,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum SchoolMemberType {
+    Mixed,
+    Boys,
+    Girls,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum AttendanceSystemType {
+    Manual,
+    Online,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct School {
     #[serde(
         rename = "_id",
@@ -30,17 +59,30 @@ pub struct School {
     // Basic info
     pub username: String,
     pub logo: Option<String>,
+    pub logo_id: Option<String>,
     pub name: String,
-    pub code: String,
+    pub code: Option<String>,
     pub description: Option<String>,
-    pub school_type: Option<String>, // e.g. public, private, boarding
-    pub curriculum: Option<Vec<String>>,
-    pub education_level: Option<Vec<String>>, // e.g. primary, secondary, university
+    pub school_type: Option<SchoolType>, // e.g. public, private, boarding
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
+    pub curriculum: Option<Vec<ObjectId>>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
+    pub education_level: Option<Vec<ObjectId>>, // e.g. primary, secondary, university
     pub accreditation_number: Option<String>,
-    pub affiliation: Option<String>,
+    pub affiliation: Option<AffiliationType>,
 
     // Members (can later expand this into its own struct)
-    pub school_members: Option<Vec<String>>, // store user IDs or role names
+    pub school_members: Option<SchoolMemberType>,
 
     // Location
     pub address: Option<Address>,
@@ -51,7 +93,7 @@ pub struct School {
     // Students
     pub student_capacity: Option<i32>,
     pub uniform_required: Option<bool>,
-    pub attendance_system: Option<String>, // manual, biometric, RFID, etc.
+    pub attendance_system: Option<AttendanceSystemType>, // manual, biometric, RFID, etc.
     pub scholarship_available: Option<bool>,
 
     // Facilities
@@ -61,6 +103,7 @@ pub struct School {
     pub sports_extracurricular: Option<Vec<String>>,
     pub online_classes: Option<bool>,
 
+    pub is_active: Option<bool>,
     // Meta
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
@@ -72,28 +115,53 @@ pub struct School {
 pub struct UpdateSchool {
     pub username: Option<String>,
     pub logo: Option<String>,
+    pub logo_id: Option<String>,
     pub name: Option<String>,
     pub code: Option<String>,
     pub description: Option<String>,
-    pub school_type: Option<String>,
-    pub curriculum: Option<Vec<String>>,
-    pub education_level: Option<Vec<String>>,
+    pub school_type: Option<SchoolType>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
+    pub curriculum: Option<Vec<ObjectId>>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
+    pub education_level: Option<Vec<ObjectId>>,
+
     pub accreditation_number: Option<String>,
-    pub affiliation: Option<String>,
-    pub school_members: Option<Vec<String>>,
+    pub affiliation: Option<AffiliationType>,
+    pub school_members: Option<SchoolMemberType>,
     pub address: Option<Address>,
     pub contact: Option<Contact>,
     pub website: Option<String>,
     pub social_media: Option<Vec<SocialMedia>>,
     pub student_capacity: Option<i32>,
     pub uniform_required: Option<bool>,
-    pub attendance_system: Option<String>,
+    pub attendance_system: Option<AttendanceSystemType>,
     pub scholarship_available: Option<bool>,
     pub classrooms: Option<i32>,
     pub library: Option<bool>,
     pub labs: Option<Vec<String>>,
     pub sports_extracurricular: Option<Vec<String>>,
     pub online_classes: Option<bool>,
+    pub is_active: Option<bool>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SchoolStats {
+    pub total: i64,
+    pub public: i64,
+    pub private: i64,
+    pub active: i64,
+    pub inactive: i64,
+    pub recent_30_days: i64,
 }

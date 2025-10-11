@@ -6,7 +6,7 @@ use crate::{
     services::cloudinary_service::CloudinaryService,
     utils::{
         hash::hash_password,
-        names::is_valid_username,
+        names::{is_valid_name, is_valid_username},
         user_utils::{sanitize_user, sanitize_users},
     },
 };
@@ -43,6 +43,7 @@ impl<'a> UserService<'a> {
 
     /// Create a new user
     pub async fn create_user(&self, mut new_user: User) -> Result<User, String> {
+        is_valid_name(&new_user.name)?;
         // Validate username if provided
         if let Some(ref username) = new_user.username {
             is_valid_username(username)?;

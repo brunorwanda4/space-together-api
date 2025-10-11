@@ -38,3 +38,30 @@ pub fn check_admin(user: &AuthUserDto) -> Result<(), Error> {
         Err(error::ErrorForbidden("Only admins can perform this action"))
     }
 }
+
+/// Check if user is admin or school staff
+pub fn check_admin_or_staff(user: &AuthUserDto) -> Result<(), String> {
+    if user.role == Some(UserRole::ADMIN) || user.role == Some(UserRole::SCHOOLSTAFF) {
+        Ok(())
+    } else {
+        Err("Insufficient permissions. Requires Admin or School staff role.".to_string())
+    }
+}
+
+/// Check if user has access to school operations
+pub fn check_school_access(user: &AuthUserDto, _school_id: &str) -> Result<(), String> {
+    // Admin has full access
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    // School staff can access schools they're associated with
+    if user.role == Some(UserRole::SCHOOLSTAFF) {
+        // Here you might want to check if the staff member belongs to this school
+        // For now, we'll allow all school staff to update any school
+        // You can implement more granular permissions later
+        return Ok(());
+    }
+
+    Err("Insufficient permissions to access school".to_string())
+}

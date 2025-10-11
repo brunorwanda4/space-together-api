@@ -25,3 +25,11 @@ pub struct SocialMedia {
     pub platform: String, // e.g. "facebook", "twitter", "instagram"
     pub url: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "UPPERCASE")] // "MALE", "FEMALE"
+pub enum Gender {
+    MALE,
+    FEMALE,
+    OTHER,
+}

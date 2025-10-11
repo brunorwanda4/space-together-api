@@ -1,4 +1,4 @@
-pub mod class_subject;
+// pub mod class_subject;
 pub mod learning_outcome;
 pub mod main_subject;
 pub mod subject_category;
