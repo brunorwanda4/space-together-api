@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::helpers::object_id_helpers;
 
-use super::{address::Address, age::Age, gender::Gender, user_role::UserRole};
+use super::{age::Age, common_details::Address, gender::Gender, user_role::UserRole};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
@@ -59,7 +59,6 @@ pub struct UpdateUserDto {
     pub name: Option<String>,
     pub email: Option<String>,
     pub username: Option<String>,
-    pub password_hash: Option<String>,
     pub role: Option<UserRole>,
     pub image: Option<String>,
     pub phone: Option<String>,

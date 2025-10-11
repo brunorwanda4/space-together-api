@@ -12,3 +12,16 @@ pub struct Address {
     pub postal_code: Option<String>,
     pub google_map_url: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Contact {
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub alt_phone: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SocialMedia {
+    pub platform: String, // e.g. "facebook", "twitter", "instagram"
+    pub url: String,
+}

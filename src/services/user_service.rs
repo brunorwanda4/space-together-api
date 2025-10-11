@@ -170,9 +170,6 @@ impl<'a> UserService<'a> {
         if let Some(username) = updated_data.username {
             user_to_update.username = Some(username);
         }
-        if let Some(password) = updated_data.password_hash {
-            user_to_update.password_hash = Some(hash_password(&password));
-        }
         if let Some(role) = updated_data.role {
             user_to_update.role = Some(role);
         }
