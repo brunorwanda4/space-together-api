@@ -186,9 +186,6 @@ impl<'a> UserService<'a> {
         if let Some(address) = updated_data.address {
             user_to_update.address = Some(address);
         }
-        if let Some(school_id) = updated_data.current_school_id {
-            user_to_update.current_school_id = Some(school_id);
-        }
         if let Some(bio) = updated_data.bio {
             user_to_update.bio = Some(bio);
         }
@@ -219,6 +216,34 @@ impl<'a> UserService<'a> {
         }
 
         self.repo.delete_user(id).await.map_err(|e| e.message)
+    }
+
+    // ✅ Add school to user and set it as current_school_id
+    pub async fn add_school_to_user(
+        &self,
+        user_id: &IdType,
+        school_id: &IdType,
+    ) -> Result<User, String> {
+        let updated_user = self
+            .repo
+            .add_school_to_user(user_id, school_id)
+            .await
+            .map_err(|e| e.message)?;
+        Ok(sanitize_user(updated_user))
+    }
+
+    // ✅ Remove school from user (and clear current_school_id if it matches)
+    pub async fn remove_school_from_user(
+        &self,
+        user_id: &IdType,
+        school_id: &IdType,
+    ) -> Result<User, String> {
+        let updated_user = self
+            .repo
+            .remove_school_from_user(user_id, school_id)
+            .await
+            .map_err(|e| e.message)?;
+        Ok(sanitize_user(updated_user))
     }
 }
 

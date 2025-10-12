@@ -18,6 +18,7 @@ pub struct Contact {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub alt_phone: Option<String>,
+    pub whatsapp: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

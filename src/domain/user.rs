@@ -42,10 +42,17 @@ pub struct User {
         skip_serializing_if = "Option::is_none",
         default
     )]
-    pub current_school_id: Option<ObjectId>,
+    pub current_school_id: Option<ObjectId>, // GPT help me also to make function which set new school
 
     pub bio: Option<String>,
     pub disable: Option<bool>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
+    pub schools: Option<Vec<ObjectId>>, //GPT this is school which need to add
 
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
@@ -65,7 +72,6 @@ pub struct UpdateUserDto {
     pub gender: Option<Gender>,
     pub age: Option<Age>,
     pub address: Option<Address>,
-    pub current_school_id: Option<ObjectId>,
     pub bio: Option<String>,
     pub disable: Option<bool>,
     pub updated_at: Option<DateTime<Utc>>,

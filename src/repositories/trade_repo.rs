@@ -2,6 +2,7 @@ use crate::domain::trade::{Trade, TradeWithOthers, UpdateTrade};
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::models::id_model::IdType;
+use crate::pipeline::trade_pipeline::trade_with_others_pipeline;
 use crate::utils::object_id::parse_object_id;
 
 use chrono::Utc;
@@ -20,51 +21,6 @@ impl TradeRepo {
         Self {
             collection: db.collection::<Trade>("trades"),
         }
-    }
-
-    /// Common pipeline for joining sector and parent trade
-    fn trade_with_others_pipeline(match_stage: Document) -> Vec<Document> {
-        vec![
-            doc! { "$match": match_stage },
-            doc! {
-                "$lookup": {
-                    "from": "sectors",
-                    "localField": "sector_id",
-                    "foreignField": "_id",
-                    "as": "sector"
-                }
-            },
-            doc! { "$unwind": { "path": "$sector", "preserveNullAndEmptyArrays": true } },
-            doc! {
-                "$lookup": {
-                    "from": "trades",
-                    "localField": "trade_id",
-                    "foreignField": "_id",
-                    "as": "parent_trade"
-                }
-            },
-            // ✅ FIXED: use $cond to ensure null instead of {}
-            doc! {
-                "$addFields": {
-                    "parent_trade": {
-                        "$cond": {
-                            "if": { "$gt": [{ "$size": "$parent_trade" }, 0] },
-                            "then": { "$arrayElemAt": ["$parent_trade", 0] },
-                            "else": null
-                        }
-                    }
-                }
-            },
-            doc! {
-                "$lookup": {
-                    "from": "sectors",
-                    "localField": "parent_trade.sector_id",
-                    "foreignField": "_id",
-                    "as": "parent_trade.sector"
-                }
-            },
-            doc! { "$unwind": { "path": "$parent_trade.sector", "preserveNullAndEmptyArrays": true } },
-        ]
     }
 
     pub async fn find_by_id(&self, id: &IdType) -> Result<Option<Trade>, AppError> {
@@ -93,7 +49,7 @@ impl TradeRepo {
         let obj_id = parse_object_id(id)?;
         aggregate_single(
             &self.collection.clone().clone_with_type::<Document>(), // convert to Document
-            Self::trade_with_others_pipeline(doc! { "_id": obj_id }),
+            trade_with_others_pipeline(doc! { "_id": obj_id }),
         )
         .await
     }
@@ -104,7 +60,7 @@ impl TradeRepo {
     ) -> Result<Option<TradeWithOthers>, AppError> {
         aggregate_single(
             &self.collection.clone().clone_with_type::<Document>(),
-            Self::trade_with_others_pipeline(doc! { "username": username }),
+            trade_with_others_pipeline(doc! { "username": username }),
         )
         .await
     }
@@ -179,7 +135,7 @@ impl TradeRepo {
     pub async fn get_all_trades_with_others(&self) -> Result<Vec<TradeWithOthers>, AppError> {
         aggregate_many(
             &self.collection.clone().clone_with_type::<Document>(),
-            Self::trade_with_others_pipeline(doc! { "$expr": { "$ne": ["$_id", null] }}),
+            trade_with_others_pipeline(doc! { "$expr": { "$ne": ["$_id", null] }}),
         )
         .await
     }

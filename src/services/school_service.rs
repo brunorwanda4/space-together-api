@@ -185,6 +185,11 @@ impl<'a> SchoolService<'a> {
         if let Some(username) = updated_data.username {
             merged_school.username = username;
         }
+
+        if let Some(database_name) = updated_data.database_name {
+            merged_school.database_name = Some(database_name);
+        }
+
         if let Some(name) = updated_data.name {
             merged_school.name = name;
         }

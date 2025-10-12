@@ -52,6 +52,7 @@ impl<'a> AuthService<'a> {
             current_school_id: None,
             disable: None,
             bio: None,
+            schools: None,
             created_at: now,
             updated_at: now,
         };

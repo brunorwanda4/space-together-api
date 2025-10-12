@@ -7,9 +7,10 @@ use crate::{
         school::{School, UpdateSchool},
     },
     models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
-    repositories::school_repo::SchoolRepo,
+    repositories::{school_repo::SchoolRepo, user_repo::UserRepo},
     services::{
         event_service::EventService, school_service::SchoolService, tenant_service::TenantService,
+        user_service::UserService,
     },
 };
 
@@ -82,6 +83,7 @@ async fn get_school_by_code(path: web::Path<String>, state: web::Data<AppState>)
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
 }
+
 #[post("")]
 async fn create_school(
     user: web::ReqData<AuthUserDto>,
@@ -122,17 +124,16 @@ async fn create_school(
                 }
 
                 // ✅ Update main DB record with the database_name
-                let update_result = service
+                if let Err(e) = service
                     .update_school(
                         &IdType::ObjectId(*id),
                         UpdateSchool {
                             database_name: Some(db_name_clone.clone()),
-                            ..Default::default() // ✅ requires UpdateSchool: Default
+                            ..Default::default()
                         },
                     )
-                    .await;
-
-                if let Err(e) = update_result {
+                    .await
+                {
                     return HttpResponse::InternalServerError().json(serde_json::json!({
                         "message": format!("Failed to update school with db_name: {}", e)
                     }));
@@ -140,9 +141,41 @@ async fn create_school(
 
                 // ✅ Update local copy to include db_name before returning
                 school.database_name = Some(db_name_clone);
+
+                // ✅ Now update the user who created the school
+                let user_repo = UserRepo::new(&state.db.main_db());
+                let user_service = UserService::new(&user_repo);
+
+                let user_id_type = IdType::from_string(&logged_user.id);
+                let school_id_type = IdType::from_object_id(*id);
+
+                match user_service
+                    .add_school_to_user(&user_id_type, &school_id_type)
+                    .await
+                {
+                    Ok(updated_user) => {
+                        // 🔔 Optionally broadcast user update
+                        let state_clone = state.clone();
+                        let updated_user_clone = updated_user.clone();
+                        actix_rt::spawn(async move {
+                            if let Some(uid) = updated_user_clone.id {
+                                EventService::broadcast_updated(
+                                    &state_clone,
+                                    "user",
+                                    &uid.to_hex(),
+                                    &updated_user_clone,
+                                )
+                                .await;
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️ Failed to link school to user: {}", e);
+                    }
+                }
             }
 
-            // ✅ Broadcast created event asynchronously
+            // ✅ Broadcast created school event
             let school_clone = school.clone();
             let state_clone = state.clone();
             actix_rt::spawn(async move {

@@ -143,7 +143,7 @@ impl UserRepo {
                 "sort_date": { "$ifNull": [ "$updated_at", "$created_at" ] }
             }
         });
-        pipeline.push(doc! { "$sort": { "sort_date": -1 } });
+        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
 
         if let Some(s) = skip {
             pipeline.push(doc! { "$skip": s });
@@ -277,5 +277,83 @@ impl UserRepo {
             no_school: no_school as i64,
             recent_30_days: recent_30_days_count as i64,
         })
+    }
+
+    pub async fn add_school_to_user(
+        &self,
+        user_id: &IdType,
+        school_id: &IdType,
+    ) -> Result<User, AppError> {
+        let user_obj_id = ObjectId::parse_str(user_id.as_string()).map_err(|e| AppError {
+            message: format!("Invalid user id: {}", e),
+        })?;
+        let school_obj_id = ObjectId::parse_str(school_id.as_string()).map_err(|e| AppError {
+            message: format!("Invalid school id: {}", e),
+        })?;
+
+        let filter = doc! { "_id": user_obj_id };
+        let update = doc! {
+            "$addToSet": { "schools": school_obj_id }, // avoid duplicates
+            "$set": {
+             "current_school_id": school_obj_id,
+             "updated_at": Utc::now().to_rfc3339(),
+          }
+        };
+
+        self.collection
+            .update_one(filter.clone(), update)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to add school to user: {}", e),
+            })?;
+
+        // Return updated user
+        self.collection
+            .find_one(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch updated user: {}", e),
+            })?
+            .ok_or_else(|| AppError {
+                message: "User not found after update".to_string(),
+            })
+    }
+
+    /// Remove a school ID from a user's schools array
+    pub async fn remove_school_from_user(
+        &self,
+        user_id: &IdType,
+        school_id: &IdType,
+    ) -> Result<User, AppError> {
+        let user_obj_id = ObjectId::parse_str(user_id.as_string()).map_err(|e| AppError {
+            message: format!("Invalid user id: {}", e),
+        })?;
+        let school_obj_id = ObjectId::parse_str(school_id.as_string()).map_err(|e| AppError {
+            message: format!("Invalid school id: {}", e),
+        })?;
+
+        let filter = doc! { "_id": user_obj_id };
+
+        let update = doc! {
+            "$pull": { "schools": school_obj_id },
+           "$set": { "updated_at": Utc::now().to_rfc3339() }
+        };
+
+        self.collection
+            .update_one(filter.clone(), update)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to remove school from user: {}", e),
+            })?;
+
+        self.collection
+            .find_one(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch updated user: {}", e),
+            })?
+            .ok_or_else(|| AppError {
+                message: "User not found after update".to_string(),
+            })
     }
 }
