@@ -76,7 +76,10 @@ impl<'a> SchoolService<'a> {
             new_school.is_active = Some(true);
         }
 
-        new_school.id = Some(ObjectId::new());
+        let school_id = ObjectId::new();
+        new_school.id = Some(school_id);
+
+        // let school_db = self.repo.
 
         // Save school in database
         let inserted_school = self

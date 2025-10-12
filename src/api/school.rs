@@ -8,7 +8,9 @@ use crate::{
     },
     models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::school_repo::SchoolRepo,
-    services::{event_service::EventService, school_service::SchoolService},
+    services::{
+        event_service::EventService, school_service::SchoolService, tenant_service::TenantService,
+    },
 };
 
 #[get("")]
@@ -80,7 +82,6 @@ async fn get_school_by_code(path: web::Path<String>, state: web::Data<AppState>)
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
 }
-
 #[post("")]
 async fn create_school(
     user: web::ReqData<AuthUserDto>,
@@ -89,26 +90,59 @@ async fn create_school(
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
-    // Only admin or school staff can create schools
+    // ✅ Only admin or staff can create schools
     if let Err(err) = crate::guards::role_guard::check_admin_or_staff(&logged_user) {
         return HttpResponse::Forbidden().json(serde_json::json!({
             "message": err.to_string()
         }));
     }
 
+    // ✅ Initialize repo and service
     let repo = SchoolRepo::new(&state.db.main_db());
     let service = SchoolService::new(&repo);
 
-    let school_data = data.into_inner();
+    // ✅ Create school record in main DB
+    match service.create_school(data.into_inner()).await {
+        Ok(mut school) => {
+            if let Some(ref id) = school.id {
+                // ✅ Generate DB name like school_<id>
+                let school_id_hex = id.to_hex();
+                let db_name = state.db.school_db_name_from_id(&school_id_hex);
 
-    // Set creator_id to the logged-in user's ID
-    // if let Some(user_id) = logged_user.id {
-    //     school_data.creator_id = Some(logged_user.id.clone());
-    // }
+                // ✅ Initialize tenant DB (collections, indexes, seeds)
+                let mongo_clone = state.db.clone();
+                let db_name_clone = db_name.clone();
 
-    match service.create_school(school_data).await {
-        Ok(school) => {
-            // 🔔 Broadcast real-time event
+                if let Err(e) =
+                    TenantService::initialize_school_db(&mongo_clone, &db_name_clone).await
+                {
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "message": format!("Failed to initialize school DB: {}", e)
+                    }));
+                }
+
+                // ✅ Update main DB record with the database_name
+                let update_result = service
+                    .update_school(
+                        &IdType::ObjectId(*id),
+                        UpdateSchool {
+                            database_name: Some(db_name_clone.clone()),
+                            ..Default::default() // ✅ requires UpdateSchool: Default
+                        },
+                    )
+                    .await;
+
+                if let Err(e) = update_result {
+                    return HttpResponse::InternalServerError().json(serde_json::json!({
+                        "message": format!("Failed to update school with db_name: {}", e)
+                    }));
+                }
+
+                // ✅ Update local copy to include db_name before returning
+                school.database_name = Some(db_name_clone);
+            }
+
+            // ✅ Broadcast created event asynchronously
             let school_clone = school.clone();
             let state_clone = state.clone();
             actix_rt::spawn(async move {
@@ -125,6 +159,7 @@ async fn create_school(
 
             HttpResponse::Created().json(school)
         }
+
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }

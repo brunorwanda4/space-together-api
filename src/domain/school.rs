@@ -103,6 +103,7 @@ pub struct School {
     pub sports_extracurricular: Option<Vec<String>>,
     pub online_classes: Option<bool>,
 
+    pub database_name: Option<String>,
     pub is_active: Option<bool>,
     // Meta
     #[serde(default)]
@@ -111,7 +112,7 @@ pub struct School {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UpdateSchool {
     pub username: Option<String>,
     pub logo: Option<String>,
@@ -120,21 +121,8 @@ pub struct UpdateSchool {
     pub code: Option<String>,
     pub description: Option<String>,
     pub school_type: Option<SchoolType>,
-
-    #[serde(
-        serialize_with = "object_id_helpers::serialize_opt_vec",
-        deserialize_with = "object_id_helpers::deserialize_opt_vec",
-        default
-    )]
     pub curriculum: Option<Vec<ObjectId>>,
-
-    #[serde(
-        serialize_with = "object_id_helpers::serialize_opt_vec",
-        deserialize_with = "object_id_helpers::deserialize_opt_vec",
-        default
-    )]
     pub education_level: Option<Vec<ObjectId>>,
-
     pub accreditation_number: Option<String>,
     pub affiliation: Option<AffiliationType>,
     pub school_members: Option<SchoolMemberType>,
@@ -151,6 +139,7 @@ pub struct UpdateSchool {
     pub labs: Option<Vec<String>>,
     pub sports_extracurricular: Option<Vec<String>>,
     pub online_classes: Option<bool>,
+    pub database_name: Option<String>,
     pub is_active: Option<bool>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
