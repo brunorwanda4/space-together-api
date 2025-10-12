@@ -4,6 +4,9 @@ use crate::domain::main_class::{
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::models::id_model::IdType;
+use crate::pipeline::main_class_pipeline::{
+    main_class_with_others_pipeline, main_class_with_trade_pipeline,
+};
 use crate::utils::object_id::parse_object_id;
 
 use chrono::Utc;
@@ -24,81 +27,13 @@ impl MainClassRepo {
         }
     }
 
-    fn main_class_with_trade_pipeline(match_stage: Document) -> Vec<Document> {
-        vec![
-            doc! { "$match": match_stage },
-            doc! {
-                "$lookup": {
-                    "from": "trades",
-                    "localField": "trade_id",
-                    "foreignField": "_id",
-                    "as": "trade"
-                }
-            },
-            doc! { "$unwind": { "path": "$trade", "preserveNullAndEmptyArrays": true } },
-        ]
-    }
-
     pub async fn get_all_with_trade(&self) -> Result<Vec<MainClassWithTrade>, AppError> {
         aggregate_many(&self.collection.clone().clone_with_type::<Document>(), {
-            let mut pipeline = Self::main_class_with_trade_pipeline(doc! {});
+            let mut pipeline = main_class_with_trade_pipeline(doc! {});
             pipeline.insert(0, doc! { "$sort": { "updated_at": -1 } });
             pipeline
         })
         .await
-    }
-
-    fn main_class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
-        vec![
-            doc! { "$match": match_stage },
-            doc! {
-                "$lookup": {
-                    "from": "trades",
-                    "localField": "trade_id",
-                    "foreignField": "_id",
-                    "as": "trade"
-                }
-            },
-            doc! { "$unwind": { "path": "$trade", "preserveNullAndEmptyArrays": true } },
-            // Include sector & parent_trade inside Trade
-            doc! {
-                "$lookup": {
-                    "from": "sectors",
-                    "localField": "trade.sector_id",
-                    "foreignField": "_id",
-                    "as": "trade.sector"
-                }
-            },
-            doc! { "$unwind": { "path": "$trade.sector", "preserveNullAndEmptyArrays": true } },
-            doc! {
-                "$lookup": {
-                    "from": "trades",
-                    "localField": "trade.trade_id",
-                    "foreignField": "_id",
-                    "as": "trade.parent_trade"
-                }
-            },
-            doc! {
-                "$addFields": {
-                    "trade.parent_trade": {
-                        "$cond": {
-                            "if": { "$gt": [{ "$size": "$trade.parent_trade" }, 0] },
-                            "then": { "$arrayElemAt": ["$trade.parent_trade", 0] },
-                            "else": null
-                        }
-                    }
-                }
-            },
-            doc! {
-                "$lookup": {
-                    "from": "sectors",
-                    "localField": "trade.parent_trade.sector_id",
-                    "foreignField": "_id",
-                    "as": "trade.parent_trade.sector"
-                }
-            },
-            doc! { "$unwind": { "path": "$trade.parent_trade.sector", "preserveNullAndEmptyArrays": true } },
-        ]
     }
 
     pub async fn find_by_id_with_others(
@@ -108,7 +43,7 @@ impl MainClassRepo {
         let obj_id = parse_object_id(id)?;
         aggregate_single(
             &self.collection.clone().clone_with_type::<Document>(),
-            Self::main_class_with_others_pipeline(doc! { "_id": obj_id }),
+            main_class_with_others_pipeline(doc! { "_id": obj_id }),
         )
         .await
     }
@@ -119,7 +54,7 @@ impl MainClassRepo {
     ) -> Result<Option<MainClassWithOthers>, AppError> {
         aggregate_single(
             &self.collection.clone().clone_with_type::<Document>(),
-            Self::main_class_with_others_pipeline(doc! { "username": username }),
+            main_class_with_others_pipeline(doc! { "username": username }),
         )
         .await
     }
@@ -259,5 +194,20 @@ impl MainClassRepo {
             });
         }
         Ok(())
+    }
+
+    pub async fn find_by_trade_id(
+        &self,
+        trade_id: &IdType,
+    ) -> Result<Vec<MainClassWithTrade>, AppError> {
+        let trade_obj_id = parse_object_id(trade_id)?;
+
+        let filter = doc! { "trade_id": trade_obj_id };
+
+        aggregate_many(
+            &self.collection.clone().clone_with_type::<Document>(),
+            main_class_with_trade_pipeline(filter),
+        )
+        .await
     }
 }

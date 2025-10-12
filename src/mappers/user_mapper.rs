@@ -15,12 +15,15 @@ pub fn to_auth_dto(user: &User) -> AuthUserDto {
         role: user.role.clone(),
         gender: user.gender.clone(),
         disable: user.disable,
-        current_school_id: Some(
-            user.current_school_id
-                .as_ref()
-                .map(|id| id.to_string())
-                .unwrap_or_default(),
-        ),
+        accessible_classes: user
+            .accessible_classes
+            .as_ref()
+            .map(|classes| classes.iter().map(|id| id.to_string()).collect()),
+        schools: user
+            .schools
+            .as_ref()
+            .map(|schools| schools.iter().map(|id| id.to_string()).collect()),
+        current_school_id: user.current_school_id.as_ref().map(|id| id.to_string()),
         iat: None,
         exp: None,
     }

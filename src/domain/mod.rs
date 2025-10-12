@@ -1,6 +1,7 @@
 pub mod age;
 pub mod auth;
 pub mod auth_user;
+pub mod class;
 pub mod common_details;
 pub mod database_status;
 pub mod main_class;

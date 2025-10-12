@@ -24,6 +24,16 @@ impl<'a> MainClassService<'a> {
         self.repo.get_all_with_trade().await.map_err(|e| e.message)
     }
 
+    pub async fn get_with_trade_id(
+        &self,
+        trade_id: &IdType,
+    ) -> Result<Vec<MainClassWithTrade>, String> {
+        self.repo
+            .find_by_trade_id(trade_id)
+            .await
+            .map_err(|e| e.message)
+    }
+
     /// Get all main classes
     pub async fn get_all(&self) -> Result<Vec<MainClass>, String> {
         self.repo.get_all().await.map_err(|e| e.message)

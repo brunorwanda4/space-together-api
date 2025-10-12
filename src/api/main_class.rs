@@ -58,6 +58,21 @@ async fn get_main_class_by_id(
     }
 }
 
+#[get("/trade/{id}")]
+async fn get_trade_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+    let repo = MainClassRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
+    let trade_service = TradeService::new(&trade_repo);
+    let service = MainClassService::new(&repo, &trade_service);
+
+    let id = IdType::from_string(path.into_inner());
+
+    match service.get_with_trade_id(&id).await {
+        Ok(item) => HttpResponse::Ok().json(item),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
 #[get("/username/{username}")]
 async fn get_main_class_by_username(
     path: web::Path<String>,
@@ -251,16 +266,17 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/main-classes")
             // Public routes
-            .service(get_all_main_classes)
-            .service(get_all_main_classes_with_trade)
-            .service(get_main_class_by_username)
-            .service(get_main_class_by_username_with_others)
-            .service(get_main_class_by_id_with_others)
-            .service(get_main_class_by_id)
+            .service(get_all_main_classes) // GET /main-classes
+            .service(get_all_main_classes_with_trade) // GET /main-classes/trade
+            .service(get_trade_by_id) // GET /main-classes/trade/{id}
+            .service(get_main_class_by_username) // GET /main-classes/username/{username}
+            .service(get_main_class_by_username_with_others) // GET /main-classes/username/others/{username}
+            .service(get_main_class_by_id_with_others) // GET /main-classes/others/{id}
+            .service(get_main_class_by_id) // GET /main-classes/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
-            .service(create_main_class)
-            .service(update_main_class)
-            .service(delete_main_class),
+            .service(create_main_class) // POST /main-classes
+            .service(update_main_class) // PUT /main-classes/{id}
+            .service(delete_main_class), // DELETE /main-classes/{id}
     );
 }

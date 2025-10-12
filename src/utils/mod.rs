@@ -1,4 +1,5 @@
 pub mod bytes;
+pub mod class_utils;
 pub mod code;
 pub mod email;
 pub mod hash;

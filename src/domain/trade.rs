@@ -3,6 +3,15 @@ use mongodb::bson::{self, oid::ObjectId};
 use serde::{Deserialize, Serialize};
 
 use crate::{domain::sector::Sector, helpers::object_id_helpers};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum TradeType {
+    Senior,
+    Primary,
+    Level,
+    Nursing,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Trade {
     #[serde(
@@ -54,7 +63,7 @@ pub struct UpdateTrade {
     pub description: Option<String>,
     pub class_min: Option<i32>,
     pub class_max: Option<i32>,
-    pub r#type: Option<String>, // Senior, Primary, Level, Nursing
+    pub r#type: Option<TradeType>, // Senior, Primary, Level, Nursing
     pub disable: Option<bool>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,

@@ -1,4 +1,5 @@
 pub mod auth_service;
+pub mod class_service;
 pub mod cloudinary_service;
 pub mod database_status_service;
 pub mod event_bus;

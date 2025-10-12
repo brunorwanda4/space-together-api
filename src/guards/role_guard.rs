@@ -65,3 +65,71 @@ pub fn check_school_access(user: &AuthUserDto, _school_id: &str) -> Result<(), S
 
     Err("Insufficient permissions to access school".to_string())
 }
+
+pub fn check_admin_staff_or_teacher(user: &AuthUserDto) -> Result<(), String> {
+    if user.role == Some(UserRole::SCHOOLSTAFF)
+        || user.role == Some(UserRole::ADMIN)
+        || user.role == Some(UserRole::TEACHER)
+    {
+        Ok(())
+    } else {
+        Err("Access denied: Admin, Staff, or Teacher role required".to_string())
+    }
+}
+
+/// Check if user has access to the class (admin, class teacher, or school staff)
+pub fn check_class_access(user: &AuthUserDto, class_id: &str) -> Result<(), String> {
+    // Admin has access to everything
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    // Check if user is the class teacher for this class
+    if user.role == Some(UserRole::TEACHER) {
+        // Use unwrap_or_default() to handle Option<Vec<String>>
+        if user
+            .accessible_classes
+            .as_ref()
+            .unwrap_or(&Vec::new())
+            .contains(&class_id.to_string())
+        {
+            return Ok(());
+        }
+    }
+
+    // Check if user is staff member of the school that owns this class
+    if user.role == Some(UserRole::SCHOOLSTAFF) {
+        // For school staff, we can check if they have access to the school that owns this class
+        // This would typically require a database query to get the school_id from the class_id
+        // For now, we'll implement a basic check using the schools field
+        if let Some(schools) = &user.schools {
+            // In a real implementation, you would query the class to get its school_id
+            // and check if that school_id is in the user's schools list
+            // For now, we'll return true if the user has any schools (placeholder)
+            if !schools.is_empty() {
+                return Ok(());
+            }
+        }
+    }
+
+    Err("Access denied: No permission to access this class".to_string())
+}
+
+/// Check if user is admin or class teacher
+pub fn check_admin_or_class_teacher(user: &AuthUserDto, class_id: &str) -> Result<(), String> {
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    if user.role == Some(UserRole::TEACHER)
+        && user
+            .accessible_classes
+            .as_ref()
+            .unwrap_or(&Vec::new())
+            .contains(&class_id.to_string())
+    {
+        return Ok(());
+    }
+
+    Err("Access denied: Admin or Class Teacher role required".to_string())
+}

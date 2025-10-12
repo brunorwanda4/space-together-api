@@ -14,6 +14,8 @@ pub struct AuthUserDto {
     pub gender: Option<Gender>,
     pub disable: Option<bool>,
     pub current_school_id: Option<String>,
+    pub schools: Option<Vec<String>>,
+    pub accessible_classes: Option<Vec<String>>,
     pub iat: Option<i64>, // issued at
     pub exp: Option<i64>, // expiration
 }

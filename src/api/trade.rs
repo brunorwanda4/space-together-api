@@ -240,16 +240,16 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/trades")
             // Public routes
-            .service(get_all_trades)
-            .service(get_all_trades_with_others)
-            .service(get_trades_by_username_with_others)
-            .service(get_trade_by_id_with_others)
-            .service(get_trades_by_username)
-            .service(get_trade_by_id)
+            .service(get_all_trades) // GET /trades
+            .service(get_all_trades_with_others) // GET /trades/others
+            .service(get_trades_by_username_with_others) // GET /trades/username/others/{username}
+            .service(get_trade_by_id_with_others) // GET /trades/others/{id}
+            .service(get_trades_by_username) // GET /trades/username/{username}
+            .service(get_trade_by_id) // GET /trades/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
-            .service(create_trade)
-            .service(update_trade)
-            .service(delete_trade),
+            .service(create_trade) // POST /trades
+            .service(update_trade) // PUT /trades/{id}
+            .service(delete_trade), // DELETE /trades/{id}
     );
 }

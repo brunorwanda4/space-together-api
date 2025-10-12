@@ -1,6 +1,7 @@
 use actix_web::web;
 
 mod auth;
+mod class;
 mod database_status;
 mod events;
 mod main_class;
@@ -27,4 +28,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     subjects::subject_learning_material::init(cfg);
     subjects::subject_grading_schemes::init(cfg);
     school::init(cfg);
+    class::init(cfg);
 }

@@ -53,6 +53,7 @@ impl<'a> AuthService<'a> {
             disable: None,
             bio: None,
             schools: None,
+            accessible_classes: None,
             created_at: now,
             updated_at: now,
         };
