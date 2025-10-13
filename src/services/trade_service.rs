@@ -198,4 +198,22 @@ impl<'a> TradeService<'a> {
             .await
             .map_err(|e| e.message)
     }
+
+    // NEW METHODS ADDED HERE:
+
+    /// Get trades by a specific sector ID
+    pub async fn get_trades_by_sector_id(&self, id: &IdType) -> Result<Vec<Trade>, String> {
+        self.repo
+            .get_trades_by_sector_id(id)
+            .await
+            .map_err(|e| e.message)
+    }
+
+    /// Get trades by a specific parent trade ID (self-relation)
+    pub async fn get_trades_by_trade_id(&self, id: &IdType) -> Result<Vec<Trade>, String> {
+        self.repo
+            .get_trades_by_trade_id(id)
+            .await
+            .map_err(|e| e.message)
+    }
 }

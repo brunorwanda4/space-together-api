@@ -95,6 +95,40 @@ async fn get_trades_by_username_with_others(
     }
 }
 
+// NEW ENDPOINTS ADDED HERE:
+
+#[get("/sector/{id}")]
+async fn get_trades_by_sector_id(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = TradeRepo::new(&state.db.main_db());
+    let service = TradeService::new(&repo);
+
+    let sector_id = IdType::from_string(path.into_inner());
+
+    match service.get_trades_by_sector_id(&sector_id).await {
+        Ok(trades) => HttpResponse::Ok().json(trades),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/trade/{id}")]
+async fn get_trades_by_trade_id(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = TradeRepo::new(&state.db.main_db());
+    let service = TradeService::new(&repo);
+
+    let trade_id = IdType::from_string(path.into_inner());
+
+    match service.get_trades_by_trade_id(&trade_id).await {
+        Ok(trades) => HttpResponse::Ok().json(trades),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
 #[post("")]
 async fn create_trade(
     user: web::ReqData<AuthUserDto>,
@@ -246,6 +280,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_trade_by_id_with_others) // GET /trades/others/{id}
             .service(get_trades_by_username) // GET /trades/username/{username}
             .service(get_trade_by_id) // GET /trades/{id}
+            .service(get_trades_by_sector_id) // GET /trades/sector/{id}
+            .service(get_trades_by_trade_id) // GET /trades/trade/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_trade) // POST /trades

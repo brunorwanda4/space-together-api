@@ -220,4 +220,38 @@ impl TradeRepo {
                 message: format!("Failed to collect trades: {}", e),
             })
     }
+
+    pub async fn get_trades_by_sector_id(&self, id: &IdType) -> Result<Vec<Trade>, AppError> {
+        let obj_id = parse_object_id(id)?;
+        let filter = doc! { "sector_id": obj_id };
+
+        self.collection
+            .find(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find trades by sector id: {}", e),
+            })?
+            .try_collect()
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to collect trades: {}", e),
+            })
+    }
+
+    pub async fn get_trades_by_trade_id(&self, id: &IdType) -> Result<Vec<Trade>, AppError> {
+        let obj_id = parse_object_id(id)?;
+        let filter = doc! { "trade_id": obj_id };
+
+        self.collection
+            .find(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find trades by trade id: {}", e),
+            })?
+            .try_collect()
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to collect trades: {}", e),
+            })
+    }
 }
