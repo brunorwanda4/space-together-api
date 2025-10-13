@@ -8,6 +8,7 @@ pub mod main_class;
 pub mod school;
 pub mod sector;
 pub mod student;
+pub mod subject;
 pub mod subjects;
 pub mod trade;
 pub mod user;

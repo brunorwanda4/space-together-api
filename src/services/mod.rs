@@ -8,6 +8,7 @@ pub mod main_class_service;
 pub mod school_service;
 pub mod sector_service;
 pub mod student_service;
+pub mod subject_service;
 pub mod subjects;
 pub mod tenant_service;
 pub mod trade_service;

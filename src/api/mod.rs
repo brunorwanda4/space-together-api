@@ -8,6 +8,7 @@ mod main_class;
 mod school;
 mod sector;
 mod students;
+mod subject;
 mod subjects;
 mod trade;
 mod users;
@@ -29,4 +30,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     subjects::subject_grading_schemes::init(cfg);
     school::init(cfg);
     class::init(cfg);
+    subject::init(cfg);
 }

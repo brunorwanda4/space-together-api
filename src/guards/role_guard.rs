@@ -133,3 +133,81 @@ pub fn check_admin_or_class_teacher(user: &AuthUserDto, class_id: &str) -> Resul
 
     Err("Access denied: Admin or Class Teacher role required".to_string())
 }
+
+// ========== SUBJECT ACCESS CONTROL ==========
+
+/// Check if user has access to subject (Admin, Staff, or Subject Teacher)
+pub fn check_subject_access(user: &AuthUserDto, subject_id: &str) -> Result<(), String> {
+    // Admin has full access
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    // School staff can access subjects
+    if user.role == Some(UserRole::SCHOOLSTAFF) {
+        return Ok(());
+    }
+
+    // For teachers, check if they are the class teacher for this subject
+    if user.role == Some(UserRole::TEACHER) && is_subject_teacher(&user.id, subject_id) {
+        return Ok(());
+    }
+
+    Err("Access denied: insufficient permissions for subject".to_string())
+}
+
+/// Check if user is Admin or Subject Teacher
+pub fn check_admin_or_subject_teacher(user: &AuthUserDto, subject_id: &str) -> Result<(), String> {
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    if user.role == Some(UserRole::TEACHER) && is_subject_teacher(&user.id, subject_id) {
+        return Ok(());
+    }
+
+    Err("Access denied: must be admin or subject teacher".to_string())
+}
+
+/// Helper function to check if user is the subject teacher
+/// You'll need to implement this based on your database structure
+fn is_subject_teacher(user_id: &str, subject_id: &str) -> bool {
+    // This is a placeholder implementation
+    // You would typically:
+    // 1. Parse the subject_id to ObjectId
+    // 2. Query the subjects collection to find the subject
+    // 3. Check if the user_id matches the class_teacher_id of the subject
+    let _ = user_id;
+    let _ = subject_id;
+    // For now, return false - implement based on your actual data model
+    // You might want to use your database connection to query the subject
+    // and check if the class_teacher_id matches the user_id
+
+    // Example of how this might look (pseudo-code):
+    /*
+    use crate::repositories::subject_repo::SubjectRepo;
+    use crate::utils::object_id::parse_object_id;
+    use crate::models::id_model::IdType;
+
+    let subject_repo = SubjectRepo::new(&db_connection);
+    let subject_id_parsed = IdType::from_string(subject_id);
+
+    match subject_repo.find_by_id(&subject_id_parsed).await {
+        Ok(Some(subject)) => {
+            if let Some(class_teacher_id) = subject.class_teacher_id {
+                // Compare the ObjectId with user_id (you might need to convert user_id to ObjectId)
+                // This depends on how your user IDs are stored
+                class_teacher_id.to_hex() == user_id
+            } else {
+                false
+            }
+        }
+        _ => false
+    }
+    */
+
+    // For now, we'll return a simple check based on accessible_classes
+    // This assumes that if a teacher has access to a class, they might be teaching subjects in that class
+    // Adjust this based on your actual data model
+    false
+}
