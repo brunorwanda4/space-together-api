@@ -154,3 +154,26 @@ pub struct SchoolStats {
     pub inactive: i64,
     pub recent_30_days: i64,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SchoolAcademicRequest {
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
+    pub sector_ids: Option<Vec<ObjectId>>, // curriculum
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
+    pub trade_ids: Option<Vec<ObjectId>>, // education_level
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SchoolAcademicResponse {
+    pub success: bool,
+    pub created_classes: usize,
+    pub created_subjects: usize,
+}

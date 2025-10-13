@@ -29,6 +29,7 @@ pub struct MainClass {
         default
     )]
     pub trade_id: Option<ObjectId>,
+    pub level: Option<i32>, // this is level which will help to create class to know which relationship which class to connect main class
     pub description: Option<String>,
     pub disable: Option<bool>,
     #[serde(default)]

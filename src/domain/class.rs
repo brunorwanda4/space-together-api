@@ -81,7 +81,7 @@ pub struct Class {
     #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
 }
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Serialize, Clone)]
 pub struct UpdateClass {
     pub name: Option<String>,
     pub username: Option<String>,
@@ -114,4 +114,26 @@ pub struct ClassWithOthers {
     pub creator: Option<User>,       // You'll need to define User struct
     pub class_teacher: Option<User>, // TODO: add teacher schema not user schema
     pub main_class: Option<MainClass>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkClassesRequest {
+    pub classes: Vec<Class>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkClassesForSchoolRequest {
+    pub classes: Vec<Class>,
+    pub school_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkUpdateRequest {
+    pub updates: Vec<BulkUpdateItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkUpdateItem {
+    pub id: String,
+    pub update: UpdateClass,
 }

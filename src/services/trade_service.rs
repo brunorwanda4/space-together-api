@@ -179,4 +179,23 @@ impl<'a> TradeService<'a> {
     pub async fn delete_trade(&self, id: &IdType) -> Result<(), String> {
         self.repo.delete_trade(id).await.map_err(|e| e.message)
     }
+
+    /// Get multiple trades by their IDs
+    pub async fn get_trades_by_ids(&self, trade_ids: &[ObjectId]) -> Result<Vec<Trade>, String> {
+        self.repo
+            .get_trades_by_ids(trade_ids)
+            .await
+            .map_err(|e| e.message)
+    }
+
+    /// Get trades by sector IDs
+    pub async fn get_trades_by_sector_ids(
+        &self,
+        sector_ids: &[ObjectId],
+    ) -> Result<Vec<Trade>, String> {
+        self.repo
+            .get_trades_by_sector_ids(sector_ids)
+            .await
+            .map_err(|e| e.message)
+    }
 }

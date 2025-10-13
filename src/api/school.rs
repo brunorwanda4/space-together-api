@@ -2,13 +2,17 @@ use actix_web::{delete, get, post, put, web, HttpMessage, HttpResponse, Responde
 
 use crate::{
     config::state::AppState,
+    controller::school_controller::SchoolController,
     domain::{
         auth_user::AuthUserDto,
-        school::{School, UpdateSchool},
+        school::{School, SchoolAcademicRequest, UpdateSchool},
     },
     mappers::school_mapper::to_school_school_token,
     models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
-    repositories::{school_repo::SchoolRepo, user_repo::UserRepo},
+    repositories::{
+        main_class_repo::MainClassRepo, school_repo::SchoolRepo,
+        subjects::main_subject_repo::MainSubjectRepo, trade_repo::TradeRepo, user_repo::UserRepo,
+    },
     services::{
         event_service::EventService, school_service::SchoolService, tenant_service::TenantService,
         user_service::UserService,
@@ -382,6 +386,82 @@ async fn delete_school(
     }
 }
 
+#[post("/{id}/academics")]
+async fn setup_school_academics(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    data: web::Json<SchoolAcademicRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = match req.extensions().get::<AuthUserDto>() {
+        Some(u) => u.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "Unauthorized"
+            }))
+        }
+    };
+
+    let target_school_id_str = path.into_inner();
+
+    // Check if user has permission to update school academics
+    if let Err(err) =
+        crate::guards::role_guard::check_school_access(&logged_user, &target_school_id_str)
+    {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err.to_string()
+        }));
+    }
+
+    let target_school_id = IdType::from_string(target_school_id_str);
+
+    // Initialize all required repositories with main database for global data
+    let school_repo = SchoolRepo::new(&state.db.main_db());
+    let main_class_repo = MainClassRepo::new(&state.db.main_db());
+    let main_subject_repo = MainSubjectRepo::new(&state.db.main_db());
+    let trade_repo = TradeRepo::new(&state.db.main_db());
+
+    // Create school controller with main database repositories
+    let school_controller = SchoolController::new(
+        &school_repo,
+        &main_class_repo,
+        &main_subject_repo,
+        &trade_repo,
+    );
+
+    match school_controller
+        .setup_school_academics(&target_school_id, data.into_inner(), state.clone())
+        .await
+    {
+        Ok(response) => {
+            // Broadcast event for academic setup completion
+            let state_clone = state.clone();
+            let school_id_hex = match &target_school_id {
+                IdType::ObjectId(id) => id.to_hex(),
+                IdType::String(id) => id.clone(),
+            };
+
+            actix_rt::spawn(async move {
+                EventService::broadcast_updated(
+                    &state_clone,
+                    "school_academics",
+                    &school_id_hex,
+                    &serde_json::json!({
+                        "school_id": school_id_hex,
+                        "created_classes": response.created_classes,
+                        "created_subjects": response.created_subjects,
+                        "success": response.success
+                    }),
+                )
+                .await;
+            });
+
+            HttpResponse::Ok().json(response)
+        }
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/schools")
@@ -396,6 +476,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(create_school) // POST /schools - Create new school (Admin/SchoolStaff only)
             .service(update_school) // PUT /schools/{id} - Full update school (Admin/SchoolStaff only)
             .service(update_school_partial) // PUT /schools/{id}/partial - Partial update school (Admin/SchoolStaff only)
-            .service(delete_school), // DELETE /schools/{id} - Delete school (Admin only)
+            .service(delete_school) // DELETE /schools/{id} - Delete school (Admin only)
+            .service(setup_school_academics), // POST /schools/{id}/academics - Setup school academics
     );
 }

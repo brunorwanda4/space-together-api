@@ -7,7 +7,7 @@ use crate::{
     repositories::subject_repo::SubjectRepo,
     utils::{
         code::generate_code,
-        names::{is_valid_name, is_valid_username},
+        names::is_valid_username,
         subject_utils::{sanitize_subject, sanitize_subjects},
     },
 };
@@ -456,7 +456,6 @@ impl<'a> SubjectService<'a> {
     pub fn validate_subject_data(&self, subject: &Subject) -> Result<(), String> {
         // Validate username and name using your existing utility functions
         is_valid_username(&subject.username)?;
-        is_valid_name(&subject.name)?;
 
         // Additional subject-specific validations
         if subject.name.trim().is_empty() {
@@ -578,5 +577,467 @@ impl<'a> SubjectService<'a> {
         };
 
         self.update_subject(id, update_data).await
+    }
+
+    pub async fn create_many_subjects(
+        &self,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, String> {
+        // Validate all subjects first
+        for subject in &subjects {
+            self.validate_subject_data(subject)?;
+        }
+
+        // Process subjects: generate codes, set timestamps, etc.
+        let mut processed_subjects = Vec::with_capacity(subjects.len());
+        let now = Utc::now();
+
+        for mut subject in subjects {
+            // Generate subject code if not provided
+            if subject.code.is_none() {
+                subject.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            subject.created_at = now;
+            subject.updated_at = now;
+
+            // Set default values for optional fields
+            if !subject.is_active {
+                subject.is_active = true;
+            }
+
+            // Generate ID
+            subject.id = Some(ObjectId::new());
+
+            processed_subjects.push(subject);
+        }
+
+        // Create subjects using repository
+        let created_subjects = self
+            .repo
+            .create_many_subjects(processed_subjects)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_subjects(created_subjects))
+    }
+
+    /// Create multiple subjects with comprehensive validation
+    pub async fn create_many_subjects_with_validation(
+        &self,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, String> {
+        // Validate all subjects first
+        for subject in &subjects {
+            self.validate_subject_data(subject)?;
+        }
+
+        // Process subjects: generate codes, set timestamps, etc.
+        let mut processed_subjects = Vec::with_capacity(subjects.len());
+        let now = Utc::now();
+
+        for mut subject in subjects {
+            // Generate subject code if not provided
+            if subject.code.is_none() {
+                subject.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            subject.created_at = now;
+            subject.updated_at = now;
+
+            // Set default values for optional fields
+            if !subject.is_active {
+                subject.is_active = true;
+            }
+
+            // Generate ID
+            subject.id = Some(ObjectId::new());
+
+            processed_subjects.push(subject);
+        }
+
+        // Create subjects using repository with validation
+        let created_subjects = self
+            .repo
+            .create_many_subjects_with_validation(processed_subjects)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_subjects(created_subjects))
+    }
+
+    /// Create multiple subjects for a specific class
+    pub async fn create_many_subjects_for_class(
+        &self,
+        class_id: &IdType,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, String> {
+        // Validate all subjects first
+        for subject in &subjects {
+            self.validate_subject_data(subject)?;
+        }
+
+        // Process subjects: generate codes, set timestamps, etc.
+        let mut processed_subjects = Vec::with_capacity(subjects.len());
+        let now = Utc::now();
+
+        for mut subject in subjects {
+            // Generate subject code if not provided
+            if subject.code.is_none() {
+                subject.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            subject.created_at = now;
+            subject.updated_at = now;
+
+            // Set default values for optional fields
+            if !subject.is_active {
+                subject.is_active = true;
+            }
+
+            // Generate ID
+            subject.id = Some(ObjectId::new());
+
+            processed_subjects.push(subject);
+        }
+
+        // Create subjects for specific class
+        let created_subjects = self
+            .repo
+            .create_many_subjects_for_class(class_id, processed_subjects)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_subjects(created_subjects))
+    }
+
+    /// Create multiple subjects for a specific teacher
+    pub async fn create_many_subjects_for_teacher(
+        &self,
+        teacher_id: &IdType,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, String> {
+        // Validate all subjects first
+        for subject in &subjects {
+            self.validate_subject_data(subject)?;
+        }
+
+        // Process subjects: generate codes, set timestamps, etc.
+        let mut processed_subjects = Vec::with_capacity(subjects.len());
+        let now = Utc::now();
+
+        for mut subject in subjects {
+            // Generate subject code if not provided
+            if subject.code.is_none() {
+                subject.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            subject.created_at = now;
+            subject.updated_at = now;
+
+            // Set default values for optional fields
+            if !subject.is_active {
+                subject.is_active = true;
+            }
+
+            // Generate ID
+            subject.id = Some(ObjectId::new());
+
+            processed_subjects.push(subject);
+        }
+
+        // Create subjects for specific teacher
+        let created_subjects = self
+            .repo
+            .create_many_subjects_for_teacher(teacher_id, processed_subjects)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_subjects(created_subjects))
+    }
+
+    /// Create multiple subjects for a specific main subject
+    pub async fn create_many_subjects_for_main_subject(
+        &self,
+        main_subject_id: &IdType,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, String> {
+        // Validate all subjects first
+        for subject in &subjects {
+            self.validate_subject_data(subject)?;
+        }
+
+        // Process subjects: generate codes, set timestamps, etc.
+        let mut processed_subjects = Vec::with_capacity(subjects.len());
+        let now = Utc::now();
+
+        for mut subject in subjects {
+            // Generate subject code if not provided
+            if subject.code.is_none() {
+                subject.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            subject.created_at = now;
+            subject.updated_at = now;
+
+            // Set default values for optional fields
+            if !subject.is_active {
+                subject.is_active = true;
+            }
+
+            // Generate ID
+            subject.id = Some(ObjectId::new());
+
+            processed_subjects.push(subject);
+        }
+
+        // Create subjects for specific main subject
+        let created_subjects = self
+            .repo
+            .create_many_subjects_for_main_subject(main_subject_id, processed_subjects)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_subjects(created_subjects))
+    }
+
+    /// Bulk update multiple subjects
+    pub async fn update_many_subjects(
+        &self,
+        updates: Vec<(IdType, UpdateSubject)>,
+    ) -> Result<Vec<Subject>, String> {
+        // Validate all updates first
+        for (id, update) in &updates {
+            // Create a temporary subject for validation by getting existing subject and applying updates
+            if let Ok(Some(existing_subject)) = self.repo.find_by_id(id).await {
+                let mut temp_subject = existing_subject.clone();
+
+                // Apply updates to temporary subject for validation
+                if let Some(ref username) = update.username {
+                    temp_subject.username = username.clone();
+                }
+                if let Some(ref name) = update.name {
+                    temp_subject.name = name.clone();
+                }
+                if let Some(ref subject_type) = update.subject_type {
+                    temp_subject.subject_type = subject_type.clone();
+                }
+
+                self.validate_subject_data(&temp_subject)?;
+            }
+        }
+
+        // Check uniqueness for usernames and codes that are being changed
+        for (id, update) in &updates {
+            if let Some(ref username) = update.username {
+                // Get existing subject to check if username is changing
+                if let Ok(Some(existing_subject)) = self.repo.find_by_id(id).await {
+                    if existing_subject.username != *username {
+                        if let Ok(Some(_)) = self.repo.find_by_username(username).await {
+                            return Err(format!("Subject username already exists: {}", username));
+                        }
+                    }
+                }
+            }
+
+            if let Some(ref code) = update.code {
+                // Get existing subject to check if code is changing
+                if let Ok(Some(existing_subject)) = self.repo.find_by_id(id).await {
+                    let existing_code = existing_subject.code.as_ref();
+                    let new_code = code.as_ref();
+
+                    if existing_code != new_code {
+                        if let Ok(Some(_)) = self
+                            .repo
+                            .find_by_code(new_code.unwrap_or(&"".to_string()))
+                            .await
+                        {
+                            return Err("Subject code already exists".to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Perform bulk update
+        let updated_subjects = self
+            .repo
+            .update_many_subjects(updates)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_subjects(updated_subjects))
+    }
+
+    /// Bulk delete multiple subjects
+    pub async fn delete_many_subjects(&self, ids: Vec<IdType>) -> Result<u64, String> {
+        let deleted_count = self
+            .repo
+            .delete_many_subjects(ids)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(deleted_count)
+    }
+
+    /// Get subjects by multiple IDs
+    pub async fn get_subjects_by_ids(&self, ids: Vec<IdType>) -> Result<Vec<Subject>, String> {
+        let subjects = self.repo.find_by_ids(ids).await.map_err(|e| e.message)?;
+
+        Ok(sanitize_subjects(subjects))
+    }
+
+    /// Get subjects with relations by multiple IDs
+    pub async fn get_subjects_by_ids_with_relations(
+        &self,
+        ids: Vec<IdType>,
+    ) -> Result<Vec<SubjectWithRelations>, String> {
+        let subjects = self
+            .repo
+            .find_by_ids_with_relations(ids)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(subjects)
+    }
+
+    /// Check if identifiers (usernames/codes) already exist in bulk
+    pub async fn check_existing_identifiers(
+        &self,
+        usernames: &[String],
+        codes: &[String],
+    ) -> Result<(Vec<String>, Vec<String>), String> {
+        let (existing_usernames, existing_codes) = self
+            .repo
+            .check_existing_identifiers(usernames, codes)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok((existing_usernames, existing_codes))
+    }
+
+    /// Bulk update subjects by class ID
+    pub async fn update_many_subjects_by_class_id(
+        &self,
+        class_id: &IdType,
+        update: UpdateSubject,
+    ) -> Result<u64, String> {
+        // Validate the update data if it contains fields that need validation
+        if let Some(ref username) = update.username {
+            is_valid_username(username)?;
+        }
+
+        let updated_count = self
+            .repo
+            .update_many_by_class_id(class_id, &update)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(updated_count)
+    }
+
+    /// Bulk activate/deactivate subjects
+    pub async fn bulk_update_subjects_active_status(
+        &self,
+        ids: Vec<IdType>,
+        is_active: bool,
+    ) -> Result<u64, String> {
+        let updated_count = self
+            .repo
+            .bulk_update_active_status(ids, is_active)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(updated_count)
+    }
+
+    /// Bulk toggle subject status for multiple subjects
+    pub async fn bulk_toggle_subjects_status(
+        &self,
+        ids: Vec<IdType>,
+    ) -> Result<Vec<Subject>, String> {
+        let mut updates = Vec::with_capacity(ids.len());
+
+        // First, get current status of all subjects
+        let subjects = self.get_subjects_by_ids(ids.clone()).await?;
+
+        for subject in subjects {
+            let update = UpdateSubject {
+                is_active: Some(!subject.is_active),
+                ..Default::default()
+            };
+            updates.push((IdType::from_object_id(subject.id.unwrap()), update));
+        }
+
+        // Perform bulk update
+        self.update_many_subjects(updates).await
+    }
+
+    /// Bulk add tags to multiple subjects
+    pub async fn bulk_add_subjects_tags(
+        &self,
+        ids: Vec<IdType>,
+        new_tags: Vec<String>,
+    ) -> Result<Vec<Subject>, String> {
+        // Validate new tags before adding
+        for tag in &new_tags {
+            if tag.trim().is_empty() {
+                return Err("Subject tags cannot be empty".to_string());
+            }
+            if tag.len() > 50 {
+                return Err("Subject tags cannot be longer than 50 characters".to_string());
+            }
+        }
+
+        let mut updates = Vec::with_capacity(ids.len());
+        let subjects = self.get_subjects_by_ids(ids.clone()).await?;
+
+        for subject in subjects {
+            let mut updated_tags = subject.tags.clone();
+            for tag in &new_tags {
+                if !updated_tags.contains(tag) {
+                    updated_tags.push(tag.clone());
+                }
+            }
+
+            let update = UpdateSubject {
+                tags: Some(updated_tags),
+                ..Default::default()
+            };
+            updates.push((IdType::from_object_id(subject.id.unwrap()), update));
+        }
+
+        self.update_many_subjects(updates).await
+    }
+
+    /// Bulk remove tags from multiple subjects
+    pub async fn bulk_remove_subjects_tags(
+        &self,
+        ids: Vec<IdType>,
+        tags_to_remove: Vec<String>,
+    ) -> Result<Vec<Subject>, String> {
+        let mut updates = Vec::with_capacity(ids.len());
+        let subjects = self.get_subjects_by_ids(ids.clone()).await?;
+
+        for subject in subjects {
+            let updated_tags: Vec<String> = subject
+                .tags
+                .into_iter()
+                .filter(|tag| !tags_to_remove.contains(tag))
+                .collect();
+
+            let update = UpdateSubject {
+                tags: Some(updated_tags),
+                ..Default::default()
+            };
+            updates.push((IdType::from_object_id(subject.id.unwrap()), update));
+        }
+
+        self.update_many_subjects(updates).await
     }
 }

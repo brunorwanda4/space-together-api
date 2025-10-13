@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod controller;
 mod domain;
 mod errors;
 mod guards;

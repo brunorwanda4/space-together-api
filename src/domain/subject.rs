@@ -73,7 +73,7 @@ pub struct Subject {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Serialize, Clone)]
 pub struct UpdateSubject {
     pub name: Option<String>,
     pub username: Option<String>,
@@ -101,4 +101,73 @@ pub struct SubjectWithRelations {
     pub class: Option<Class>,
     pub class_teacher: Option<User>,
     pub main_subject: Option<MainSubject>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkSubjectsRequest {
+    pub subjects: Vec<Subject>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkSubjectsForClassRequest {
+    pub subjects: Vec<Subject>,
+    pub class_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkSubjectsForTeacherRequest {
+    pub subjects: Vec<Subject>,
+    pub teacher_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkSubjectsForMainSubjectRequest {
+    pub subjects: Vec<Subject>,
+    pub main_subject_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkUpdateRequest {
+    pub updates: Vec<BulkUpdateItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkUpdateItem {
+    pub id: String,
+    pub update: UpdateSubject,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkIdsRequest {
+    pub ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkCheckIdentifiersRequest {
+    pub usernames: Vec<String>,
+    pub codes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkCheckIdentifiersResponse {
+    pub existing_usernames: Vec<String>,
+    pub existing_codes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkUpdateActiveStatusRequest {
+    pub ids: Vec<String>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkTagsRequest {
+    pub ids: Vec<String>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkUpdateByClassRequest {
+    pub class_id: String,
+    pub update: UpdateSubject,
 }

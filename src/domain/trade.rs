@@ -45,7 +45,7 @@ pub struct Trade {
     pub description: Option<String>,
     pub class_min: i32,
     pub class_max: i32,
-    pub r#type: String, // Senior, Primary, Level, Nursing
+    pub r#type: TradeType,
     pub disable: Option<bool>,
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,

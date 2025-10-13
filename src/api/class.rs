@@ -1,11 +1,17 @@
+use std::str::FromStr;
+
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpResponse, Responder};
+use mongodb::bson::oid::ObjectId;
 
 use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        class::{Class, UpdateClass},
+        class::{
+            BulkClassesForSchoolRequest, BulkClassesRequest, BulkUpdateRequest, Class, UpdateClass,
+        },
     },
+    guards::role_guard,
     models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::class_repo::ClassRepo,
     services::{class_service::ClassService, event_service::EventService},
@@ -442,6 +448,231 @@ async fn count_classes_by_creator_id(
     }
 }
 
+/// Create multiple classes
+#[post("/bulk")]
+async fn create_many_classes(
+    user: web::ReqData<AuthUserDto>,
+    data: web::Json<BulkClassesRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+
+    if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({ "message": err.to_string() }));
+    }
+
+    let repo = ClassRepo::new(&state.db.main_db());
+    let service = ClassService::new(&repo);
+
+    match service.create_many_classes(data.classes.clone()).await {
+        Ok(classes) => {
+            let state_clone = state.clone();
+            let classes_for_spawn = classes.clone();
+
+            actix_rt::spawn(async move {
+                for class in &classes_for_spawn {
+                    if let Some(id) = class.id {
+                        EventService::broadcast_created(&state_clone, "class", &id.to_hex(), class)
+                            .await;
+                    }
+                }
+            });
+
+            HttpResponse::Created().json(classes)
+        }
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+/// Create multiple classes with validation
+#[post("/bulk/validation")]
+async fn create_many_classes_with_validation(
+    user: web::ReqData<AuthUserDto>,
+    data: web::Json<BulkClassesRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+
+    if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({ "message": err.to_string() }));
+    }
+
+    let repo = ClassRepo::new(&state.db.main_db());
+    let service = ClassService::new(&repo);
+
+    match service
+        .create_many_classes_with_validation(data.classes.clone())
+        .await
+    {
+        Ok(classes) => {
+            let state_clone = state.clone();
+            let classes_for_spawn = classes.clone();
+
+            actix_rt::spawn(async move {
+                for class in &classes_for_spawn {
+                    if let Some(id) = class.id {
+                        EventService::broadcast_created(&state_clone, "class", &id.to_hex(), class)
+                            .await;
+                    }
+                }
+            });
+
+            HttpResponse::Created().json(classes)
+        }
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+/// Create multiple classes for a specific school
+#[post("/bulk/school/{school_id}")]
+async fn create_many_classes_for_school(
+    user: web::ReqData<AuthUserDto>,
+    path: web::Path<String>,
+    data: web::Json<BulkClassesRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+    let school_id = path.into_inner();
+
+    if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({ "message": err.to_string() }));
+    }
+
+    let repo = ClassRepo::new(&state.db.main_db());
+    let service = ClassService::new(&repo);
+    let school_id_typed = IdType::from_string(school_id);
+
+    match service
+        .create_many_classes_for_school(&school_id_typed, data.classes.clone())
+        .await
+    {
+        Ok(classes) => {
+            let state_clone = state.clone();
+            let classes_for_spawn = classes.clone();
+
+            actix_rt::spawn(async move {
+                for class in &classes_for_spawn {
+                    if let Some(id) = class.id {
+                        EventService::broadcast_created(&state_clone, "class", &id.to_hex(), class)
+                            .await;
+                    }
+                }
+            });
+
+            HttpResponse::Created().json(classes)
+        }
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+/// Bulk update multiple classes
+#[put("/bulk")]
+async fn update_many_classes(
+    req: actix_web::HttpRequest,
+    data: web::Json<BulkUpdateRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = match req.extensions().get::<AuthUserDto>() {
+        Some(u) => u.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "Unauthorized"
+            }))
+        }
+    };
+
+    let updates: Vec<(IdType, UpdateClass)> = data
+        .updates
+        .iter()
+        .map(|item| {
+            let id = IdType::from_string(item.id.clone());
+            (id, item.update.clone())
+        })
+        .collect();
+
+    // ✅ FIX: IdType might not implement Display — use to_hex() instead of to_string()
+    for (id, _) in &updates {
+        if let Err(err) =
+            crate::guards::role_guard::check_class_access(&logged_user, &id.as_string())
+        {
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "message": format!("No permission to update class: {}", err)
+            }));
+        }
+    }
+
+    let repo = ClassRepo::new(&state.db.main_db());
+    let service = ClassService::new(&repo);
+
+    match service.update_many_classes(updates).await {
+        Ok(classes) => {
+            let state_clone = state.clone();
+            let classes_for_spawn = classes.clone();
+
+            actix_rt::spawn(async move {
+                for class in &classes_for_spawn {
+                    if let Some(id) = class.id {
+                        EventService::broadcast_updated(&state_clone, "class", &id.to_hex(), class)
+                            .await;
+                    }
+                }
+            });
+
+            HttpResponse::Ok().json(classes)
+        }
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+/// Prepare classes for bulk creation (helper endpoint)
+#[post("/bulk/prepare")]
+async fn prepare_classes_for_bulk_creation(
+    user: web::ReqData<AuthUserDto>,
+    data: web::Json<BulkClassesForSchoolRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+
+    // Only admin, staff, or teachers can prepare classes
+    if let Err(err) = crate::guards::role_guard::check_admin_staff_or_teacher(&logged_user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err.to_string()
+        }));
+    }
+
+    let repo = ClassRepo::new(&state.db.main_db());
+    let service = ClassService::new(&repo);
+
+    let school_id_typed = IdType::from_string(data.school_id.clone());
+    let school_id_obj = match school_id_typed.to_object_id() {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(ReqErrModel {
+                message: "Invalid school ID".to_string(),
+            })
+        }
+    };
+
+    let creator_id_obj = match ObjectId::from_str(&logged_user.id) {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(ReqErrModel {
+                message: "Invalid user ID".to_string(),
+            })
+        }
+    };
+
+    // Use the helper method to prepare classes
+    match service.prepare_classes_for_bulk_creation(
+        data.classes.clone(),
+        Some(school_id_obj),
+        Some(creator_id_obj),
+    ) {
+        Ok(prepared_classes) => HttpResponse::Ok().json(prepared_classes),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/classes")
@@ -466,6 +697,12 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(create_class) // POST /classes - Create new class (Admin/Staff/Teacher only)
             .service(update_class) // PUT /classes/{id} - Update class (Admin/ClassTeacher only)
             .service(update_class_merged) // PUT /classes/{id}/merged - Update class with merge (Admin/ClassTeacher only)
-            .service(delete_class), // DELETE /classes/{id} - Delete class (Admin/ClassTeacher only)
+            .service(delete_class) // DELETE /classes/{id} - Delete class (Admin/ClassTeacher only)
+            // Bulk operations (protected)
+            .service(create_many_classes) // POST /classes/bulk - Create multiple classes
+            .service(create_many_classes_with_validation) // POST /classes/bulk/validation - Create multiple classes with validation
+            .service(create_many_classes_for_school) // POST /classes/bulk/school/{school_id} - Create multiple classes for school
+            .service(update_many_classes) // PUT /classes/bulk - Update multiple classes
+            .service(prepare_classes_for_bulk_creation), // POST /classes/bulk/prepare - Prepare classes for bulk creation
     );
 }

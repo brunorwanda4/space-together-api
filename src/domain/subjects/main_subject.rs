@@ -36,7 +36,7 @@ pub struct MainSubject {
         deserialize_with = "object_id_helpers::deserialize_vec",
         default
     )]
-    pub main_class_ids: Vec<ObjectId>,
+    pub main_class_ids: Vec<ObjectId>, // this will create help to create subject which have connection on subject
 
     #[serde(
         serialize_with = "object_id_helpers::serialize_opt_vec",

@@ -5,7 +5,7 @@ use crate::{
     utils::{
         class_utils::{sanitize_class, sanitize_classes},
         code::generate_code,
-        names::{is_valid_name, is_valid_username},
+        names::is_valid_username,
     },
 };
 use chrono::Utc;
@@ -53,7 +53,6 @@ impl<'a> ClassService<'a> {
     /// Create a new class
     pub async fn create_class(&self, mut new_class: Class) -> Result<Class, String> {
         is_valid_username(&new_class.username)?;
-        is_valid_name(&new_class.name)?;
 
         // Check if code already exists
         if let Some(class_code) = &new_class.code {
@@ -235,10 +234,6 @@ impl<'a> ClassService<'a> {
         if let Some(ref username) = updated_data.username {
             is_valid_username(username)?;
         }
-        if let Some(ref name) = updated_data.name {
-            is_valid_name(name)?;
-        }
-
         let existing_class = self
             .repo
             .find_by_id(id)
@@ -287,9 +282,6 @@ impl<'a> ClassService<'a> {
         // Validate username if provided
         if let Some(ref username) = updated_data.username {
             is_valid_username(username)?;
-        }
-        if let Some(ref name) = updated_data.name {
-            is_valid_name(name)?;
         }
 
         let existing_class = self
@@ -409,5 +401,213 @@ impl<'a> ClassService<'a> {
             .count_by_creator_id(creator_id)
             .await
             .map_err(|e| e.message)
+    }
+
+    pub async fn create_many_classes(&self, classes: Vec<Class>) -> Result<Vec<Class>, String> {
+        // Validate all classes first
+        for class in &classes {
+            is_valid_username(&class.username)?;
+        }
+
+        // Process classes: generate codes, set timestamps, etc.
+        let mut processed_classes = Vec::with_capacity(classes.len());
+        let now = Utc::now();
+
+        for mut class in classes {
+            // Generate class code if not provided
+            if class.code.is_none() {
+                class.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            class.created_at = now;
+            class.updated_at = now;
+
+            // Set default values for optional fields
+            if !class.is_active {
+                class.is_active = true;
+            }
+
+            // Generate ID
+            class.id = Some(ObjectId::new());
+
+            processed_classes.push(class);
+        }
+
+        // Create classes using repository
+        let created_classes = self
+            .repo
+            .create_many_classes(processed_classes)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_classes(created_classes))
+    }
+
+    /// Create multiple classes with comprehensive validation
+    pub async fn create_many_classes_with_validation(
+        &self,
+        classes: Vec<Class>,
+    ) -> Result<Vec<Class>, String> {
+        // Validate all classes first
+        for class in &classes {
+            is_valid_username(&class.username)?;
+        }
+
+        // Process classes: generate codes, set timestamps, etc.
+        let mut processed_classes = Vec::with_capacity(classes.len());
+        let now = Utc::now();
+
+        for mut class in classes {
+            // Generate class code if not provided
+            if class.code.is_none() {
+                class.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            class.created_at = now;
+            class.updated_at = now;
+
+            // Set default values for optional fields
+            if !class.is_active {
+                class.is_active = true;
+            }
+
+            // Generate ID
+            class.id = Some(ObjectId::new());
+
+            processed_classes.push(class);
+        }
+
+        // Create classes using repository with validation
+        let created_classes = self
+            .repo
+            .create_many_classes_with_validation(processed_classes)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_classes(created_classes))
+    }
+
+    /// Create multiple classes for a specific school
+    pub async fn create_many_classes_for_school(
+        &self,
+        school_id: &IdType,
+        classes: Vec<Class>,
+    ) -> Result<Vec<Class>, String> {
+        // Validate all classes first
+        for class in &classes {
+            is_valid_username(&class.username)?;
+        }
+
+        // Process classes: generate codes, set timestamps, etc.
+        let mut processed_classes = Vec::with_capacity(classes.len());
+        let now = Utc::now();
+
+        for mut class in classes {
+            // Generate class code if not provided
+            if class.code.is_none() {
+                class.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            class.created_at = now;
+            class.updated_at = now;
+
+            // Set default values for optional fields
+            if !class.is_active {
+                class.is_active = true;
+            }
+
+            // Generate ID
+            class.id = Some(ObjectId::new());
+
+            processed_classes.push(class);
+        }
+
+        // Create classes for specific school
+        let created_classes = self
+            .repo
+            .create_many_classes_for_school(school_id, processed_classes)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_classes(created_classes))
+    }
+
+    /// Bulk update multiple classes
+    pub async fn update_many_classes(
+        &self,
+        updates: Vec<(IdType, UpdateClass)>,
+    ) -> Result<Vec<Class>, String> {
+        // Validate all updates first
+        for (_, update) in &updates {
+            if let Some(ref username) = update.username {
+                is_valid_username(username)?;
+            }
+        }
+
+        // Check uniqueness for usernames and codes that are being changed
+        for (id, update) in &updates {
+            if let Some(ref username) = update.username {
+                // Get existing class to check if username is changing
+                if let Ok(Some(existing_class)) = self.repo.find_by_id(id).await {
+                    if existing_class.username != *username {
+                        if let Ok(Some(_)) = self.repo.find_by_username(username).await {
+                            return Err(format!("Class username already exists: {}", username));
+                        }
+                    }
+                }
+            }
+
+            if let Some(ref code) = update.code {
+                // Get existing class to check if code is changing
+                if let Ok(Some(existing_class)) = self.repo.find_by_id(id).await {
+                    let existing_code = existing_class.code.as_ref();
+                    let new_code = code.as_ref();
+
+                    if existing_code != new_code {
+                        if let Ok(Some(_)) = self
+                            .repo
+                            .find_by_code(new_code.unwrap_or(&"".to_string()))
+                            .await
+                        {
+                            return Err("Class code already exists".to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Perform bulk update
+        let updated_classes = self
+            .repo
+            .update_many_classes(updates)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_classes(updated_classes))
+    }
+
+    pub fn prepare_classes_for_bulk_creation(
+        &self,
+        classes: Vec<Class>,
+        school_id: Option<ObjectId>,
+        creator_id: Option<ObjectId>,
+    ) -> Result<Vec<Class>, String> {
+        let prepared_classes: Vec<Class> = classes
+            .into_iter()
+            .map(|mut class| {
+                if let Some(sid) = school_id {
+                    class.school_id = Some(sid);
+                }
+                if let Some(cid) = creator_id {
+                    class.creator_id = Some(cid);
+                }
+                class
+            })
+            .collect();
+
+        Ok(prepared_classes)
     }
 }

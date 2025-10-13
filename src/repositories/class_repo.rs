@@ -498,4 +498,143 @@ impl ClassRepo {
                 message: format!("Failed to count classes by creator_id: {}", e),
             })
     }
+
+    pub async fn create_many_classes(&self, classes: Vec<Class>) -> Result<Vec<Class>, AppError> {
+        self.ensure_indexes().await?;
+
+        let mut classes_to_insert = Vec::with_capacity(classes.len());
+        let now = Utc::now();
+
+        for mut class in classes {
+            class.id = None;
+            class.created_at = now;
+            class.updated_at = now;
+            classes_to_insert.push(class);
+        }
+
+        // Insert all classes
+        let result = self
+            .collection
+            .insert_many(&classes_to_insert)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to insert multiple classes: {}", e),
+            })?;
+
+        // ✅ Fix: use cloned() inside filter_map, not after
+        let inserted_ids: Vec<ObjectId> = result
+            .inserted_ids
+            .values()
+            .filter_map(|bson| bson.as_object_id().map(|oid| oid.clone()))
+            .collect();
+
+        if inserted_ids.len() != classes_to_insert.len() {
+            return Err(AppError {
+                message: "Failed to get all inserted class IDs".to_string(),
+            });
+        }
+
+        // Fetch and return the inserted classes
+        let mut inserted_classes = Vec::with_capacity(inserted_ids.len());
+        for id in inserted_ids {
+            let class = self.find_by_id(&IdType::from_object_id(id)).await?;
+            if let Some(class) = class {
+                inserted_classes.push(class);
+            }
+        }
+
+        Ok(inserted_classes)
+    }
+
+    /// Create multiple classes with validation and conflict checking
+    pub async fn create_many_classes_with_validation(
+        &self,
+        classes: Vec<Class>,
+    ) -> Result<Vec<Class>, AppError> {
+        self.ensure_indexes().await?;
+
+        // Check for duplicate usernames and codes in the input
+        let mut usernames = std::collections::HashSet::new();
+        let mut codes = std::collections::HashSet::new();
+
+        for class in &classes {
+            if !usernames.insert(&class.username) {
+                return Err(AppError {
+                    message: format!("Duplicate username found: {}", class.username),
+                });
+            }
+
+            if let Some(code) = &class.code {
+                if !codes.insert(code) {
+                    return Err(AppError {
+                        message: format!("Duplicate code found: {}", code),
+                    });
+                }
+            }
+        }
+
+        // Check for existing usernames in database
+        for class in &classes {
+            if let Some(existing) = self.find_by_username(&class.username).await? {
+                return Err(AppError {
+                    message: format!("Username already exists: {}", existing.username),
+                });
+            }
+
+            if let Some(code) = &class.code {
+                if let Some(existing) = self.find_by_code(code).await? {
+                    return Err(AppError {
+                        message: format!("Code already exists: {:?}", existing.code),
+                    });
+                }
+            }
+        }
+
+        // If all checks pass, create the classes
+        self.create_many_classes(classes).await
+    }
+
+    /// Create multiple classes for a specific school
+    pub async fn create_many_classes_for_school(
+        &self,
+        school_id: &IdType,
+        classes: Vec<Class>,
+    ) -> Result<Vec<Class>, AppError> {
+        let obj_id = parse_object_id(school_id)?;
+
+        let mut classes_with_school = Vec::with_capacity(classes.len());
+        for mut class in classes {
+            class.school_id = Some(obj_id);
+            classes_with_school.push(class);
+        }
+
+        self.create_many_classes_with_validation(classes_with_school)
+            .await
+    }
+
+    /// Bulk update multiple classes
+    pub async fn update_many_classes(
+        &self,
+        updates: Vec<(IdType, UpdateClass)>,
+    ) -> Result<Vec<Class>, AppError> {
+        let mut updated_classes = Vec::with_capacity(updates.len());
+
+        for (id, update) in updates {
+            match self.update_class(&id, &update).await {
+                Ok(class) => updated_classes.push(class),
+                Err(e) => {
+                    // Log the error but continue with other updates
+                    eprintln!("Failed to update class {:?}: {}", id, e.message);
+                }
+            }
+        }
+
+        if updated_classes.is_empty() {
+            return Err(AppError {
+                message: "No classes were successfully updated".to_string(),
+            });
+        }
+
+        Ok(updated_classes)
+    }
 }

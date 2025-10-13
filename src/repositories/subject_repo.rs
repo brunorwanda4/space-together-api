@@ -553,6 +553,398 @@ impl SubjectRepo {
                 message: format!("Failed to count subjects by main_subject_id: {}", e),
             })
     }
+
+    pub async fn create_many_subjects(
+        &self,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, AppError> {
+        self.ensure_indexes().await?;
+
+        let mut subjects_to_insert = Vec::with_capacity(subjects.len());
+        let now = Utc::now();
+
+        for mut subject in subjects {
+            subject.id = None;
+            subject.created_at = now;
+            subject.updated_at = now;
+            subjects_to_insert.push(subject);
+        }
+
+        // Insert all subjects
+        let result = self
+            .collection
+            .insert_many(&subjects_to_insert)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to insert multiple subjects: {}", e),
+            })?;
+
+        // Get the inserted IDs
+        let inserted_ids: Vec<ObjectId> = result
+            .inserted_ids
+            .values()
+            .filter_map(|bson| bson.as_object_id().map(|oid| oid.clone()))
+            .collect();
+
+        if inserted_ids.len() != subjects_to_insert.len() {
+            return Err(AppError {
+                message: "Failed to get all inserted subject IDs".to_string(),
+            });
+        }
+
+        // Fetch and return the inserted subjects
+        let mut inserted_subjects = Vec::with_capacity(inserted_ids.len());
+        for id in inserted_ids {
+            let subject = self.find_by_id(&IdType::from_object_id(id)).await?;
+            if let Some(subject) = subject {
+                inserted_subjects.push(subject);
+            }
+        }
+
+        Ok(inserted_subjects)
+    }
+
+    /// Create multiple subjects with validation and conflict checking
+    pub async fn create_many_subjects_with_validation(
+        &self,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, AppError> {
+        self.ensure_indexes().await?;
+
+        // Check for duplicate usernames and codes in the input
+        let mut usernames = std::collections::HashSet::new();
+        let mut codes = std::collections::HashSet::new();
+
+        for subject in &subjects {
+            if !usernames.insert(&subject.username) {
+                return Err(AppError {
+                    message: format!("Duplicate username found: {}", subject.username),
+                });
+            }
+
+            if let Some(code) = &subject.code {
+                if !codes.insert(code) {
+                    return Err(AppError {
+                        message: format!("Duplicate code found: {}", code),
+                    });
+                }
+            }
+        }
+
+        // Check for existing usernames in database
+        for subject in &subjects {
+            if let Some(existing) = self.find_by_username(&subject.username).await? {
+                return Err(AppError {
+                    message: format!("Username already exists: {}", existing.username),
+                });
+            }
+
+            if let Some(code) = &subject.code {
+                if let Some(existing) = self.find_by_code(code).await? {
+                    return Err(AppError {
+                        message: format!("Code already exists: {:?}", existing.code),
+                    });
+                }
+            }
+        }
+
+        // If all checks pass, create the subjects
+        self.create_many_subjects(subjects).await
+    }
+
+    /// Create multiple subjects for a specific class
+    pub async fn create_many_subjects_for_class(
+        &self,
+        class_id: &IdType,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, AppError> {
+        let obj_id = parse_object_id(class_id)?;
+
+        let mut subjects_with_class = Vec::with_capacity(subjects.len());
+        for mut subject in subjects {
+            subject.class_id = Some(obj_id);
+            subjects_with_class.push(subject);
+        }
+
+        self.create_many_subjects_with_validation(subjects_with_class)
+            .await
+    }
+
+    /// Create multiple subjects for a specific teacher
+    pub async fn create_many_subjects_for_teacher(
+        &self,
+        teacher_id: &IdType,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, AppError> {
+        let obj_id = parse_object_id(teacher_id)?;
+
+        let mut subjects_with_teacher = Vec::with_capacity(subjects.len());
+        for mut subject in subjects {
+            subject.class_teacher_id = Some(obj_id);
+            subjects_with_teacher.push(subject);
+        }
+
+        self.create_many_subjects_with_validation(subjects_with_teacher)
+            .await
+    }
+
+    /// Create multiple subjects for a specific main subject
+    pub async fn create_many_subjects_for_main_subject(
+        &self,
+        main_subject_id: &IdType,
+        subjects: Vec<Subject>,
+    ) -> Result<Vec<Subject>, AppError> {
+        let obj_id = parse_object_id(main_subject_id)?;
+
+        let mut subjects_with_main = Vec::with_capacity(subjects.len());
+        for mut subject in subjects {
+            subject.main_subject_id = Some(obj_id);
+            subjects_with_main.push(subject);
+        }
+
+        self.create_many_subjects_with_validation(subjects_with_main)
+            .await
+    }
+
+    /// Bulk update multiple subjects
+    pub async fn update_many_subjects(
+        &self,
+        updates: Vec<(IdType, UpdateSubject)>,
+    ) -> Result<Vec<Subject>, AppError> {
+        let mut updated_subjects = Vec::with_capacity(updates.len());
+
+        for (id, update) in updates {
+            match self.update_subject(&id, &update).await {
+                Ok(subject) => updated_subjects.push(subject),
+                Err(e) => {
+                    // Log the error but continue with other updates
+                    eprintln!("Failed to update subject {:?}: {}", id, e.message);
+                }
+            }
+        }
+
+        if updated_subjects.is_empty() {
+            return Err(AppError {
+                message: "No subjects were successfully updated".to_string(),
+            });
+        }
+
+        Ok(updated_subjects)
+    }
+
+    /// Check if usernames or codes already exist in the database
+    pub async fn check_existing_identifiers(
+        &self,
+        usernames: &[String],
+        codes: &[String],
+    ) -> Result<(Vec<String>, Vec<String>), AppError> {
+        let mut existing_usernames = Vec::new();
+        let mut existing_codes = Vec::new();
+
+        // Check usernames
+        for username in usernames {
+            if (self.find_by_username(username).await?).is_some() {
+                existing_usernames.push(username.clone());
+            }
+        }
+
+        // Check codes
+        for code in codes {
+            if let Some(_) = self.find_by_code(code).await? {
+                existing_codes.push(code.clone());
+            }
+        }
+
+        Ok((existing_usernames, existing_codes))
+    }
+
+    /// Bulk delete multiple subjects
+    pub async fn delete_many_subjects(&self, ids: Vec<IdType>) -> Result<u64, AppError> {
+        let object_ids: Result<Vec<ObjectId>, AppError> =
+            ids.iter().map(|id| parse_object_id(id)).collect();
+
+        let object_ids = object_ids?;
+
+        let filter = doc! {
+            "_id": {
+                "$in": object_ids
+            }
+        };
+
+        let result = self
+            .collection
+            .delete_many(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to delete multiple subjects: {}", e),
+            })?;
+
+        Ok(result.deleted_count)
+    }
+
+    /// Get subjects by multiple IDs
+    pub async fn find_by_ids(&self, ids: Vec<IdType>) -> Result<Vec<Subject>, AppError> {
+        let object_ids: Result<Vec<ObjectId>, AppError> =
+            ids.iter().map(|id| parse_object_id(id)).collect();
+
+        let object_ids = object_ids?;
+
+        let mut cursor = self
+            .collection
+            .find(doc! {
+                "_id": {
+                    "$in": object_ids
+                }
+            })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find subjects by IDs: {}", e),
+            })?;
+
+        let mut subjects = Vec::new();
+        while let Some(subject) = cursor.next().await {
+            subjects.push(subject.map_err(|e| AppError {
+                message: format!("Failed to process subject: {}", e),
+            })?);
+        }
+        Ok(subjects)
+    }
+
+    /// Get subjects with relations by multiple IDs
+    pub async fn find_by_ids_with_relations(
+        &self,
+        ids: Vec<IdType>,
+    ) -> Result<Vec<SubjectWithRelations>, AppError> {
+        let object_ids: Result<Vec<ObjectId>, AppError> =
+            ids.iter().map(|id| parse_object_id(id)).collect();
+
+        let object_ids = object_ids?;
+
+        aggregate_many(
+            &self.collection.clone().clone_with_type::<Document>(),
+            subject_with_relations_pipeline(doc! {
+                "_id": {
+                    "$in": object_ids
+                }
+            }),
+        )
+        .await
+    }
+
+    /// Bulk update subjects by class ID
+    pub async fn update_many_by_class_id(
+        &self,
+        class_id: &IdType,
+        update: &UpdateSubject,
+    ) -> Result<u64, AppError> {
+        let obj_id = parse_object_id(class_id)?;
+
+        let mut update_doc = Document::new();
+
+        // Add fields to update
+        if let Some(name) = &update.name {
+            update_doc.insert("name", name);
+        }
+        if let Some(username) = &update.username {
+            update_doc.insert("username", username);
+        }
+        if let Some(class_teacher_id) = &update.class_teacher_id {
+            update_doc.insert(
+                "class_teacher_id",
+                bson::to_bson(class_teacher_id).map_err(|e| AppError {
+                    message: format!("Failed to serialize class_teacher_id: {}", e),
+                })?,
+            );
+        }
+        if let Some(main_subject_id) = &update.main_subject_id {
+            update_doc.insert(
+                "main_subject_id",
+                bson::to_bson(main_subject_id).map_err(|e| AppError {
+                    message: format!("Failed to serialize main_subject_id: {}", e),
+                })?,
+            );
+        }
+        if let Some(subject_type) = &update.subject_type {
+            update_doc.insert(
+                "subject_type",
+                bson::to_bson(subject_type).map_err(|e| AppError {
+                    message: format!("Failed to serialize subject_type: {}", e),
+                })?,
+            );
+        }
+        if let Some(is_active) = update.is_active {
+            update_doc.insert("is_active", is_active);
+        }
+        if let Some(description) = &update.description {
+            update_doc.insert(
+                "description",
+                bson::to_bson(description).map_err(|e| AppError {
+                    message: format!("Failed to serialize description: {}", e),
+                })?,
+            );
+        }
+        if let Some(code) = &update.code {
+            update_doc.insert(
+                "code",
+                bson::to_bson(code).map_err(|e| AppError {
+                    message: format!("Failed to serialize code: {}", e),
+                })?,
+            );
+        }
+        if let Some(tags) = &update.tags {
+            update_doc.insert("tags", tags);
+        }
+
+        update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
+
+        let update_doc = doc! { "$set": update_doc };
+
+        let result = self
+            .collection
+            .update_many(doc! { "class_id": obj_id }, update_doc)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to update subjects by class_id: {}", e),
+            })?;
+
+        Ok(result.modified_count)
+    }
+
+    /// Bulk activate/deactivate subjects
+    pub async fn bulk_update_active_status(
+        &self,
+        ids: Vec<IdType>,
+        is_active: bool,
+    ) -> Result<u64, AppError> {
+        let object_ids: Result<Vec<ObjectId>, AppError> =
+            ids.iter().map(|id| parse_object_id(id)).collect();
+
+        let object_ids = object_ids?;
+
+        let update_doc = doc! {
+            "$set": {
+                "is_active": is_active,
+                "updated_at": bson::to_bson(&Utc::now()).unwrap()
+            }
+        };
+
+        let result = self
+            .collection
+            .update_many(
+                doc! {
+                    "_id": {
+                        "$in": object_ids
+                    }
+                },
+                update_doc,
+            )
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to bulk update active status: {}", e),
+            })?;
+
+        Ok(result.modified_count)
+    }
 }
 
 // Pipeline functions for subject aggregations
