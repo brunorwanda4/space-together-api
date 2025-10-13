@@ -6,12 +6,14 @@ use crate::{
         auth_user::AuthUserDto,
         school::{School, UpdateSchool},
     },
+    mappers::school_mapper::to_school_school_token,
     models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::{school_repo::SchoolRepo, user_repo::UserRepo},
     services::{
         event_service::EventService, school_service::SchoolService, tenant_service::TenantService,
         user_service::UserService,
     },
+    utils::school_token::create_school_token,
 };
 
 #[get("")]
@@ -140,7 +142,16 @@ async fn create_school(
                 }
 
                 // ✅ Update local copy to include db_name before returning
-                school.database_name = Some(db_name_clone);
+                school.database_name = Some(db_name_clone.clone());
+
+                let school_token = match to_school_school_token(&school) {
+                    Ok(token) => token,
+                    Err(e) => {
+                        return HttpResponse::BadRequest().json(ReqErrModel { message: e });
+                    }
+                };
+                // ✅ Generate school token here (instead of in service)
+                let token = create_school_token(school_token);
 
                 // ✅ Now update the user who created the school
                 let user_repo = UserRepo::new(&state.db.main_db());
@@ -173,23 +184,34 @@ async fn create_school(
                         eprintln!("⚠️ Failed to link school to user: {}", e);
                     }
                 }
+
+                // ✅ Broadcast created school event
+                let school_clone = school.clone();
+                let state_clone = state.clone();
+                actix_rt::spawn(async move {
+                    if let Some(id) = school_clone.id {
+                        EventService::broadcast_created(
+                            &state_clone,
+                            "school",
+                            &id.to_hex(),
+                            &school_clone,
+                        )
+                        .await;
+                    }
+                });
+
+                // ✅ Merge school fields with token into one flat object
+                let mut school_json = serde_json::to_value(&school).unwrap_or_default();
+
+                if let serde_json::Value::Object(ref mut obj) = school_json {
+                    obj.insert("token".to_string(), serde_json::json!(token));
+                }
+
+                // ✅ Return both school and token in same response
+                return HttpResponse::Created().json(school_json);
             }
 
-            // ✅ Broadcast created school event
-            let school_clone = school.clone();
-            let state_clone = state.clone();
-            actix_rt::spawn(async move {
-                if let Some(id) = school_clone.id {
-                    EventService::broadcast_created(
-                        &state_clone,
-                        "school",
-                        &id.to_hex(),
-                        &school_clone,
-                    )
-                    .await;
-                }
-            });
-
+            // fallback if school id missing
             HttpResponse::Created().json(school)
         }
 

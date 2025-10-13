@@ -73,7 +73,7 @@ impl<'a> SchoolService<'a> {
 
         // Set default values for optional fields
         if new_school.is_active.is_none() {
-            new_school.is_active = Some(true);
+            new_school.is_active = Some(false);
         }
 
         let school_id = ObjectId::new();

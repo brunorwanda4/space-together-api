@@ -6,6 +6,7 @@ mod database_status;
 mod events;
 mod main_class;
 mod school;
+mod school_collections;
 mod sector;
 mod students;
 mod subject;
@@ -31,4 +32,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     school::init(cfg);
     class::init(cfg);
     subject::init(cfg);
+    school_collections::school_class::init(cfg);
 }

@@ -6,6 +6,7 @@ pub mod hash;
 pub mod jwt;
 pub mod names;
 pub mod object_id;
+pub mod school_token;
 pub mod school_utils;
 pub mod subject_utils;
 pub mod user_utils;
