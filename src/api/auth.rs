@@ -8,9 +8,11 @@ use crate::{
         user::UpdateUserDto,
     },
     middleware::jwt_middleware::JwtMiddleware,
-    models::request_error_model::ReqErrModel,
-    repositories::user_repo::UserRepo,
-    services::{auth_service::AuthService, user_service::UserService},
+    models::{id_model::IdType, request_error_model::ReqErrModel},
+    repositories::{school_repo::SchoolRepo, user_repo::UserRepo},
+    services::{
+        auth_service::AuthService, school_service::SchoolService, user_service::UserService,
+    },
 };
 
 #[post("/register")]
@@ -39,21 +41,47 @@ async fn register_user(
 
 #[post("/login")]
 async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> impl Responder {
-    let repo = UserRepo::new(&state.db.main_db());
-    let service = AuthService::new(&repo);
+    let user_repo = UserRepo::new(&state.db.main_db());
+    let auth_service = AuthService::new(&user_repo);
 
-    match service.login(data.into_inner()).await {
-        Ok((token, user)) => HttpResponse::Ok().json(serde_json::json!({
-             "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "accessToken": token,
-            "image": user.image,
-            "role": user.role,
-            "username": user.username,
-            "bio": user.bio,
-            "schoolAccessToken": ""
-        })),
+    match auth_service.login(data.into_inner()).await {
+        Ok((token, user)) => {
+            let mut school_access_token = String::new();
+
+            if let Some(school_id) = user.current_school_id {
+                let school_repo = SchoolRepo::new(&state.db.main_db());
+                let school_service = SchoolService::new(&school_repo);
+
+                // Fetch the school
+                let school = match school_service
+                    .get_school_by_id(&IdType::ObjectId(school_id))
+                    .await
+                {
+                    Ok(s) => s,
+                    Err(e) => return HttpResponse::BadRequest().json(ReqErrModel { message: e }),
+                };
+
+                // Create school token
+                let school_token = match school_service.create_school_token(&school).await {
+                    Ok(token) => token,
+                    Err(e) => return HttpResponse::BadRequest().json(ReqErrModel { message: e }),
+                };
+
+                school_access_token = school_token;
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "accessToken": token,
+                "image": user.image,
+                "role": user.role,
+                "username": user.username,
+                "bio": user.bio,
+                "schoolAccessToken": school_access_token,
+            }))
+        }
         Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
     }
 }

@@ -6,7 +6,7 @@ use crate::models::school_token_model::SchoolToken;
 
 pub fn create_school_token(school: SchoolToken) -> String {
     let expiration = Utc::now()
-        .checked_add_signed(Duration::hours(2)) // valid for 2 hours
+        .checked_add_signed(Duration::hours(24)) // valid for 2 hours
         .expect("valid timestamp")
         .timestamp();
     let issued_at = Utc::now().timestamp();

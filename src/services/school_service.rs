@@ -1,11 +1,13 @@
 use crate::{
     domain::school::{School, SchoolStats, UpdateSchool},
+    mappers::school_mapper::to_school_school_token,
     models::id_model::IdType,
     repositories::school_repo::SchoolRepo,
     services::cloudinary_service::CloudinaryService,
     utils::{
         code::generate_code,
         names::{is_valid_name, is_valid_username},
+        school_token::{create_school_token, verify_school_token},
         school_utils::{sanitize_school, sanitize_schools},
     },
 };
@@ -345,5 +347,35 @@ impl<'a> SchoolService<'a> {
         }
 
         self.repo.delete_school(id).await.map_err(|e| e.message)
+    }
+
+    pub async fn refresh_school_token(&self, token: &str) -> Result<String, String> {
+        // remove "Bearer " if present
+        let token_clean = token.replace("Bearer ", "");
+        let claims =
+            verify_school_token(&token_clean).ok_or_else(|| "Invalid token".to_string())?;
+
+        // get user from DB to ensure still valid
+        let user_id = &claims.id;
+        let school = self
+            .repo
+            .find_by_id(&crate::models::id_model::IdType::from_string(user_id))
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "User not found".to_string())?;
+
+        // create a fresh token
+        let dto = to_school_school_token(&school)?;
+        let new_token = create_school_token(dto);
+
+        Ok(new_token)
+    }
+
+    pub async fn create_school_token(&self, school: &School) -> Result<String, String> {
+        let school_token = to_school_school_token(school)?;
+        // ✅ Generate school token here (instead of in service)
+        let token = create_school_token(school_token);
+
+        Ok(token)
     }
 }

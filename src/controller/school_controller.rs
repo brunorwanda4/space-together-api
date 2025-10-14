@@ -159,7 +159,6 @@ impl<'a> SchoolController<'a> {
         }
 
         // ✅ only create counter here to avoid unused assignment warning
-        let created_classes_count;
 
         // Separate classes for DB insertion
         let classes_to_create: Vec<Class> = class_trade_pairs
@@ -170,7 +169,7 @@ impl<'a> SchoolController<'a> {
         let created_classes = class_service_school
             .create_many_classes(classes_to_create)
             .await?;
-        created_classes_count = created_classes.len();
+        let created_classes_count = created_classes.len();
 
         // ---- Step 3: Create Subjects for Each Class ----
         for (mut class, trade_type) in class_trade_pairs {

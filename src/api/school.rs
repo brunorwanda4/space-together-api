@@ -1,4 +1,4 @@
-use actix_web::{delete, get, post, put, web, HttpMessage, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 
 use crate::{
     config::state::AppState,
@@ -7,7 +7,6 @@ use crate::{
         auth_user::AuthUserDto,
         school::{School, SchoolAcademicRequest, UpdateSchool},
     },
-    mappers::school_mapper::to_school_school_token,
     models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::{
         main_class_repo::MainClassRepo, school_repo::SchoolRepo,
@@ -17,7 +16,6 @@ use crate::{
         event_service::EventService, school_service::SchoolService, tenant_service::TenantService,
         user_service::UserService,
     },
-    utils::school_token::create_school_token,
 };
 
 #[get("")]
@@ -148,14 +146,12 @@ async fn create_school(
                 // ✅ Update local copy to include db_name before returning
                 school.database_name = Some(db_name_clone.clone());
 
-                let school_token = match to_school_school_token(&school) {
+                let token = match service.create_school_token(&school).await {
                     Ok(token) => token,
                     Err(e) => {
                         return HttpResponse::BadRequest().json(ReqErrModel { message: e });
                     }
                 };
-                // ✅ Generate school token here (instead of in service)
-                let token = create_school_token(school_token);
 
                 // ✅ Now update the user who created the school
                 let user_repo = UserRepo::new(&state.db.main_db());
@@ -462,6 +458,36 @@ async fn setup_school_academics(
     }
 }
 
+#[post("/refresh-school-token")]
+async fn refresh_school_token(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
+    let school_repo = SchoolRepo::new(&state.db.main_db());
+    let school_service = SchoolService::new(&school_repo);
+
+    // Extract raw School-Token header
+    let token = match req.headers().get("School-Token") {
+        Some(hv) => match hv.to_str() {
+            Ok(s) => s.trim().to_string(),
+            Err(_) => {
+                return HttpResponse::Unauthorized().json(ReqErrModel {
+                    message: "Invalid School-Token header format".to_string(),
+                })
+            }
+        },
+        None => {
+            return HttpResponse::Unauthorized().json(ReqErrModel {
+                message: "Missing School-Token header".to_string(),
+            })
+        }
+    };
+
+    match school_service.refresh_school_token(&token).await {
+        Ok(new_token) => HttpResponse::Ok().json(serde_json::json!({
+            "schoolAccessToken": new_token
+        })),
+        Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/schools")
@@ -469,8 +495,9 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_school_stats) // GET /schools/stats - Get school statistics and analytics
             .service(get_school_by_username) // GET /schools/username/{username} - Get school by username
             .service(get_school_by_code) // GET /schools/code/{code} - Get school by institutional code
-            .service(get_school_by_id) // GET /schools/{id} - Get school by ID
             .service(get_all_schools) // GET /schools - Get all schools with filtering and pagination
+            .service(refresh_school_token) // POST /schools/refresh-school-token - Refresh school token
+            .service(get_school_by_id) // GET /schools/{id} - Get school by ID
             // Protected routes (require JWT)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_school) // POST /schools - Create new school (Admin/SchoolStaff only)
