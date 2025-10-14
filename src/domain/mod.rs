@@ -5,6 +5,7 @@ pub mod common_details;
 pub mod database_status;
 pub mod main_class;
 pub mod school;
+pub mod school_staff;
 pub mod sector;
 pub mod student;
 pub mod subject;

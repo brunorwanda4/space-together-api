@@ -525,7 +525,7 @@ impl ClassRepo {
         let inserted_ids: Vec<ObjectId> = result
             .inserted_ids
             .values()
-            .filter_map(|bson| bson.as_object_id().map(|oid| oid.clone()))
+            .filter_map(|bson| bson.as_object_id())
             .collect();
 
         if inserted_ids.len() != classes_to_insert.len() {

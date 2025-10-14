@@ -34,4 +34,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     subject::init(cfg);
     school_collections::school_class::init(cfg);
     school_collections::school_subject::init(cfg);
+    school_collections::school_staff::init(cfg);
 }
