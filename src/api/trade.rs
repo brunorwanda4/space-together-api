@@ -1,4 +1,6 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
+use mongodb::bson::oid::ObjectId;
+use serde::Deserialize;
 
 use crate::{
     config::state::AppState,
@@ -113,6 +115,11 @@ async fn get_trades_by_sector_id(
     }
 }
 
+#[derive(Deserialize)]
+pub struct IdListRequest {
+    pub ids: Vec<String>,
+}
+
 #[get("/trade/{id}")]
 async fn get_trades_by_trade_id(
     path: web::Path<String>,
@@ -126,6 +133,63 @@ async fn get_trades_by_trade_id(
     match service.get_trades_by_trade_id(&trade_id).await {
         Ok(trades) => HttpResponse::Ok().json(trades),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
+#[post("/trades/by_ids")]
+async fn get_trades_by_ids(
+    state: web::Data<AppState>,
+    body: web::Json<IdListRequest>,
+) -> impl Responder {
+    let repo = TradeRepo::new(&state.db.main_db());
+    let service = TradeService::new(&repo);
+
+    // Convert String IDs → ObjectId
+    let trade_ids: Vec<ObjectId> = body
+        .ids
+        .iter()
+        .filter_map(|id| ObjectId::parse_str(id).ok())
+        .collect();
+
+    if trade_ids.is_empty() {
+        return HttpResponse::BadRequest().json(ReqErrModel {
+            message: "No valid trade IDs provided".to_string(),
+        });
+    }
+
+    match service.get_trades_by_ids(&trade_ids).await {
+        Ok(trades) => HttpResponse::Ok().json(trades),
+        Err(message) => HttpResponse::InternalServerError().json(ReqErrModel { message }),
+    }
+}
+
+/// ----------------------------------------------------
+/// Get multiple trades by sector IDs
+/// ----------------------------------------------------
+#[post("/trades/by_sector_ids")]
+async fn get_trades_by_sector_ids(
+    state: web::Data<AppState>,
+    body: web::Json<IdListRequest>,
+) -> impl Responder {
+    let repo = TradeRepo::new(&state.db.main_db());
+    let service = TradeService::new(&repo);
+
+    // Convert String IDs → ObjectId
+    let sector_ids: Vec<ObjectId> = body
+        .ids
+        .iter()
+        .filter_map(|id| ObjectId::parse_str(id).ok())
+        .collect();
+
+    if sector_ids.is_empty() {
+        return HttpResponse::BadRequest().json(ReqErrModel {
+            message: "No valid sector IDs provided".to_string(),
+        });
+    }
+
+    match service.get_trades_by_sector_ids(&sector_ids).await {
+        Ok(trades) => HttpResponse::Ok().json(trades),
+        Err(message) => HttpResponse::InternalServerError().json(ReqErrModel { message }),
     }
 }
 
@@ -279,9 +343,11 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_trades_by_username_with_others) // GET /trades/username/others/{username}
             .service(get_trade_by_id_with_others) // GET /trades/others/{id}
             .service(get_trades_by_username) // GET /trades/username/{username}
-            .service(get_trade_by_id) // GET /trades/{id}
             .service(get_trades_by_sector_id) // GET /trades/sector/{id}
             .service(get_trades_by_trade_id) // GET /trades/trade/{id}
+            .service(get_trades_by_ids) // POST   /trades/by_ids
+            .service(get_trades_by_sector_ids) // POST   /trades/by_sector_ids
+            .service(get_trade_by_id) // GET /trades/{id}
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_trade) // POST /trades

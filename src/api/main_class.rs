@@ -4,7 +4,7 @@ use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        main_class::{MainClass, UpdateMainClass},
+        main_class::{MainClass, RequestQueryMainClass, UpdateMainClass},
     },
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::{main_class_repo::MainClassRepo, trade_repo::TradeRepo},
@@ -28,13 +28,24 @@ async fn get_all_main_classes_with_trade(state: web::Data<AppState>) -> impl Res
 }
 
 #[get("")]
-async fn get_all_main_classes(state: web::Data<AppState>) -> impl Responder {
+async fn get_all_main_classes(
+    query: web::Query<RequestQueryMainClass>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = MainClassRepo::new(&state.db.main_db());
     let trade_repo = TradeRepo::new(&state.db.main_db());
     let trade_service = TradeService::new(&trade_repo);
     let service = MainClassService::new(&repo, &trade_service);
 
-    match service.get_all().await {
+    match service
+        .get_all(
+            query.filter.clone(),
+            query.limit,
+            query.skip,
+            query.trade_id.clone(),
+        )
+        .await
+    {
         Ok(items) => HttpResponse::Ok().json(items),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

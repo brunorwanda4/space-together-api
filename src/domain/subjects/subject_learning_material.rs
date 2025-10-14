@@ -94,6 +94,11 @@ pub struct UpdateSubjectLearningMaterial {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_active: Option<bool>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub reference_id: Option<ObjectId>,
 }

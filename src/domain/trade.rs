@@ -56,7 +56,20 @@ pub struct Trade {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateTrade {
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub sector_id: Option<ObjectId>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub trade_id: Option<ObjectId>,
     pub name: Option<String>,
     pub username: Option<String>,

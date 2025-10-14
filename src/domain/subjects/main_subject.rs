@@ -97,3 +97,11 @@ pub struct MainSubjectWithOthers {
     #[serde(default)]
     pub grading_schemes: Option<SubjectGradingScheme>,
 }
+
+#[derive(Deserialize)]
+pub struct SubjectQuery {
+    pub filter: Option<String>,
+    pub limit: Option<i64>,
+    pub skip: Option<i64>,
+    pub is_active: Option<bool>,
+}

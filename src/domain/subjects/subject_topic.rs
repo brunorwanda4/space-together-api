@@ -55,13 +55,30 @@ pub struct SubjectTopic {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateSubjectTopic {
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub learning_outcome_id: Option<ObjectId>,
-
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub parent_topic_id: Option<ObjectId>,
 
     pub title: Option<String>,
     pub description: Option<String>,
     pub order: Option<f32>,
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub created_by: Option<ObjectId>,
 
     #[serde(default)]

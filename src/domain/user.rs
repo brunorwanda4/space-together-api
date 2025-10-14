@@ -2,9 +2,12 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::{domain::common_details::Gender, helpers::object_id_helpers};
+use crate::{
+    domain::common_details::{Age, Gender},
+    helpers::object_id_helpers,
+};
 
-use super::{age::Age, common_details::Address, user_role::UserRole};
+use super::{common_details::Address, user_role::UserRole};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {

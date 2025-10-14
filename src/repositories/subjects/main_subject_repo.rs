@@ -148,9 +148,74 @@ impl MainSubjectRepo {
     }
 
     /// Get all main subjects (latest updated first)
-    pub async fn get_all_subjects(&self) -> Result<Vec<MainSubject>, AppError> {
-        let pipeline = vec![doc! { "$sort": { "updated_at": -1 } }];
+    pub async fn get_all_subjects(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        is_active: Option<bool>, // optional filter for active/inactive subjects
+    ) -> Result<Vec<MainSubject>, AppError> {
+        let mut pipeline = vec![];
 
+        // 🔍 Text filter: name, code, description, level
+        if let Some(f) = filter {
+            let regex = doc! {
+                "$regex": f,
+                "$options": "i"
+            };
+            pipeline.push(doc! {
+                "$match": {
+                    "$or": [
+                        { "name": &regex },
+                        { "code": &regex },
+                        { "description": &regex },
+                        { "level": &regex }
+                    ]
+                }
+            });
+        }
+
+        // ⚙️ Optional filter by active state
+        if let Some(active) = is_active {
+            pipeline.push(doc! {
+                "$match": { "is_active": active }
+            });
+        }
+
+        // 🧮 Add computed field for sorting
+        pipeline.push(doc! {
+            "$addFields": {
+                "sort_date": { "$ifNull": [ "$updated_at", "$created_at" ] }
+            }
+        });
+
+        // 📅 Sort newest first
+        pipeline.push(doc! {
+            "$sort": { "sort_date": -1 }
+        });
+
+        // ⏩ Optional skip
+        if let Some(s) = skip {
+            pipeline.push(doc! { "$skip": s });
+        }
+
+        // 🔢 Limit results (default 10)
+        pipeline.push(doc! { "$limit": limit.unwrap_or(10) });
+
+        // 🧩 (Optional future addition) Lookup related main classes
+        // Uncomment later if needed
+        /*
+        pipeline.push(doc! {
+            "$lookup": {
+                "from": "main_classes",
+                "localField": "main_class_ids",
+                "foreignField": "_id",
+                "as": "main_classes"
+            }
+        });
+        */
+
+        // 📥 Execute aggregation
         let mut cursor = self
             .collection
             .aggregate(pipeline)
@@ -159,13 +224,15 @@ impl MainSubjectRepo {
                 message: format!("Failed to fetch main subjects: {}", e),
             })?;
 
+        // 🧾 Deserialize results
         let mut subjects = Vec::new();
         while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
             message: format!("Failed to iterate main subjects: {}", e),
         })? {
-            let subject: MainSubject = bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize main subject: {}", e),
-            })?;
+            let subject: MainSubject =
+                mongodb::bson::from_document(result).map_err(|e| AppError {
+                    message: format!("Failed to deserialize main subject: {}", e),
+                })?;
             subjects.push(subject);
         }
 

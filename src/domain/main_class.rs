@@ -43,9 +43,16 @@ pub struct MainClass {
 pub struct UpdateMainClass {
     pub name: Option<String>,
     pub username: Option<String>,
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub trade_id: Option<ObjectId>,
     pub description: Option<String>,
     pub disable: Option<bool>,
+    pub level: Option<i32>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -66,4 +73,12 @@ pub struct MainClassWithTrade {
 
     #[serde(default)]
     pub trade: Option<Trade>,
+}
+
+#[derive(Deserialize)]
+pub struct RequestQueryMainClass {
+    pub filter: Option<String>,
+    pub limit: Option<i64>,
+    pub skip: Option<i64>,
+    pub trade_id: Option<String>,
 }

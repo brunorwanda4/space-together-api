@@ -1,13 +1,18 @@
-use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
+use actix_web::{
+    delete, get, post, put,
+    web::{self, Query},
+    HttpResponse, Responder,
+};
 
 use crate::{
     config::state::AppState,
-    domain::auth_user::AuthUserDto,
-    domain::subjects::main_subject::{MainSubject, UpdateMainSubject},
+    domain::{
+        auth_user::AuthUserDto,
+        subjects::main_subject::{MainSubject, SubjectQuery, UpdateMainSubject},
+    },
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::subjects::main_subject_repo::MainSubjectRepo,
-    services::event_service::EventService,
-    services::subjects::main_subject_service::MainSubjectService,
+    services::{event_service::EventService, subjects::main_subject_service::MainSubjectService},
 };
 
 #[get("/main-class/{id}")]
@@ -27,11 +32,22 @@ async fn get_subjects_by_main_class_id(
 }
 
 #[get("")]
-async fn get_all_subjects(state: web::Data<AppState>) -> impl Responder {
+async fn get_all_subjects(
+    query: Query<SubjectQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
-    match service.get_all_subjects().await {
+    match service
+        .get_all_subjects(
+            query.filter.clone(),
+            query.limit,
+            query.skip,
+            query.is_active,
+        )
+        .await
+    {
         Ok(subjects) => HttpResponse::Ok().json(subjects),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

@@ -67,7 +67,12 @@ pub struct LearningOutcome {
 /// Update struct for LearningOutcome
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateLearningOutcome {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub subject_id: Option<ObjectId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,7 +96,11 @@ pub struct UpdateLearningOutcome {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<SubjectTypeFor>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
     pub prerequisites: Option<Vec<ObjectId>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]

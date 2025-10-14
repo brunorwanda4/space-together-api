@@ -284,20 +284,61 @@ impl UserRepo {
         user_id: &IdType,
         school_id: &IdType,
     ) -> Result<User, AppError> {
+        use chrono::Utc;
+        use mongodb::bson::{doc, oid::ObjectId};
+
         let user_obj_id = ObjectId::parse_str(user_id.as_string()).map_err(|e| AppError {
             message: format!("Invalid user id: {}", e),
         })?;
+
         let school_obj_id = ObjectId::parse_str(school_id.as_string()).map_err(|e| AppError {
             message: format!("Invalid school id: {}", e),
         })?;
 
-        let filter = doc! { "_id": user_obj_id };
+        let filter = doc! { "_id": &user_obj_id };
+
+        // ✅ Step 1: Fetch user document directly from MongoDB
+        let user_doc = self
+            .collection
+            .find_one(filter.clone())
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch user: {}", e),
+            })?;
+
+        if let Some(user_doc) = user_doc {
+            // ✅ Convert to BSON Document manually
+            let raw_doc = mongodb::bson::to_document(&user_doc).unwrap_or_default();
+            let needs_init = match raw_doc.get("schools") {
+                Some(mongodb::bson::Bson::Array(_)) => false,
+                _ => true, // field missing or not array
+            };
+
+            if needs_init {
+                // ✅ Initialize `schools` field as an empty array
+                self.collection
+                .update_one(
+                    doc! { "_id": &user_obj_id },
+                    doc! { "$set": { "schools": bson::to_bson(&Vec::<ObjectId>::new()).unwrap() } },
+                )
+                .await
+                .map_err(|e| AppError {
+                    message: format!("Failed to initialize schools field: {}", e),
+                })?;
+            }
+        } else {
+            return Err(AppError {
+                message: "User not found".to_string(),
+            });
+        }
+
+        // ✅ Step 2: Now safely update user with $addToSet
         let update = doc! {
-            "$addToSet": { "schools": school_obj_id }, // avoid duplicates
+            "$addToSet": { "schools": &school_obj_id },
             "$set": {
-             "current_school_id": school_obj_id,
-             "updated_at": Utc::now().to_rfc3339(),
-          }
+                "current_school_id": &school_obj_id,
+                "updated_at": Utc::now().to_rfc3339(),
+            }
         };
 
         self.collection
@@ -307,7 +348,7 @@ impl UserRepo {
                 message: format!("Failed to add school to user: {}", e),
             })?;
 
-        // Return updated user
+        // ✅ Step 3: Return updated user document
         self.collection
             .find_one(filter)
             .await

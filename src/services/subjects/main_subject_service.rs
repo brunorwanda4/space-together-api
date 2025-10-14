@@ -36,8 +36,17 @@ impl<'a> MainSubjectService<'a> {
     }
 
     /// Get all subjects
-    pub async fn get_all_subjects(&self) -> Result<Vec<MainSubject>, String> {
-        self.repo.get_all_subjects().await.map_err(|e| e.message)
+    pub async fn get_all_subjects(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        is_active: Option<bool>,
+    ) -> Result<Vec<MainSubject>, String> {
+        self.repo
+            .get_all_subjects(filter, limit, skip, is_active)
+            .await
+            .map_err(|e| e.message)
     }
 
     pub async fn get_all_subjects_with_others(&self) -> Result<Vec<MainSubjectWithOthers>, String> {
