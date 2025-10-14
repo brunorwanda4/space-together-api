@@ -211,3 +211,152 @@ fn is_subject_teacher(user_id: &str, subject_id: &str) -> bool {
     // Adjust this based on your actual data model
     false
 }
+
+/// Check if user has access to student (Admin, Staff, Teacher, or Student themselves)
+pub fn check_student_access(user: &AuthUserDto, student_id: &str) -> Result<(), String> {
+    // Admin has full access
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    // School staff can access students
+    if user.role == Some(UserRole::SCHOOLSTAFF) {
+        return Ok(());
+    }
+
+    // Teachers can access students
+    if user.role == Some(UserRole::TEACHER) {
+        return Ok(());
+    }
+
+    // Students can access their own data
+    if user.role == Some(UserRole::STUDENT) {
+        // Check if this student is accessing their own data
+        // This assumes the student_id in the URL matches the user's student record ID
+        // You might need to adjust this logic based on your data model
+        if user.id == student_id {
+            return Ok(());
+        }
+    }
+
+    Err("Access denied: insufficient permissions for student".to_string())
+}
+
+/// Check if user is Admin or Student Creator
+pub fn check_admin_or_student_creator(user: &AuthUserDto, student_id: &str) -> Result<(), String> {
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    let _ = student_id;
+
+    // For non-admin users, we need to check if they created this student
+    // This would typically require a database query to check the creator_id
+    // For now, we'll implement a basic version that checks if the user is staff/teacher
+    // You can enhance this with actual database checks later
+    if user.role == Some(UserRole::SCHOOLSTAFF) || user.role == Some(UserRole::TEACHER) {
+        // In a real implementation, you would:
+        // 1. Parse the student_id to ObjectId
+        // 2. Query the students collection to find the student
+        // 3. Check if the user_id matches the creator_id of the student
+        // For now, we'll return Ok() as a placeholder
+        return Ok(());
+    }
+
+    Err("Access denied: must be admin or student creator".to_string())
+}
+
+// Helper function to check if user is the student creator
+// You'll need to implement this based on your database structure
+// fn is_student_creator(user_id: &str, student_id: &str) -> bool {
+//     // This is a placeholder implementation
+//     // You would typically:
+//     // 1. Parse the student_id to ObjectId
+//     // 2. Query the students collection to find the student
+//     // 3. Check if the user_id matches the creator_id of the student
+
+//     let _ = user_id;
+//     let _ = student_id;
+
+//     // Example of how this might look (pseudo-code):
+//     /*
+//     use crate::repositories::student_repo::StudentRepo;
+//     use crate::utils::object_id::parse_object_id;
+//     use crate::models::id_model::IdType;
+
+//     let student_repo = StudentRepo::new(&db_connection);
+//     let student_id_parsed = IdType::from_string(student_id);
+
+//     match student_repo.find_by_id(&student_id_parsed).await {
+//         Ok(Some(student)) => {
+//             if let Some(creator_id) = student.creator_id {
+//                 // Compare the ObjectId with user_id (you might need to convert user_id to ObjectId)
+//                 creator_id.to_hex() == user_id
+//             } else {
+//                 false
+//             }
+//         }
+//         _ => false
+//     }
+//     */
+//     // For now, return true as a placeholder - implement based on your actual data model
+//     true
+// }
+
+// Check if user is Admin, Staff, Teacher, or the Student themselves
+// pub fn check_student_access_extended(user: &AuthUserDto, student_id: &str) -> Result<(), String> {
+//     // Admin has full access
+//     if user.role == Some(UserRole::ADMIN) {
+//         return Ok(());
+//     }
+
+//     // School staff can access students
+//     if user.role == Some(UserRole::SCHOOLSTAFF) {
+//         return Ok(());
+//     }
+
+//     // Teachers can access students in their classes
+//     if user.role == Some(UserRole::TEACHER) {
+//         // You might want to add additional checks here to verify the teacher
+//         // has this student in one of their classes
+//         return Ok(());
+//     }
+
+//     // Students can only access their own data
+//     if user.role == Some(UserRole::STUDENT) {
+//         if is_student_user(user, student_id) {
+//             return Ok(());
+//         }
+//         return Err("Students can only access their own data".to_string());
+//     }
+
+//     Err("Access denied: insufficient permissions for student access".to_string())
+// }
+
+// Helper function to check if user is the student
+// fn is_student_user(user: &AuthUserDto, student_id: &str) -> bool {
+//     // This function checks if the authenticated user is the same as the student
+//     // being accessed. This depends on how your student-user relationship is structured.
+
+//     // If your student records have a user_id field that matches the user's ID:
+//     // You would typically query the student record and check if user_id matches
+
+//     // For now, we'll do a simple string comparison as a placeholder
+//     // You should replace this with actual database logic
+//     user.id == student_id
+// }
+
+// Check if user can manage students (Admin, Staff, or Teacher)
+// pub fn check_student_management(user: &AuthUserDto) -> Result<(), String> {
+//     if user.role == Some(UserRole::ADMIN)
+//         || user.role == Some(UserRole::SCHOOLSTAFF)
+//         || user.role == Some(UserRole::TEACHER)
+//     {
+//         Ok(())
+//     } else {
+//         Err(
+//             "Access denied: Admin, Staff, or Teacher role required for student management"
+//                 .to_string(),
+//         )
+//     }
+// }

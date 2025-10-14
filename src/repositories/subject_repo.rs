@@ -760,8 +760,7 @@ impl SubjectRepo {
 
     /// Bulk delete multiple subjects
     pub async fn delete_many_subjects(&self, ids: Vec<IdType>) -> Result<u64, AppError> {
-        let object_ids: Result<Vec<ObjectId>, AppError> =
-            ids.iter().map(|id| parse_object_id(id)).collect();
+        let object_ids: Result<Vec<ObjectId>, AppError> = ids.iter().map(parse_object_id).collect();
 
         let object_ids = object_ids?;
 

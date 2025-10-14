@@ -2,6 +2,8 @@ use mongodb::bson::{self, oid::ObjectId};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
+use crate::models::id_model::IdType;
+
 // ----------------------------
 // Option<ObjectId>
 // ----------------------------
@@ -129,5 +131,14 @@ where
                 .map_err(serde::de::Error::custom)?;
             Ok(Some(parsed))
         }
+    }
+}
+
+pub fn parse_object_id(id: &IdType) -> Result<ObjectId, String> {
+    match id {
+        IdType::String(id_str) => {
+            ObjectId::parse_str(id_str).map_err(|e| format!("Invalid object ID: {}", e))
+        }
+        IdType::ObjectId(oid) => Ok(*oid),
     }
 }

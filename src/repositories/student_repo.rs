@@ -1,29 +1,918 @@
-use crate::domain::student::Student;
-use futures::StreamExt;
-use mongodb::{bson::doc, Database};
+use crate::domain::student::{
+    BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest, Student,
+    StudentStatus, StudentWithRelations, UpdateStudent,
+};
+use crate::errors::AppError;
+use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
+use crate::models::id_model::IdType;
+use crate::pipeline::student_pipeline::student_with_relations_pipeline;
+use crate::utils::object_id::parse_object_id;
+
+use chrono::Utc;
+use futures::{StreamExt, TryStreamExt};
+use mongodb::{
+    bson::{self, doc, oid::ObjectId, Document},
+    options::IndexOptions,
+    Collection, Database, IndexModel,
+};
 
 pub struct StudentRepo {
-    db: Database,
+    pub collection: Collection<Student>,
 }
 
 impl StudentRepo {
-    pub fn new(db: Database) -> Self {
-        Self { db }
+    pub fn new(db: &Database) -> Self {
+        Self {
+            collection: db.collection::<Student>("students"),
+        }
     }
 
-    pub async fn insert(&self, student: &Student) -> mongodb::error::Result<()> {
-        let collection = self.db.collection::<Student>("students");
-        collection.insert_one(student).await?;
+    pub async fn get_all_with_relations(&self) -> Result<Vec<StudentWithRelations>, AppError> {
+        aggregate_many(&self.collection.clone().clone_with_type::<Document>(), {
+            let mut pipeline = student_with_relations_pipeline(doc! {});
+            pipeline.insert(0, doc! { "$sort": { "updated_at": -1 } });
+            pipeline
+        })
+        .await
+    }
+
+    pub async fn find_by_id_with_relations(
+        &self,
+        id: &IdType,
+    ) -> Result<Option<StudentWithRelations>, AppError> {
+        let obj_id = parse_object_id(id)?;
+        aggregate_single(
+            &self.collection.clone().clone_with_type::<Document>(),
+            student_with_relations_pipeline(doc! { "_id": obj_id }),
+        )
+        .await
+    }
+
+    pub async fn find_by_id(&self, id: &IdType) -> Result<Option<Student>, AppError> {
+        let obj_id = parse_object_id(id)?;
+        self.collection
+            .find_one(doc! { "_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find student by id: {}", e),
+            })
+    }
+
+    pub async fn find_by_user_id(&self, user_id: &IdType) -> Result<Option<Student>, AppError> {
+        let obj_id = parse_object_id(user_id)?;
+        self.collection
+            .find_one(doc! { "user_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find student by user_id: {}", e),
+            })
+    }
+
+    pub async fn find_by_email(&self, email: &str) -> Result<Option<Student>, AppError> {
+        self.collection
+            .find_one(doc! { "email": email })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find student by email: {}", e),
+            })
+    }
+
+    pub async fn find_by_school_id(&self, school_id: &IdType) -> Result<Vec<Student>, AppError> {
+        let obj_id = parse_object_id(school_id)?;
+        let mut cursor = self
+            .collection
+            .find(doc! { "school_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find students by school_id: {}", e),
+            })?;
+
+        let mut students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+        Ok(students)
+    }
+
+    pub async fn find_by_class_id(&self, class_id: &IdType) -> Result<Vec<Student>, AppError> {
+        let obj_id = parse_object_id(class_id)?;
+        let mut cursor = self
+            .collection
+            .find(doc! { "class_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find students by class_id: {}", e),
+            })?;
+
+        let mut students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+        Ok(students)
+    }
+
+    pub async fn find_by_creator_id(&self, creator_id: &IdType) -> Result<Vec<Student>, AppError> {
+        let obj_id = parse_object_id(creator_id)?;
+        let mut cursor = self
+            .collection
+            .find(doc! { "creator_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find students by creator_id: {}", e),
+            })?;
+
+        let mut students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+        Ok(students)
+    }
+
+    pub async fn find_by_status(&self, status: StudentStatus) -> Result<Vec<Student>, AppError> {
+        let mut cursor = self
+            .collection
+            .find(
+                doc! { "status": bson::to_bson(&status).map_err(|e| AppError {
+                    message: format!("Failed to serialize student status: {}", e),
+                })? },
+            )
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find students by status: {}", e),
+            })?;
+
+        let mut students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+        Ok(students)
+    }
+
+    pub async fn find_by_school_and_class(
+        &self,
+        school_id: &IdType,
+        class_id: &IdType,
+    ) -> Result<Vec<Student>, AppError> {
+        let school_obj_id = parse_object_id(school_id)?;
+        let class_obj_id = parse_object_id(class_id)?;
+        let mut cursor = self
+            .collection
+            .find(doc! {
+                "school_id": school_obj_id,
+                "class_id": class_obj_id
+            })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find students by school_id and class_id: {}", e),
+            })?;
+
+        let mut students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+        Ok(students)
+    }
+
+    pub async fn find_by_registration_number(
+        &self,
+        registration_number: &str,
+    ) -> Result<Option<Student>, AppError> {
+        self.collection
+            .find_one(doc! { "registration_number": registration_number })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find student by registration_number: {}", e),
+            })
+    }
+
+    pub async fn insert_student(&self, student: &Student) -> Result<Student, AppError> {
+        self.ensure_indexes().await?;
+
+        let mut to_insert = student.clone();
+        to_insert.id = None;
+        to_insert.created_at = Utc::now();
+        to_insert.updated_at = Utc::now();
+
+        let res = self
+            .collection
+            .insert_one(&to_insert)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to insert student: {}", e),
+            })?;
+
+        let inserted_id: ObjectId = res
+            .inserted_id
+            .as_object_id()
+            .ok_or_else(|| AppError {
+                message: "Failed to extract inserted student id".to_string(),
+            })?
+            .to_owned();
+
+        self.find_by_id(&IdType::from_object_id(inserted_id))
+            .await?
+            .ok_or(AppError {
+                message: "Student not found after insert".to_string(),
+            })
+    }
+
+    async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let email_index = IndexModel::builder()
+            .keys(doc! { "email": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build();
+
+        let user_id_index = IndexModel::builder()
+            .keys(doc! { "user_id": 1 })
+            .options(IndexOptions::builder().unique(true).build())
+            .build();
+
+        let school_index = IndexModel::builder()
+            .keys(doc! { "school_id": 1 })
+            .options(IndexOptions::builder().unique(false).build())
+            .build();
+
+        let class_index = IndexModel::builder()
+            .keys(doc! { "class_id": 1 })
+            .options(IndexOptions::builder().unique(false).build())
+            .build();
+
+        let creator_index = IndexModel::builder()
+            .keys(doc! { "creator_id": 1 })
+            .options(IndexOptions::builder().unique(false).build())
+            .build();
+
+        let status_index = IndexModel::builder()
+            .keys(doc! { "status": 1 })
+            .options(IndexOptions::builder().unique(false).build())
+            .build();
+
+        let is_active_index = IndexModel::builder()
+            .keys(doc! { "is_active": 1 })
+            .options(IndexOptions::builder().unique(false).build())
+            .build();
+
+        let registration_number_index = IndexModel::builder()
+            .keys(doc! { "registration_number": 1 })
+            .options(IndexOptions::builder().unique(true).sparse(true).build())
+            .build();
+
+        // Compound indexes for common query patterns
+        let school_class_index = IndexModel::builder()
+            .keys(doc! { "school_id": 1, "class_id": 1 })
+            .options(IndexOptions::builder().unique(false).build())
+            .build();
+
+        let school_status_index = IndexModel::builder()
+            .keys(doc! { "school_id": 1, "status": 1 })
+            .options(IndexOptions::builder().unique(false).build())
+            .build();
+
+        self.collection
+            .create_index(email_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create email index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(user_id_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create user_id index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(school_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create school_id index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(class_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create class_id index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(creator_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create creator_id index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(status_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create status index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(is_active_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create is_active index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(registration_number_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create registration_number index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(school_class_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create school_id+class_id index: {}", e),
+            })?;
+
+        self.collection
+            .create_index(school_status_index)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to create school_id+status index: {}", e),
+            })?;
+
         Ok(())
     }
 
-    pub async fn find_all(&self) -> mongodb::error::Result<Vec<Student>> {
-        let collection = self.db.collection::<Student>("students");
-        let mut cursor = collection.find(doc! {}).await?;
+    pub async fn get_all_students(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Student>, AppError> {
+        let mut pipeline = vec![];
+
+        // Add search/filter functionality
+        if let Some(f) = filter {
+            let regex = doc! {
+                "$regex": f,
+                "$options": "i"  // case insensitive
+            };
+            pipeline.push(doc! {
+                "$match": {
+                    "$or": [
+                        { "name": &regex },
+                        { "email": &regex },
+                        { "registration_number": &regex },
+                        { "tags": &regex },
+                    ]
+                }
+            });
+        }
+
+        // Add sorting by updated_at (most recent first)
+        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
+
+        // Add pagination
+        if let Some(s) = skip {
+            pipeline.push(doc! { "$skip": s });
+        }
+
+        if let Some(l) = limit {
+            pipeline.push(doc! { "$limit": l });
+        } else {
+            // Default limit if none provided
+            pipeline.push(doc! { "$limit": 50 });
+        }
+
+        let mut cursor = self
+            .collection
+            .aggregate(pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch students: {}", e),
+            })?;
+
         let mut students = Vec::new();
-        while let Some(result) = cursor.next().await {
-            students.push(result?);
+        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate students: {}", e),
+        })? {
+            let student: Student = mongodb::bson::from_document(result).map_err(|e| AppError {
+                message: format!("Failed to deserialize student: {}", e),
+            })?;
+            students.push(student);
+        }
+
+        Ok(students)
+    }
+
+    pub async fn get_active_students(&self) -> Result<Vec<Student>, AppError> {
+        let mut cursor = self
+            .collection
+            .find(doc! { "is_active": true })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find active students: {}", e),
+            })?;
+
+        let mut students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
         }
         Ok(students)
+    }
+
+    pub async fn update_student(
+        &self,
+        id: &IdType,
+        update: &UpdateStudent,
+    ) -> Result<Student, AppError> {
+        let obj_id = parse_object_id(id)?;
+
+        // Create update document manually to handle Option fields
+        let mut update_doc = Document::new();
+
+        if let Some(name) = &update.name {
+            update_doc.insert("name", name);
+        }
+        if let Some(email) = &update.email {
+            update_doc.insert("email", email);
+        }
+        if let Some(phone) = &update.phone {
+            update_doc.insert("phone", phone);
+        }
+        if let Some(gender) = &update.gender {
+            update_doc.insert("gender", gender);
+        }
+        if let Some(date_of_birth) = &update.date_of_birth {
+            update_doc.insert("date_of_birth", date_of_birth);
+        }
+        if let Some(registration_number) = &update.registration_number {
+            update_doc.insert("registration_number", registration_number);
+        }
+        if let Some(admission_year) = update.admission_year {
+            update_doc.insert("admission_year", admission_year);
+        }
+        if let Some(status) = &update.status {
+            update_doc.insert(
+                "status",
+                bson::to_bson(status).map_err(|e| AppError {
+                    message: format!("Failed to serialize student status: {}", e),
+                })?,
+            );
+        }
+        if let Some(is_active) = update.is_active {
+            update_doc.insert("is_active", is_active);
+        }
+        if let Some(tags) = &update.tags {
+            update_doc.insert("tags", tags);
+        }
+
+        update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
+
+        let update_doc = doc! { "$set": update_doc };
+
+        self.collection
+            .update_one(doc! { "_id": obj_id }, update_doc)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to update student: {}", e),
+            })?;
+
+        self.find_by_id(id).await?.ok_or(AppError {
+            message: "Student not found after update".to_string(),
+        })
+    }
+
+    pub async fn delete_student(&self, id: &IdType) -> Result<(), AppError> {
+        let obj_id = parse_object_id(id)?;
+        let result = self
+            .collection
+            .delete_one(doc! { "_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to delete student: {}", e),
+            })?;
+
+        if result.deleted_count == 0 {
+            return Err(AppError {
+                message: "No student deleted; it may not exist".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    pub async fn count_by_school_id(&self, school_id: &IdType) -> Result<u64, AppError> {
+        let obj_id = parse_object_id(school_id)?;
+        self.collection
+            .count_documents(doc! { "school_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to count students by school_id: {}", e),
+            })
+    }
+
+    pub async fn count_by_class_id(&self, class_id: &IdType) -> Result<u64, AppError> {
+        let obj_id = parse_object_id(class_id)?;
+        self.collection
+            .count_documents(doc! { "class_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to count students by class_id: {}", e),
+            })
+    }
+
+    pub async fn count_by_creator_id(&self, creator_id: &IdType) -> Result<u64, AppError> {
+        let obj_id = parse_object_id(creator_id)?;
+        self.collection
+            .count_documents(doc! { "creator_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to count students by creator_id: {}", e),
+            })
+    }
+
+    pub async fn count_by_status(&self, status: StudentStatus) -> Result<u64, AppError> {
+        self.collection
+            .count_documents(
+                doc! { "status": bson::to_bson(&status).map_err(|e| AppError {
+                    message: format!("Failed to serialize student status: {}", e),
+                })? },
+            )
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to count students by status: {}", e),
+            })
+    }
+
+    // Bulk operations
+    pub async fn create_many_students(
+        &self,
+        students: Vec<Student>,
+    ) -> Result<Vec<Student>, AppError> {
+        self.ensure_indexes().await?;
+
+        let mut students_to_insert = Vec::with_capacity(students.len());
+        let now = Utc::now();
+
+        for mut student in students {
+            student.id = None;
+            student.created_at = now;
+            student.updated_at = now;
+            students_to_insert.push(student);
+        }
+
+        let result = self
+            .collection
+            .insert_many(&students_to_insert)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to insert multiple students: {}", e),
+            })?;
+
+        let inserted_ids: Vec<ObjectId> = result
+            .inserted_ids
+            .values()
+            .filter_map(|bson| bson.as_object_id())
+            .collect();
+
+        if inserted_ids.len() != students_to_insert.len() {
+            return Err(AppError {
+                message: "Failed to get all inserted student IDs".to_string(),
+            });
+        }
+
+        let mut inserted_students = Vec::with_capacity(inserted_ids.len());
+        for id in inserted_ids {
+            let student = self.find_by_id(&IdType::from_object_id(id)).await?;
+            if let Some(student) = student {
+                inserted_students.push(student);
+            }
+        }
+
+        Ok(inserted_students)
+    }
+
+    pub async fn create_many_students_with_validation(
+        &self,
+        students: Vec<Student>,
+    ) -> Result<Vec<Student>, AppError> {
+        self.ensure_indexes().await?;
+
+        let mut emails = std::collections::HashSet::new();
+        let mut user_ids = std::collections::HashSet::new();
+        let mut registration_numbers = std::collections::HashSet::new();
+
+        for student in &students {
+            if !emails.insert(&student.email) {
+                return Err(AppError {
+                    message: format!("Duplicate email found: {}", student.email),
+                });
+            }
+
+            if let Some(user_id) = &student.user_id {
+                if !user_ids.insert(user_id) {
+                    return Err(AppError {
+                        message: format!("Duplicate user_id found: {}", user_id),
+                    });
+                }
+            }
+
+            if let Some(reg_num) = &student.registration_number {
+                if !registration_numbers.insert(reg_num) {
+                    return Err(AppError {
+                        message: format!("Duplicate registration number found: {}", reg_num),
+                    });
+                }
+            }
+        }
+
+        for student in &students {
+            if let Some(existing) = self.find_by_email(&student.email).await? {
+                return Err(AppError {
+                    message: format!("Email already exists: {}", existing.email),
+                });
+            }
+
+            if let Some(user_id) = &student.user_id {
+                if let Some(_existing) = self
+                    .find_by_user_id(&IdType::from_object_id(*user_id))
+                    .await?
+                {
+                    return Err(AppError {
+                        message: format!("User ID already exists: {}", user_id),
+                    });
+                }
+            }
+
+            if let Some(reg_num) = &student.registration_number {
+                if let Some(_existing) = self.find_by_registration_number(reg_num).await? {
+                    return Err(AppError {
+                        message: format!("Registration number already exists: {}", reg_num),
+                    });
+                }
+            }
+        }
+
+        self.create_many_students(students).await
+    }
+
+    pub async fn prepare_students(
+        &self,
+        request: &PrepareStudentRequest,
+    ) -> Result<Vec<Student>, AppError> {
+        let mut prepared_students = Vec::new();
+
+        for mut student in request.students.clone() {
+            // Set school_id and creator_id from request if provided
+            if let Some(school_id) = &request.school_id {
+                student.school_id = Some(parse_object_id(&IdType::String(school_id.clone()))?);
+            }
+            if let Some(creator_id) = &request.creator_id {
+                student.creator_id = Some(parse_object_id(&IdType::String(creator_id.clone()))?);
+            }
+
+            prepared_students.push(student);
+        }
+
+        Ok(prepared_students)
+    }
+
+    pub async fn update_many_students(
+        &self,
+        updates: Vec<(IdType, UpdateStudent)>,
+    ) -> Result<Vec<Student>, AppError> {
+        let mut updated_students = Vec::with_capacity(updates.len());
+
+        for (id, update) in updates {
+            match self.update_student(&id, &update).await {
+                Ok(student) => updated_students.push(student),
+                Err(e) => {
+                    eprintln!("Failed to update student {:?}: {}", id, e.message);
+                }
+            }
+        }
+
+        if updated_students.is_empty() {
+            return Err(AppError {
+                message: "No students were successfully updated".to_string(),
+            });
+        }
+
+        Ok(updated_students)
+    }
+
+    pub async fn bulk_update_status(
+        &self,
+        request: &BulkUpdateStudentStatus,
+    ) -> Result<Vec<Student>, AppError> {
+        let ids: Result<Vec<ObjectId>, AppError> = request
+            .ids
+            .iter()
+            .map(|id| parse_object_id(&IdType::String(id.clone())))
+            .collect();
+
+        let object_ids = ids?;
+
+        let update_doc = doc! {
+            "$set": {
+                "status": bson::to_bson(&request.status).map_err(|e| AppError {
+                    message: format!("Failed to serialize student status: {}", e),
+                })?,
+                "updated_at": bson::to_bson(&Utc::now()).unwrap()
+            }
+        };
+
+        self.collection
+            .update_many(doc! { "_id": { "$in": &object_ids } }, update_doc)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to bulk update status: {}", e),
+            })?;
+
+        // Return updated students
+        let mut cursor = self
+            .collection
+            .find(doc! { "_id": { "$in": object_ids } })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch updated students: {}", e),
+            })?;
+
+        let mut updated_students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            updated_students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+
+        Ok(updated_students)
+    }
+
+    pub async fn bulk_add_tags(&self, request: &BulkStudentTags) -> Result<Vec<Student>, AppError> {
+        let ids: Result<Vec<ObjectId>, AppError> = request
+            .ids
+            .iter()
+            .map(|id| parse_object_id(&IdType::String(id.clone())))
+            .collect();
+
+        let object_ids = ids?;
+
+        let update_doc = doc! {
+            "$addToSet": {
+                "tags": { "$each": &request.tags }
+            },
+            "$set": {
+                "updated_at": bson::to_bson(&Utc::now()).unwrap()
+            }
+        };
+
+        self.collection
+            .update_many(doc! { "_id": { "$in": &object_ids } }, update_doc)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to bulk add tags: {}", e),
+            })?;
+
+        // Return updated students
+        let mut cursor = self
+            .collection
+            .find(doc! { "_id": { "$in": object_ids } })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch updated students: {}", e),
+            })?;
+
+        let mut updated_students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            updated_students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+
+        Ok(updated_students)
+    }
+
+    pub async fn bulk_remove_tags(
+        &self,
+        request: &BulkStudentTags,
+    ) -> Result<Vec<Student>, AppError> {
+        let ids: Result<Vec<ObjectId>, AppError> = request
+            .ids
+            .iter()
+            .map(|id| parse_object_id(&IdType::String(id.clone())))
+            .collect();
+
+        let object_ids = ids?;
+
+        let update_doc = doc! {
+            "$pullAll": {
+                "tags": &request.tags
+            },
+            "$set": {
+                "updated_at": bson::to_bson(&Utc::now()).unwrap()
+            }
+        };
+
+        self.collection
+            .update_many(doc! { "_id": { "$in": &object_ids } }, update_doc)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to bulk remove tags: {}", e),
+            })?;
+
+        // Return updated students
+        let mut cursor = self
+            .collection
+            .find(doc! { "_id": { "$in": &object_ids } })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch updated students: {}", e),
+            })?;
+
+        let mut updated_students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            updated_students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+
+        Ok(updated_students)
+    }
+
+    pub async fn delete_many_students(&self, request: &BulkStudentIds) -> Result<u64, AppError> {
+        let ids: Result<Vec<ObjectId>, AppError> = request
+            .ids
+            .iter()
+            .map(|id| parse_object_id(&IdType::String(id.clone())))
+            .collect();
+
+        let object_ids = ids?;
+
+        let result = self
+            .collection
+            .delete_many(doc! { "_id": { "$in": object_ids } })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to delete multiple students: {}", e),
+            })?;
+
+        Ok(result.deleted_count)
+    }
+
+    pub async fn transfer_students_to_class(
+        &self,
+        student_ids: &BulkStudentIds,
+        new_class_id: &IdType,
+    ) -> Result<Vec<Student>, AppError> {
+        let ids: Result<Vec<ObjectId>, AppError> = student_ids
+            .ids
+            .iter()
+            .map(|id| parse_object_id(&IdType::String(id.clone())))
+            .collect();
+
+        let object_ids = ids?;
+        let new_class_obj_id = parse_object_id(new_class_id)?;
+
+        let update_doc = doc! {
+            "$set": {
+                "class_id": new_class_obj_id,
+                "updated_at": bson::to_bson(&Utc::now()).unwrap()
+            }
+        };
+
+        self.collection
+            .update_many(doc! { "_id": { "$in": &object_ids } }, update_doc)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to transfer students to class: {}", e),
+            })?;
+
+        // Return updated students
+        let mut cursor = self
+            .collection
+            .find(doc! { "_id": { "$in": object_ids } })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch transferred students: {}", e),
+            })?;
+
+        let mut updated_students = Vec::new();
+        while let Some(student) = cursor.next().await {
+            updated_students.push(student.map_err(|e| AppError {
+                message: format!("Failed to process student: {}", e),
+            })?);
+        }
+
+        Ok(updated_students)
     }
 }

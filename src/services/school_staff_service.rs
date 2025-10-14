@@ -4,6 +4,7 @@ use crate::{
         BulkIdsRequest, BulkTagsRequest, BulkUpdateActiveStatusRequest, SchoolStaff,
         SchoolStaffType, SchoolStaffWithRelations, UpdateSchoolStaff,
     },
+    helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
     repositories::school_staff_repo::SchoolStaffRepo,
     services::event_service::EventService,
@@ -825,15 +826,5 @@ impl<'a> SchoolStaffService<'a> {
         }
 
         Ok(false)
-    }
-}
-
-// Helper function to parse ObjectId
-fn parse_object_id(id: &IdType) -> Result<ObjectId, String> {
-    match id {
-        IdType::String(id_str) => {
-            ObjectId::parse_str(id_str).map_err(|e| format!("Invalid object ID: {}", e))
-        }
-        IdType::ObjectId(oid) => Ok(*oid),
     }
 }

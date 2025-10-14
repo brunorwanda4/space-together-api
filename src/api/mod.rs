@@ -16,7 +16,6 @@ mod users;
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     database_status::init(cfg);
-    students::init(cfg);
     sector::init(cfg);
     auth::init(cfg);
     users::init(cfg);
@@ -32,7 +31,9 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     school::init(cfg);
     class::init(cfg);
     subject::init(cfg);
+    students::init(cfg);
     school_collections::school_class::init(cfg);
     school_collections::school_subject::init(cfg);
     school_collections::school_staff::init(cfg);
+    school_collections::school_student::init(cfg);
 }
