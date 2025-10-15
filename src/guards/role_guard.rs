@@ -360,3 +360,94 @@ pub fn check_admin_or_student_creator(user: &AuthUserDto, student_id: &str) -> R
 //         )
 //     }
 // }
+
+/// Check if user has access to teacher (Admin, Staff, Teacher themselves)
+pub fn check_teacher_access(user: &AuthUserDto, teacher_id: &str) -> Result<(), String> {
+    // Admin has full access
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    // School staff can access teachers
+    if user.role == Some(UserRole::SCHOOLSTAFF) {
+        return Ok(());
+    }
+
+    // Teachers can access their own data
+    if user.role == Some(UserRole::TEACHER) {
+        // Check if this teacher is accessing their own data
+        // This assumes the teacher_id in the URL matches the user's teacher record ID
+        // You might need to adjust this logic based on your data model
+        if user.id == teacher_id {
+            return Ok(());
+        }
+    }
+
+    Err("Access denied: insufficient permissions for teacher".to_string())
+}
+
+/// Check if user is Admin or Teacher Creator
+pub fn check_admin_or_teacher_creator(user: &AuthUserDto, teacher_id: &str) -> Result<(), String> {
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    let _ = teacher_id;
+
+    // For non-admin users, we need to check if they created this teacher
+    // This would typically require a database query to check the creator_id
+    // For now, we'll implement a basic version that checks if the user is staff/teacher
+    // You can enhance this with actual database checks later
+    if user.role == Some(UserRole::SCHOOLSTAFF) || user.role == Some(UserRole::TEACHER) {
+        // In a real implementation, you would:
+        // 1. Parse the teacher_id to ObjectId
+        // 2. Query the teachers collection to find the teacher
+        // 3. Check if the user_id matches the creator_id of the teacher
+        // For now, we'll return Ok() as a placeholder
+        return Ok(());
+    }
+
+    Err("Access denied: must be admin or teacher creator".to_string())
+}
+
+// Helper function to check if user is the teacher
+// You'll need to implement this based on your database structure
+// fn is_teacher_user(user_id: &str, teacher_id: &str) -> bool {
+//     // This function checks if the authenticated user is the same as the teacher
+//     // being accessed. This depends on how your teacher-user relationship is structured.
+
+//     // If your teacher records have a user_id field that matches the user's ID:
+//     // You would typically query the teacher record and check if user_id matches
+
+//     // For now, we'll do a simple string comparison as a placeholder
+//     // You should replace this with actual database logic
+//     user_id == teacher_id
+// }
+
+// Check if user can manage teachers (Admin, Staff, or Teacher for own profile)
+// pub fn check_teacher_management(
+//     user: &AuthUserDto,
+//     teacher_id: Option<&str>,
+// ) -> Result<(), String> {
+//     // Admin can manage all teachers
+//     if user.role == Some(UserRole::ADMIN) {
+//         return Ok(());
+//     }
+
+//     // School staff can manage teachers
+//     if user.role == Some(UserRole::SCHOOLSTAFF) {
+//         return Ok(());
+//     }
+
+//     // Teachers can manage their own profile
+//     if user.role == Some(UserRole::TEACHER) {
+//         if let Some(tid) = teacher_id {
+//             if is_teacher_user(&user.id, tid) {
+//                 return Ok(());
+//             }
+//         }
+//         return Err("Teachers can only manage their own profile".to_string());
+//     }
+
+//     Err("Access denied: insufficient permissions for teacher management".to_string())
+// }

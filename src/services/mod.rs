@@ -11,6 +11,7 @@ pub mod sector_service;
 pub mod student_service;
 pub mod subject_service;
 pub mod subjects;
+pub mod teacher_service;
 pub mod tenant_service;
 pub mod trade_service;
 pub mod user_service;

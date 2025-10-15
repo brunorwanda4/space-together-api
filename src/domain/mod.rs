@@ -10,6 +10,7 @@ pub mod sector;
 pub mod student;
 pub mod subject;
 pub mod subjects;
+pub mod teacher;
 pub mod trade;
 pub mod user;
 pub mod user_role;
