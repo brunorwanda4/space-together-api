@@ -1,5 +1,5 @@
 use crate::{
-    domain::{main_class::MainClass, school::School, user::User},
+    domain::{main_class::MainClass, school::School, teacher::Teacher, user::User},
     helpers::object_id_helpers,
 };
 use chrono::{DateTime, Utc};
@@ -111,8 +111,8 @@ pub struct ClassWithOthers {
     #[serde(flatten)]
     pub class: Class,
     pub school: Option<School>,
-    pub creator: Option<User>,       // You'll need to define User struct
-    pub class_teacher: Option<User>, // TODO: add teacher schema not user schema
+    pub creator: Option<User>, // You'll need to define User struct
+    pub class_teacher: Option<Teacher>,
     pub main_class: Option<MainClass>,
 }
 

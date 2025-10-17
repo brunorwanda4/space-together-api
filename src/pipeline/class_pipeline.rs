@@ -26,7 +26,7 @@ pub fn class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
         // Lookup class teacher (user)
         doc! {
             "$lookup": {
-                "from": "users",
+                "from": "teachers",
                 "localField": "class_teacher_id",
                 "foreignField": "_id",
                 "as": "class_teacher"

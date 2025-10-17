@@ -69,7 +69,6 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
 
                 school_access_token = school_token;
             }
-
             HttpResponse::Ok().json(serde_json::json!({
                 "id": user.id,
                 "email": user.email,
@@ -79,6 +78,8 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
                 "role": user.role,
                 "username": user.username,
                 "bio": user.bio,
+                "schools": user.schools,
+                "current_school_id": user.current_school_id,
                 "schoolAccessToken": school_access_token,
             }))
         }
