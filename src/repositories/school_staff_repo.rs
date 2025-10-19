@@ -439,10 +439,28 @@ impl SchoolStaffRepo {
         Ok(())
     }
 
-    pub async fn count_by_school_id(&self, school_id: &IdType) -> Result<u64, AppError> {
+    pub async fn count_by_school_id(
+        &self,
+        school_id: &IdType,
+        staff_type: Option<SchoolStaffType>,
+        is_active: Option<bool>,
+    ) -> Result<u64, AppError> {
         let obj_id = parse_object_id(school_id)?;
+
+        // Base filter
+        let mut filter = doc! { "school_id": obj_id };
+
+        // Optional filters
+        if let Some(t) = staff_type {
+            filter.insert("type", t.to_string());
+        }
+
+        if let Some(active) = is_active {
+            filter.insert("is_active", active);
+        }
+
         self.collection
-            .count_documents(doc! { "school_id": obj_id })
+            .count_documents(filter)
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to count school staff by school_id: {}", e),

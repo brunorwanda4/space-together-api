@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::helpers::object_id_helpers;
 
@@ -100,4 +101,17 @@ pub struct PrepareStaffRequest {
     pub staff_members: Vec<SchoolStaff>,
     pub school_id: Option<String>,
     pub creator_id: Option<String>,
+}
+
+impl fmt::Display for SchoolStaffType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SchoolStaffType::Director => "Director",
+                SchoolStaffType::HeadOfStudies => "HeadOfStudies",
+            }
+        )
+    }
 }

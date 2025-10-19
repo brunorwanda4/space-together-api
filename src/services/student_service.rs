@@ -1,8 +1,11 @@
 use crate::{
     config::state::AppState,
-    domain::student::{
-        BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest, Student,
-        StudentStatus, StudentWithRelations, UpdateStudent,
+    domain::{
+        common_details::Gender,
+        student::{
+            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest,
+            Student, StudentStatus, StudentWithRelations, UpdateStudent,
+        },
     },
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
@@ -495,9 +498,14 @@ impl<'a> StudentService<'a> {
     }
 
     /// Count students by school ID
-    pub async fn count_students_by_school_id(&self, school_id: &IdType) -> Result<u64, String> {
+    pub async fn count_students_by_school_id(
+        &self,
+        school_id: &IdType,
+        gender: Option<Gender>,
+        status: Option<StudentStatus>,
+    ) -> Result<u64, String> {
         self.repo
-            .count_by_school_id(school_id)
+            .count_by_school_id(school_id, gender, status)
             .await
             .map_err(|e| e.message)
     }

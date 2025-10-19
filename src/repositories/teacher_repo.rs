@@ -1,3 +1,4 @@
+use crate::domain::common_details::Gender;
 use crate::domain::teacher::{
     BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PrepareTeacherRequest, Teacher,
     TeacherType, TeacherWithRelations, UpdateTeacher,
@@ -471,7 +472,7 @@ impl TeacherRepo {
             update_doc.insert("phone", phone);
         }
         if let Some(gender) = &update.gender {
-            update_doc.insert("gender", gender);
+            update_doc.insert("gender", gender.to_string());
         }
         if let Some(teacher_type) = &update.r#type {
             update_doc.insert(
@@ -528,10 +529,28 @@ impl TeacherRepo {
         Ok(())
     }
 
-    pub async fn count_by_school_id(&self, school_id: &IdType) -> Result<u64, AppError> {
+    pub async fn count_by_school_id(
+        &self,
+        school_id: &IdType,
+        gender: Option<Gender>,
+        teacher_type: Option<TeacherType>,
+    ) -> Result<u64, AppError> {
         let obj_id = parse_object_id(school_id)?;
+
+        // Base filter
+        let mut filter = doc! { "school_id": obj_id };
+
+        // Optional filters
+        if let Some(g) = gender {
+            filter.insert("gender", g.to_string());
+        }
+
+        if let Some(t) = teacher_type {
+            filter.insert("type", t.to_string());
+        }
+
         self.collection
-            .count_documents(doc! { "school_id": obj_id })
+            .count_documents(filter)
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to count teachers by school_id: {}", e),

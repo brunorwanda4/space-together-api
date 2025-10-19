@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Address {
@@ -35,9 +36,24 @@ pub enum Gender {
     OTHER,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Default, Serialize, Clone)]
 pub struct Age {
     pub year: i32,
     pub month: i32,
     pub day: i32,
+}
+
+// format
+impl fmt::Display for Gender {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Gender::MALE => "MALE",
+                Gender::FEMALE => "FEMALE",
+                Gender::OTHER => "OTHER",
+            }
+        )
+    }
 }

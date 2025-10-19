@@ -57,3 +57,10 @@ features = ["sync"]
 [[bin]]
 name = "space-together-api"
 path = "src/main.rs"
+
+[profile.dev]
+opt-level = 0
+debug = 1
+lto = false
+incremental = true
+codegen-units = 256

@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::{
-    domain::{class::Class, school::School, subject::Subject, user::User},
+    domain::{class::Class, common_details::Gender, school::School, subject::Subject, user::User},
     helpers::object_id_helpers,
 };
 
@@ -54,7 +55,7 @@ pub struct Teacher {
     pub name: String,
     pub email: String,
     pub phone: Option<String>,
-    pub gender: Option<String>,
+    pub gender: Option<Gender>,
 
     pub r#type: TeacherType, // Regular, HeadTeacher, etc.
 
@@ -90,7 +91,7 @@ pub struct UpdateTeacher {
     pub name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
-    pub gender: Option<String>,
+    pub gender: Option<Gender>,
     pub r#type: Option<TeacherType>,
     pub class_ids: Option<Vec<ObjectId>>,
     pub subject_ids: Option<Vec<ObjectId>>,
@@ -131,4 +132,25 @@ pub struct PrepareTeacherRequest {
     pub teachers: Vec<Teacher>,
     pub school_id: Option<String>,
     pub creator_id: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct TeacherCountQuery {
+    pub gender: Option<Gender>,
+    pub teacher_type: Option<TeacherType>,
+}
+
+impl fmt::Display for TeacherType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                TeacherType::Regular => "Regular",
+                TeacherType::HeadTeacher => "HeadTeacher",
+                TeacherType::SubjectTeacher => "SubjectTeacher",
+                TeacherType::Deputy => "Deputy",
+            }
+        )
+    }
 }

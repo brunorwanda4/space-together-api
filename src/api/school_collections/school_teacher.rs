@@ -7,7 +7,7 @@ use crate::{
     config::state::AppState,
     domain::teacher::{
         BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PrepareTeacherRequest, Teacher,
-        TeacherType, UpdateTeacher,
+        TeacherCountQuery, TeacherType, UpdateTeacher,
     },
     models::{
         api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel,
@@ -255,7 +255,11 @@ async fn delete_teacher(
 }
 
 #[get("/stats/count")]
-async fn count_teachers(req: actix_web::HttpRequest, state: web::Data<AppState>) -> impl Responder {
+async fn count_teachers(
+    query: web::Query<TeacherCountQuery>,
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
         None => {
@@ -270,7 +274,11 @@ async fn count_teachers(req: actix_web::HttpRequest, state: web::Data<AppState>)
     let service = TeacherService::new(&repo);
 
     match service
-        .count_teachers_by_school_id(&IdType::from_string(claims.id.clone()))
+        .count_teachers_by_school_id(
+            &IdType::from_string(claims.id.clone()),
+            query.gender.clone(),
+            query.teacher_type,
+        )
         .await
     {
         Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),

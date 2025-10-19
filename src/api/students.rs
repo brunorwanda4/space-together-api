@@ -6,7 +6,7 @@ use crate::{
         auth_user::AuthUserDto,
         student::{
             BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest,
-            Student, StudentStatus, UpdateStudent,
+            Student, StudentCountQuery, StudentStatus, UpdateStudent,
         },
     },
     guards::role_guard,
@@ -469,6 +469,7 @@ async fn delete_student(
 
 #[get("/stats/count-by-school/{school_id}")]
 async fn count_students_by_school_id(
+    query: web::Query<StudentCountQuery>,
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
@@ -477,7 +478,10 @@ async fn count_students_by_school_id(
 
     let school_id = IdType::from_string(path.into_inner());
 
-    match service.count_students_by_school_id(&school_id).await {
+    match service
+        .count_students_by_school_id(&school_id, query.gender.clone(), query.status)
+        .await
+    {
         Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

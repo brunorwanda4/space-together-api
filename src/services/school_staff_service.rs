@@ -426,9 +426,14 @@ impl<'a> SchoolStaffService<'a> {
     }
 
     /// Count school staff by school ID
-    pub async fn count_school_staff_by_school_id(&self, school_id: &IdType) -> Result<u64, String> {
+    pub async fn count_staff_by_school_id(
+        &self,
+        school_id: &IdType,
+        staff_type: Option<SchoolStaffType>,
+        is_active: Option<bool>,
+    ) -> Result<u64, String> {
         self.repo
-            .count_by_school_id(school_id)
+            .count_by_school_id(school_id, staff_type, is_active)
             .await
             .map_err(|e| e.message)
     }

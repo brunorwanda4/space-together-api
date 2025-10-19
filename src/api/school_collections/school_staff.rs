@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpResponse, Responder};
 use mongodb::bson::oid::ObjectId;
+use serde::Deserialize;
 
 use crate::{
     config::state::AppState,
@@ -254,8 +255,15 @@ async fn delete_school_staff(
     }
 }
 
+#[derive(Deserialize)]
+struct StaffCountQuery {
+    r#type: Option<SchoolStaffType>,
+    is_active: Option<bool>,
+}
+
 #[get("/stats/count")]
 async fn count_school_staff(
+    query: web::Query<StaffCountQuery>,
     req: actix_web::HttpRequest,
     state: web::Data<AppState>,
 ) -> impl Responder {
@@ -273,7 +281,11 @@ async fn count_school_staff(
     let service = SchoolStaffService::new(&repo);
 
     match service
-        .count_school_staff_by_school_id(&IdType::from_string(claims.id.clone()))
+        .count_staff_by_school_id(
+            &IdType::from_string(claims.id.clone()),
+            query.r#type.clone(),
+            query.is_active,
+        )
         .await
     {
         Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),

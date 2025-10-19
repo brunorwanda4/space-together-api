@@ -1,8 +1,12 @@
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
-use crate::helpers::object_id_helpers;
+use crate::{
+    domain::common_details::{Age, Gender},
+    helpers::object_id_helpers,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum StudentStatus {
@@ -56,8 +60,8 @@ pub struct Student {
     pub name: String,
     pub email: String,
     pub phone: Option<String>,
-    pub gender: Option<String>,
-    pub date_of_birth: Option<String>, // You can change to DateTime<Utc> if you prefer
+    pub gender: Option<Gender>,
+    pub date_of_birth: Option<Age>, // You can change to DateTime<Utc> if you prefer
 
     pub registration_number: Option<String>,
     pub admission_year: Option<i32>,
@@ -83,8 +87,8 @@ pub struct UpdateStudent {
     pub name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
-    pub gender: Option<String>,
-    pub date_of_birth: Option<String>,
+    pub gender: Option<Gender>,
+    pub date_of_birth: Option<Age>, // You can change to DateTime<Utc> if you prefer
     pub registration_number: Option<String>,
     pub admission_year: Option<i32>,
     pub status: Option<StudentStatus>,
@@ -132,4 +136,25 @@ pub struct PrepareStudentsBulkRequest {
     pub school_id: Option<String>, // Optional: override school_id from token
     pub class_id: Option<String>,
     pub creator_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct StudentCountQuery {
+    pub gender: Option<Gender>,
+    pub status: Option<StudentStatus>,
+}
+
+impl fmt::Display for StudentStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                StudentStatus::Active => "Active",
+                StudentStatus::Suspended => "Suspended",
+                StudentStatus::Graduated => "Graduated",
+                StudentStatus::Left => "Left",
+            }
+        )
+    }
 }

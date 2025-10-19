@@ -1,8 +1,11 @@
 use crate::{
     config::state::AppState,
-    domain::teacher::{
-        BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PrepareTeacherRequest, Teacher,
-        TeacherType, TeacherWithRelations, UpdateTeacher,
+    domain::{
+        common_details::Gender,
+        teacher::{
+            BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PrepareTeacherRequest,
+            Teacher, TeacherType, TeacherWithRelations, UpdateTeacher,
+        },
     },
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
@@ -464,9 +467,14 @@ impl<'a> TeacherService<'a> {
     }
 
     /// Count teachers by school ID
-    pub async fn count_teachers_by_school_id(&self, school_id: &IdType) -> Result<u64, String> {
+    pub async fn count_teachers_by_school_id(
+        &self,
+        school_id: &IdType,
+        gender: Option<Gender>,
+        teacher_type: Option<TeacherType>,
+    ) -> Result<u64, String> {
         self.repo
-            .count_by_school_id(school_id)
+            .count_by_school_id(school_id, gender, teacher_type)
             .await
             .map_err(|e| e.message)
     }

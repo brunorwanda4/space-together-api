@@ -7,7 +7,7 @@ use crate::{
     config::state::AppState,
     domain::student::{
         BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest,
-        PrepareStudentsBulkRequest, Student, StudentStatus, UpdateStudent,
+        PrepareStudentsBulkRequest, Student, StudentCountQuery, StudentStatus, UpdateStudent,
     },
     models::{
         api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel,
@@ -284,7 +284,11 @@ async fn delete_student(
 }
 
 #[get("/stats/count")]
-async fn count_students(req: actix_web::HttpRequest, state: web::Data<AppState>) -> impl Responder {
+async fn count_students(
+    req: actix_web::HttpRequest,
+    query: web::Query<StudentCountQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
         None => {
@@ -299,7 +303,11 @@ async fn count_students(req: actix_web::HttpRequest, state: web::Data<AppState>)
     let service = StudentService::new(&repo);
 
     match service
-        .count_students_by_school_id(&IdType::from_string(claims.id.clone()))
+        .count_students_by_school_id(
+            &IdType::from_string(claims.id.clone()),
+            query.gender.clone(),
+            query.status.clone(),
+        )
         .await
     {
         Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),

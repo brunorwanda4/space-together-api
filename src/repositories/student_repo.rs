@@ -1,3 +1,4 @@
+use crate::domain::common_details::Gender;
 use crate::domain::student::{
     BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest, Student,
     StudentStatus, StudentWithRelations, UpdateStudent,
@@ -451,10 +452,18 @@ impl StudentRepo {
             update_doc.insert("phone", phone);
         }
         if let Some(gender) = &update.gender {
-            update_doc.insert("gender", gender);
+            update_doc.insert("gender", gender.to_string());
         }
+
         if let Some(date_of_birth) = &update.date_of_birth {
-            update_doc.insert("date_of_birth", date_of_birth);
+            update_doc.insert(
+                "date_of_birth",
+                doc! {
+                    "year": date_of_birth.year,
+                    "month": date_of_birth.month,
+                    "day": date_of_birth.day
+                },
+            );
         }
         if let Some(registration_number) = &update.registration_number {
             update_doc.insert("registration_number", registration_number);
@@ -511,10 +520,28 @@ impl StudentRepo {
         Ok(())
     }
 
-    pub async fn count_by_school_id(&self, school_id: &IdType) -> Result<u64, AppError> {
+    pub async fn count_by_school_id(
+        &self,
+        school_id: &IdType,
+        gender: Option<Gender>,
+        status: Option<StudentStatus>,
+    ) -> Result<u64, AppError> {
         let obj_id = parse_object_id(school_id)?;
+
+        // Base filter
+        let mut filter = doc! { "school_id": obj_id };
+
+        // Add optional filters
+        if let Some(g) = gender {
+            filter.insert("gender", g.to_string());
+        }
+
+        if let Some(s) = status {
+            filter.insert("status", s.to_string());
+        }
+
         self.collection
-            .count_documents(doc! { "school_id": obj_id })
+            .count_documents(filter)
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to count students by school_id: {}", e),
