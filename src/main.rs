@@ -4,6 +4,7 @@ mod controller;
 mod domain;
 mod errors;
 mod guards;
+mod handler;
 mod helpers;
 mod mappers;
 mod middleware;

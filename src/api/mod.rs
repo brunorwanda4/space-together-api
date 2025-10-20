@@ -4,6 +4,7 @@ mod auth;
 mod class;
 mod database_status;
 mod events;
+mod join_school_request;
 mod main_class;
 mod school;
 mod school_collections;
@@ -34,6 +35,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     subject::init(cfg);
     students::init(cfg);
     teachers::init(cfg);
+    join_school_request::init(cfg);
     school_collections::school_class::init(cfg);
     school_collections::school_subject::init(cfg);
     school_collections::school_staff::init(cfg);

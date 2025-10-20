@@ -114,6 +114,18 @@ impl<'a> UserService<'a> {
         Ok(sanitize_user(user))
     }
 
+    /// Get user by email
+    pub async fn get_user_by_email(&self, email: &str) -> Result<User, String> {
+        let user = self
+            .repo
+            .find_by_email(email)
+            .await
+            .map_err(|e| e.message.clone())?
+            .ok_or_else(|| "User not found".to_string())?;
+
+        Ok(sanitize_user(user))
+    }
+
     /// Update a user by id
     pub async fn update_user(
         &self,

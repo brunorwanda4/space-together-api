@@ -378,4 +378,10 @@ impl<'a> SchoolService<'a> {
 
         Ok(token)
     }
+
+    pub async fn parse_school_id(&self, parse_school_id: &IdType) -> Result<ObjectId, String> {
+        let _ = self.get_school_by_id(parse_school_id).await?;
+        let id = IdType::to_object_id(parse_school_id).map_err(|e| e.message)?;
+        Ok(id)
+    }
 }

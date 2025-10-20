@@ -236,60 +236,40 @@ impl SchoolStaffRepo {
             .options(IndexOptions::builder().unique(false).build())
             .build();
 
-        // Compound index for school_id + type for efficient queries
         let school_type_index = IndexModel::builder()
             .keys(doc! { "school_id": 1, "type": 1 })
             .options(IndexOptions::builder().unique(false).build())
             .build();
 
-        self.collection
-            .create_index(email_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create email index: {}", e),
-            })?;
+        // ✅ One Director per school
+        let one_director_per_school_index = IndexModel::builder()
+            .keys(doc! { "school_id": 1 })
+            .options(
+                IndexOptions::builder()
+                    .unique(true)
+                    .partial_filter_expression(doc! { "type": "Director" })
+                    .name(Some("unique_director_per_school".to_string()))
+                    .build(),
+            )
+            .build();
 
-        self.collection
-            .create_index(user_id_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create user_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(creator_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create creator_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(type_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create type index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(is_active_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create is_active index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_type_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id+type index: {}", e),
-            })?;
+        for index in [
+            email_index,
+            user_id_index,
+            school_index,
+            creator_index,
+            type_index,
+            is_active_index,
+            school_type_index,
+            one_director_per_school_index,
+        ] {
+            self.collection
+                .create_index(index)
+                .await
+                .map_err(|e| AppError {
+                    message: format!("Failed to create index: {}", e),
+                })?;
+        }
 
         Ok(())
     }

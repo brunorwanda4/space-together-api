@@ -3,6 +3,7 @@ pub mod auth_user;
 pub mod class;
 pub mod common_details;
 pub mod database_status;
+pub mod join_school_request;
 pub mod main_class;
 pub mod school;
 pub mod school_staff;

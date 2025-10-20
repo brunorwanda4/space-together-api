@@ -1,4 +1,5 @@
 pub mod class_repo;
+pub mod join_school_request_repo;
 pub mod main_class_repo;
 pub mod school_repo;
 pub mod school_staff_repo;
