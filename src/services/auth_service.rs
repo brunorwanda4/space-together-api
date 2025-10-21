@@ -12,6 +12,7 @@ use crate::{
         hash::{hash_password, verify_password},
         jwt::{create_jwt, verify_jwt},
         names::{generate_username, is_valid_name},
+        user_utils::sanitize_user,
     },
 };
 use chrono::Utc;
@@ -64,10 +65,10 @@ impl<'a> AuthService<'a> {
             .await
             .map_err(|e| e.to_string())?;
 
-        let dto = to_auth_dto(&res);
+        let dto = to_auth_dto(&sanitize_user(res.clone()));
         let token = create_jwt(&dto);
 
-        Ok((token, res))
+        Ok((token, sanitize_user(res)))
     }
 
     pub async fn login(&self, data: LoginUser) -> Result<(String, User), String> {
@@ -82,7 +83,7 @@ impl<'a> AuthService<'a> {
                 if verify_password(hash, &data.password) {
                     let dto = to_auth_dto(&user);
                     let token = create_jwt(&dto);
-                    return Ok((token, user));
+                    return Ok((token, sanitize_user(user)));
                 }
             }
             Err("Invalid credentials".to_string())
@@ -97,7 +98,7 @@ impl<'a> AuthService<'a> {
         let user_id = &claims.user.id;
 
         match self.repo.find_by_id(&IdType::from_string(user_id)).await {
-            Ok(Some(user)) => Ok(user),
+            Ok(Some(user)) => Ok(sanitize_user(user)),
             Ok(None) => Err("User not found".to_string()),
             Err(e) => Err(e.message),
         }
@@ -115,10 +116,10 @@ impl<'a> AuthService<'a> {
         let updated_user = user_service.update_user(&id, updated_data).await?;
 
         // issue fresh token
-        let dto = crate::mappers::user_mapper::to_auth_dto(&updated_user);
+        let dto = crate::mappers::user_mapper::to_auth_dto(&sanitize_user(updated_user.clone()));
         let new_token = crate::utils::jwt::create_jwt(&dto);
 
-        Ok((new_token, updated_user))
+        Ok((new_token, sanitize_user(updated_user)))
     }
 
     pub async fn refresh_token(&self, token: &str) -> Result<String, String> {
@@ -136,7 +137,7 @@ impl<'a> AuthService<'a> {
             .ok_or_else(|| "User not found".to_string())?;
 
         // create a fresh token
-        let dto = crate::mappers::user_mapper::to_auth_dto(&user);
+        let dto = crate::mappers::user_mapper::to_auth_dto(&sanitize_user(user));
         let new_token = crate::utils::jwt::create_jwt(&dto);
 
         Ok(new_token)

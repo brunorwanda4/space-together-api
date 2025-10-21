@@ -2,6 +2,7 @@ use actix_web::{web, HttpResponse};
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
+    config::state::AppState,
     controller::join_school_request_controller::JoinSchoolRequestController,
     domain::join_school_request::{
         BulkCreateJoinSchoolRequest, BulkRespondRequest, CreateJoinSchoolRequest, JoinRequestQuery,
@@ -40,10 +41,11 @@ pub async fn bulk_create_join_requests_handler(
 pub async fn accept_join_request_handler(
     controller: web::Data<JoinSchoolRequestController<'_>>,
     respond_request: web::Json<RespondToJoinRequest>,
+    state: web::Data<AppState>,
 ) -> Result<HttpResponse, AppError> {
     let accepted_by = Some(ObjectId::new()); // This should come from authenticated user
     let result = controller
-        .accept_join_request(respond_request.into_inner(), accepted_by)
+        .accept_join_request(respond_request.into_inner(), accepted_by, state)
         .await?;
     Ok(HttpResponse::Ok().json(result))
 }

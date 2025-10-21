@@ -107,7 +107,11 @@ async fn get_join_requests_by_email(
     let controller = create_controller(&state);
     let email = path.into_inner();
 
-    match controller.join_request_repo.find_by_email(&email).await {
+    match controller
+        .join_request_repo
+        .find_with_relations_by_email(&email)
+        .await
+    {
         Ok(requests) => HttpResponse::Ok().json(requests),
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
@@ -290,7 +294,12 @@ async fn accept_join_request(
     };
 
     let controller = create_controller(&state);
-    match accept_join_request_handler(web::Data::new(controller), web::Json(respond_request)).await
+    match accept_join_request_handler(
+        web::Data::new(controller),
+        web::Json(respond_request),
+        state,
+    )
+    .await
     {
         Ok(response) => response,
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),

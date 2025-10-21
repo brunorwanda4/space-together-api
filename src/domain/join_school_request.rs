@@ -28,8 +28,11 @@ pub enum JoinStatus {
 pub struct JoinSchoolRequest {
     #[serde(
         rename = "_id",
+        alias = "id",
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
     )]
     pub id: Option<ObjectId>,
 
@@ -89,6 +92,7 @@ pub struct CreateJoinSchoolRequest {
     pub sent_by: String,
     pub email: String,
     pub role: JoinRole,
+    pub r#type: String, // i was for get to add this
     pub school_id: String,
     pub message: Option<String>,
 }
@@ -97,12 +101,6 @@ pub struct CreateJoinSchoolRequest {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BulkCreateJoinSchoolRequest {
     pub requests: Vec<CreateJoinSchoolRequest>,
-}
-
-/// Generic small response for created resource (IDs returned as string)
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CreatedResponse {
-    pub id: String,
 }
 
 /// Payload to respond to a request (accept/reject/cancel)
@@ -171,13 +169,13 @@ pub struct JoinSchoolRequestWithRelations {
     pub request: JoinSchoolRequest,
 
     #[serde(default)]
-    pub school: Option<School>, // Replace with your `School` struct
+    pub school: Option<School>,
 
     #[serde(default)]
-    pub invited_user: Option<User>, // Replace with your `User` struct
+    pub invited_user: Option<User>,
 
     #[serde(default)]
-    pub sender: Option<User>, // Replace with your `User` struct
+    pub sender: Option<User>,
 }
 
 impl fmt::Display for JoinRole {

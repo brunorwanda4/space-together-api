@@ -25,7 +25,7 @@ async fn register_user(
 
     match service.register(data.into_inner()).await {
         Ok((token, user)) => HttpResponse::Created().json(serde_json::json!({
-            "id": user.id,
+          "id": user.id.map(|i| i.to_string()),
             "email": user.email,
             "name": user.name,
             "accessToken": token,
@@ -70,7 +70,7 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
                 school_access_token = school_token;
             }
             HttpResponse::Ok().json(serde_json::json!({
-                "id": user.id,
+                "id": user.id.map(|i| i.to_string()),
                 "email": user.email,
                 "name": user.name,
                 "accessToken": token,
@@ -78,8 +78,10 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
                 "role": user.role,
                 "username": user.username,
                 "bio": user.bio,
-                "schools": user.schools,
-                "current_school_id": user.current_school_id,
+                "schools": user.schools.map(|ids| {
+                    ids.into_iter().map(|oid| oid.to_string()).collect::<Vec<_>>()
+                }),
+                "current_school_id": user.current_school_id.map(|i| i.to_string()),
                 "schoolAccessToken": school_access_token,
             }))
         }

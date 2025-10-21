@@ -1,12 +1,13 @@
 use crate::{
     domain::{
-        join_school_request::{JoinSchoolRequest, JoinStatus},
+        join_school_request::{JoinSchoolRequest, JoinSchoolRequestWithRelations, JoinStatus},
         school::School,
         user::User,
     },
     errors::AppError,
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
+    pipeline::join_school_request_pipeline::join_school_request_with_relations_pipeline,
 };
 use std::time::Duration as StdDuration;
 
@@ -116,11 +117,6 @@ impl JoinSchoolRequestRepo {
         Ok(())
     }
 
-    // Helper function to handle parse_object_id errors
-    fn parse_id(&self, id: &IdType) -> Result<ObjectId, AppError> {
-        parse_object_id(id).map_err(|e| AppError { message: e })
-    }
-
     // Basic CRUD operations
     pub async fn create(
         &self,
@@ -158,7 +154,7 @@ impl JoinSchoolRequestRepo {
     }
 
     pub async fn find_by_id(&self, id: &IdType) -> Result<Option<JoinSchoolRequest>, AppError> {
-        let obj_id = self.parse_id(id)?;
+        let obj_id = parse_object_id(id).map_err(|e| AppError { message: e })?;
         self.collection
             .find_one(doc! { "_id": obj_id })
             .await
@@ -168,7 +164,7 @@ impl JoinSchoolRequestRepo {
     }
 
     pub async fn delete(&self, id: &IdType) -> Result<(), AppError> {
-        let obj_id = self.parse_id(id)?;
+        let obj_id = parse_object_id(id).map_err(|e| AppError { message: e })?;
         let result = self
             .collection
             .delete_one(doc! { "_id": obj_id })
@@ -205,11 +201,69 @@ impl JoinSchoolRequestRepo {
         Ok(requests)
     }
 
+    // Get all join requests by email with relations
+    pub async fn find_with_relations_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<JoinSchoolRequestWithRelations>, AppError> {
+        // Build aggregation pipeline with relations and match filter
+        let pipeline = join_school_request_with_relations_pipeline(doc! { "email": email });
+
+        let mut cursor = self
+            .collection
+            .clone_with_type::<Document>()
+            .aggregate(pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to aggregate join requests with relations: {}", e),
+            })?;
+
+        let mut results = Vec::new();
+
+        while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to process aggregated document: {}", e),
+        })? {
+            // Deserialize base request
+            let request: JoinSchoolRequest =
+                mongodb::bson::from_document(doc.clone()).map_err(|e| AppError {
+                    message: format!("Failed to deserialize join request: {}", e),
+                })?;
+
+            // Extract school, invited_user, and sender relationships
+            let school: Option<School> = doc
+                .get_array("school")
+                .ok()
+                .and_then(|arr| arr.first())
+                .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
+
+            let invited_user: Option<User> = doc
+                .get_array("invited_user")
+                .ok()
+                .and_then(|arr| arr.first())
+                .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
+
+            let sender: Option<User> = doc
+                .get_array("sender")
+                .ok()
+                .and_then(|arr| arr.first())
+                .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
+
+            results.push(JoinSchoolRequestWithRelations {
+                request,
+                school,
+                invited_user,
+                sender,
+            });
+        }
+
+        Ok(results)
+    }
+
     pub async fn find_by_school_id(
         &self,
         school_id: &IdType,
     ) -> Result<Vec<JoinSchoolRequest>, AppError> {
-        let obj_id = self.parse_id(school_id)?;
+        let obj_id = parse_object_id(school_id).map_err(|e| AppError { message: e })?;
         let mut cursor = self
             .collection
             .find(doc! { "school_id": obj_id })
@@ -231,7 +285,7 @@ impl JoinSchoolRequestRepo {
         &self,
         user_id: &IdType,
     ) -> Result<Vec<JoinSchoolRequest>, AppError> {
-        let obj_id = self.parse_id(user_id)?;
+        let obj_id = parse_object_id(user_id).map_err(|e| AppError { message: e })?;
         let mut cursor = self
             .collection
             .find(doc! { "invited_user_id": obj_id })
@@ -280,7 +334,7 @@ impl JoinSchoolRequestRepo {
         school_id: &IdType,
         status: JoinStatus,
     ) -> Result<Vec<JoinSchoolRequest>, AppError> {
-        let school_obj_id = self.parse_id(school_id)?;
+        let school_obj_id = parse_object_id(school_id).map_err(|e| AppError { message: e })?;
         let mut cursor = self
             .collection
             .find(doc! {
@@ -343,7 +397,7 @@ impl JoinSchoolRequestRepo {
         email: &str,
         school_id: &IdType,
     ) -> Result<Option<JoinSchoolRequest>, AppError> {
-        let school_obj_id = self.parse_id(school_id)?;
+        let school_obj_id = parse_object_id(school_id).map_err(|e| AppError { message: e })?;
         self.collection
             .find_one(doc! {
                 "email": email,
@@ -365,7 +419,7 @@ impl JoinSchoolRequestRepo {
         status: JoinStatus,
         responded_by: Option<ObjectId>,
     ) -> Result<JoinSchoolRequest, AppError> {
-        let obj_id = self.parse_id(id)?;
+        let obj_id = parse_object_id(id).map_err(|e| AppError { message: e })?;
         let now = Utc::now();
 
         let mut update_doc = doc! {
@@ -405,7 +459,7 @@ impl JoinSchoolRequestRepo {
         invited_user_id: ObjectId,
         responded_by: Option<ObjectId>,
     ) -> Result<JoinSchoolRequest, AppError> {
-        let obj_id = self.parse_id(id)?;
+        let obj_id = parse_object_id(id).map_err(|e| AppError { message: e })?;
         let now = Utc::now();
 
         let mut update_doc = doc! {
@@ -555,7 +609,8 @@ impl JoinSchoolRequestRepo {
         }
 
         if let Some(school_id) = query.school_id {
-            let school_obj_id = self.parse_id(&IdType::String(school_id))?;
+            let school_obj_id =
+                parse_object_id(&IdType::String(school_id)).map_err(|e| AppError { message: e })?;
             match_stage.insert("school_id", school_obj_id);
         }
 
@@ -637,10 +692,13 @@ impl JoinSchoolRequestRepo {
         &self,
         request: &crate::domain::join_school_request::BulkRespondRequest,
     ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+        // Convert all request_ids (String) to ObjectIds
         let ids: Result<Vec<ObjectId>, AppError> = request
             .request_ids
             .iter()
-            .map(|id| self.parse_id(&IdType::String(id.clone())))
+            .map(|id| {
+                parse_object_id(&IdType::String(id.clone())).map_err(|e| AppError { message: e })
+            })
             .collect();
 
         let object_ids = ids?;
@@ -649,7 +707,7 @@ impl JoinSchoolRequestRepo {
         self.bulk_update_status(object_ids.clone(), request.status.clone(), None)
             .await?;
 
-        // Return updated requests
+        // Fetch updated requests
         let mut cursor = self
             .collection
             .find(doc! { "_id": { "$in": object_ids } })
@@ -709,7 +767,7 @@ impl JoinSchoolRequestRepo {
         school_id: &IdType,
         status: JoinStatus,
     ) -> Result<u64, AppError> {
-        let school_obj_id = self.parse_id(school_id)?;
+        let school_obj_id = parse_object_id(school_id).map_err(|e| AppError { message: e })?;
         self.collection
             .count_documents(doc! {
                 "school_id": school_obj_id,
@@ -781,7 +839,7 @@ impl JoinSchoolRequestRepo {
         email: &str,
         school_id: &IdType,
     ) -> Result<bool, AppError> {
-        let school_obj_id = self.parse_id(school_id)?;
+        let school_obj_id = parse_object_id(school_id).map_err(|e| AppError { message: e })?;
         let count = self
             .collection
             .count_documents(doc! {
@@ -805,7 +863,7 @@ impl JoinSchoolRequestRepo {
         id: &IdType,
         expires_at: DateTime<Utc>,
     ) -> Result<JoinSchoolRequest, AppError> {
-        let obj_id = self.parse_id(id)?;
+        let obj_id = parse_object_id(id).map_err(|e| AppError { message: e })?;
         let update_doc = doc! {
             "expires_at": bson::to_bson(&expires_at).unwrap(),
             "updated_at": bson::to_bson(&Utc::now()).unwrap(),
@@ -829,52 +887,8 @@ impl JoinSchoolRequestRepo {
         id: &IdType,
     ) -> Result<Option<crate::domain::join_school_request::JoinSchoolRequestWithRelations>, AppError>
     {
-        let obj_id = self.parse_id(id)?;
-        let pipeline = vec![
-            doc! { "$match": { "_id": obj_id } },
-            doc! {
-                "$lookup": {
-                    "from": "schools",
-                    "localField": "school_id",
-                    "foreignField": "_id",
-                    "as": "school"
-                }
-            },
-            doc! {
-                "$unwind": {
-                    "path": "$school",
-                    "preserveNullAndEmptyArrays": true
-                }
-            },
-            doc! {
-                "$lookup": {
-                    "from": "users",
-                    "localField": "invited_user_id",
-                    "foreignField": "_id",
-                    "as": "invited_user"
-                }
-            },
-            doc! {
-                "$unwind": {
-                    "path": "$invited_user",
-                    "preserveNullAndEmptyArrays": true
-                }
-            },
-            doc! {
-                "$lookup": {
-                    "from": "users",
-                    "localField": "sent_by",
-                    "foreignField": "_id",
-                    "as": "sender"
-                }
-            },
-            doc! {
-                "$unwind": {
-                    "path": "$sender",
-                    "preserveNullAndEmptyArrays": true
-                }
-            },
-        ];
+        let obj_id = parse_object_id(id).map_err(|e| AppError { message: e })?;
+        let pipeline = join_school_request_with_relations_pipeline(doc! {"_id": obj_id});
 
         let mut cursor = self
             .collection
@@ -922,115 +936,5 @@ impl JoinSchoolRequestRepo {
         } else {
             Ok(None)
         }
-    }
-
-    // Count operations
-    pub async fn count_by_school_id(&self, school_id: &IdType) -> Result<u64, AppError> {
-        let obj_id = self.parse_id(school_id)?;
-        self.collection
-            .count_documents(doc! { "school_id": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to count join requests by school_id: {}", e),
-            })
-    }
-
-    // 🔍 Find pending requests for a school
-    pub async fn find_pending_by_school(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
-        let obj_id = parse_object_id(school_id).map_err(|e| AppError { message: e })?;
-        let mut cursor = self
-            .collection
-            .find(doc! { "school_id": obj_id, "status": "Pending" })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find pending requests: {}", e),
-            })?;
-
-        let mut requests = Vec::new();
-        while let Some(request) = cursor.next().await {
-            requests.push(request.map_err(|e| AppError {
-                message: format!("Failed to process join request: {}", e),
-            })?);
-        }
-        Ok(requests)
-    }
-
-    pub async fn find_by_sent_by(
-        &self,
-        sent_by: &IdType,
-    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
-        let obj_id = self.parse_id(sent_by)?;
-        let mut cursor = self
-            .collection
-            .find(doc! { "sent_by": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find join requests by sent_by: {}", e),
-            })?;
-
-        let mut requests = Vec::new();
-        while let Some(request) = cursor.next().await {
-            requests.push(request.map_err(|e| AppError {
-                message: format!("Failed to process join request: {}", e),
-            })?);
-        }
-        Ok(requests)
-    }
-
-    pub async fn bulk_delete(&self, ids: Vec<ObjectId>) -> Result<u64, AppError> {
-        let result = self
-            .collection
-            .delete_many(doc! { "_id": { "$in": ids } })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to bulk delete join requests: {}", e),
-            })?;
-
-        Ok(result.deleted_count)
-    }
-
-    pub async fn update(
-        &self,
-        id: &IdType,
-        update: Document,
-    ) -> Result<JoinSchoolRequest, AppError> {
-        let obj_id = self.parse_id(id)?;
-
-        let mut update_doc = update;
-        update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
-
-        self.collection
-            .update_one(doc! { "_id": obj_id }, doc! { "$set": update_doc })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to update join request: {}", e),
-            })?;
-
-        self.find_by_id(id).await?.ok_or(AppError {
-            message: "Join request not found after update".to_string(),
-        })
-    }
-
-    pub async fn find_active_by_user_and_school(
-        &self,
-        user_id: &IdType,
-        school_id: &IdType,
-    ) -> Result<Option<JoinSchoolRequest>, AppError> {
-        let user_obj_id = self.parse_id(user_id)?;
-        let school_obj_id = self.parse_id(school_id)?;
-
-        self.collection
-            .find_one(doc! {
-                "invited_user_id": user_obj_id,
-                "school_id": school_obj_id,
-                "status": { "$in": [bson::to_bson(&JoinStatus::Pending).unwrap(), bson::to_bson(&JoinStatus::Accepted).unwrap()] }
-            })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find active join request by user and school: {}", e),
-            })
     }
 }
