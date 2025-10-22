@@ -27,13 +27,58 @@ impl SchoolStaffRepo {
         }
     }
 
-    pub async fn get_all_with_relations(&self) -> Result<Vec<SchoolStaffWithRelations>, AppError> {
-        aggregate_many(&self.collection.clone().clone_with_type::<Document>(), {
-            let mut pipeline = school_staff_with_relations_pipeline(doc! {});
-            pipeline.insert(0, doc! { "$sort": { "updated_at": -1 } });
-            pipeline
-        })
-        .await
+    pub async fn get_all_with_relations(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<SchoolStaffWithRelations>, AppError> {
+        let mut pipeline = vec![];
+
+        // 🔍 Add search/filter functionality
+        if let Some(f) = filter {
+            let regex = doc! {
+                "$regex": f,
+                "$options": "i" // case-insensitive search
+            };
+
+            pipeline.push(doc! {
+                "$match": {
+                    "$or": [
+                        { "name": &regex },
+                        { "email": &regex },
+                        { "tags": &regex },
+                    ]
+                }
+            });
+        }
+
+        // 🧩 Merge with school staff relations pipeline
+        let mut relations_pipeline = school_staff_with_relations_pipeline(doc! {});
+        pipeline.append(&mut relations_pipeline);
+
+        // 🕒 Sort by most recently updated
+        pipeline.insert(0, doc! { "$sort": { "updated_at": -1 } });
+
+        // ⏭️ Add pagination
+        if let Some(s) = skip {
+            pipeline.push(doc! { "$skip": s });
+        }
+
+        if let Some(l) = limit {
+            pipeline.push(doc! { "$limit": l });
+        } else {
+            pipeline.push(doc! { "$limit": 50 }); // default limit
+        }
+
+        // 🧠 Run aggregation
+        let docs = aggregate_many(
+            &self.collection.clone().clone_with_type::<Document>(),
+            pipeline,
+        )
+        .await?;
+
+        Ok(docs)
     }
 
     pub async fn find_by_id_with_relations(

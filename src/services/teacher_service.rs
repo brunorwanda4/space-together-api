@@ -48,9 +48,12 @@ impl<'a> TeacherService<'a> {
     /// Get all teachers with relations
     pub async fn get_all_teachers_with_relations(
         &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
     ) -> Result<Vec<TeacherWithRelations>, String> {
         self.repo
-            .get_all_with_relations()
+            .get_all_with_relations(filter, limit, skip)
             .await
             .map_err(|e| e.message)
     }
@@ -909,10 +912,13 @@ impl<'a> TeacherService<'a> {
     pub async fn get_class_teachers(
         &self,
         class_id: &IdType,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
     ) -> Result<Vec<TeacherWithRelations>, String> {
         let teachers = self
             .repo
-            .get_all_with_relations()
+            .get_all_with_relations(filter, limit, skip)
             .await
             .map_err(|e| e.message)?;
 
@@ -936,10 +942,13 @@ impl<'a> TeacherService<'a> {
     pub async fn get_subject_teachers(
         &self,
         subject_id: &IdType,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
     ) -> Result<Vec<TeacherWithRelations>, String> {
         let teachers = self
             .repo
-            .get_all_with_relations()
+            .get_all_with_relations(filter, limit, skip)
             .await
             .map_err(|e| e.message)?;
 

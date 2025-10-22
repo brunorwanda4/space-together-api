@@ -1,21 +1,29 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     config::state::AppState,
-    domain::auth_user::AuthUserDto,
-    domain::sector::{Sector, UpdateSector},
-    models::{id_model::IdType, request_error_model::ReqErrModel},
+    domain::{
+        auth_user::AuthUserDto,
+        sector::{Sector, UpdateSector},
+    },
+    models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::sector_repo::SectorRepo,
-    services::event_service::EventService,
-    services::sector_service::SectorService,
+    services::{event_service::EventService, sector_service::SectorService},
 };
 
 #[get("")]
-async fn get_all_sectors(state: web::Data<AppState>) -> impl Responder {
+async fn get_all_sectors(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = SectorRepo::new(&state.db.main_db());
     let service = SectorService::new(&repo);
 
-    match service.get_all_sectors().await {
+    match service
+        .get_all_sectors(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(sectors) => HttpResponse::Ok().json(sectors),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -30,6 +38,32 @@ async fn get_sector_by_id(path: web::Path<String>, state: web::Data<AppState>) -
 
     match service.get_sector_by_id(&sector_id).await {
         Ok(sector) => HttpResponse::Ok().json(sector),
+        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GetSectorsByIdsBody {
+    pub ids: Vec<String>,
+}
+
+#[post("/by-ids")]
+async fn get_sectors_by_ids(
+    body: web::Json<GetSectorsByIdsBody>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = SectorRepo::new(&state.db.main_db());
+    let service = SectorService::new(&repo);
+
+    // Convert the string IDs into IdType
+    let ids: Vec<IdType> = body
+        .ids
+        .iter()
+        .map(|id| IdType::from_string(id.clone()))
+        .collect();
+
+    match service.get_sectors_by_ids(ids).await {
+        Ok(sectors) => HttpResponse::Ok().json(sectors),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
 }
@@ -184,8 +218,9 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/sectors")
             // Public routes
             .service(get_all_sectors) // GET /sectors
+            .service(get_sector_by_username) //GET /sectors/username/{username}
+            .service(get_sectors_by_ids) //POST /sectors/by-ids
             .service(get_sector_by_id) // GET /sectors/{id}
-            .service(get_sector_by_username)
             // Protected routes
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_sector) // POST /sectors

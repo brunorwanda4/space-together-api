@@ -17,8 +17,16 @@ impl<'a> TradeService<'a> {
     }
 
     /// Get all trades
-    pub async fn get_all_trades(&self) -> Result<Vec<Trade>, String> {
-        self.repo.get_all_trades().await.map_err(|e| e.message)
+    pub async fn get_all_trades(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Trade>, String> {
+        self.repo
+            .get_all_trades(filter, limit, skip)
+            .await
+            .map_err(|e| e.message)
     }
 
     pub async fn get_all_trades_with_others(&self) -> Result<Vec<TradeWithOthers>, String> {

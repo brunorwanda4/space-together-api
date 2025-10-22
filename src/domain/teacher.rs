@@ -154,3 +154,12 @@ impl fmt::Display for TeacherType {
         )
     }
 }
+
+pub fn parse_teacher_type(type_str: &str) -> TeacherType {
+    match type_str.to_lowercase().as_str() {
+        "headteacher" => TeacherType::HeadTeacher,
+        "subjectteacher" => TeacherType::SubjectTeacher,
+        "deputy" => TeacherType::Deputy,
+        _ => TeacherType::Regular,
+    }
+}

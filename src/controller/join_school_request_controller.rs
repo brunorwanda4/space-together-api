@@ -7,19 +7,20 @@ use crate::{
     domain::{
         join_school_request::{
             BulkCreateJoinSchoolRequest, BulkRespondRequest, CreateJoinSchoolRequest,
-            JoinRequestQuery, JoinRole, JoinSchoolRequest, JoinStatus, RespondToJoinRequest,
-            UpdateRequestExpiration,
+            JoinRequestQuery, JoinRequestWithToken, JoinRole, JoinSchoolRequest, JoinStatus,
+            RespondToJoinRequest, UpdateRequestExpiration,
         },
         school::School,
-        school_staff::{SchoolStaff, SchoolStaffType},
+        school_staff::{parse_staff_type, SchoolStaff, SchoolStaffType},
         student::{Student, StudentStatus},
-        teacher::{Teacher, TeacherType},
+        teacher::{parse_teacher_type, Teacher},
         user::User,
     },
     errors::AppError,
+    helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
-    repositories::join_school_request_repo::JoinSchoolRequestRepo,
     repositories::{
+        class_repo::ClassRepo, join_school_request_repo::JoinSchoolRequestRepo,
         school_staff_repo::SchoolStaffRepo, student_repo::StudentRepo, teacher_repo::TeacherRepo,
     },
     services::{
@@ -27,16 +28,13 @@ use crate::{
         student_service::StudentService, teacher_service::TeacherService,
         user_service::UserService,
     },
-    utils::email::is_valid_email,
+    utils::{code::generate_school_registration_number, email::is_valid_email},
 };
 
 pub struct JoinSchoolRequestController<'a> {
     pub join_request_repo: JoinSchoolRequestRepo,
     pub user_service: &'a UserService<'a>,
     pub school_service: &'a SchoolService<'a>,
-    pub teacher_service: &'a TeacherService<'a>,
-    pub student_service: &'a StudentService<'a>,
-    pub staff_service: &'a SchoolStaffService<'a>,
 }
 
 impl<'a> JoinSchoolRequestController<'a> {
@@ -44,17 +42,11 @@ impl<'a> JoinSchoolRequestController<'a> {
         join_request_repo: JoinSchoolRequestRepo,
         user_service: &'a UserService<'a>,
         school_service: &'a SchoolService<'a>,
-        teacher_service: &'a TeacherService<'a>,
-        student_service: &'a StudentService<'a>,
-        staff_service: &'a SchoolStaffService<'a>,
     ) -> Self {
         Self {
             join_request_repo,
             user_service,
             school_service,
-            teacher_service,
-            student_service,
-            staff_service,
         }
     }
 
@@ -75,62 +67,56 @@ impl<'a> JoinSchoolRequestController<'a> {
 
         // Parse school_id and check existence
         let school_id: IdType = IdType::String(create_request.school_id.clone());
-        let school_obj_id = self
-            .school_service
-            .parse_school_id(&school_id)
-            .await
-            .map_err(|e| AppError { message: e })?;
 
-        let _school = self
+        let school = self
             .school_service
             .get_school_by_id(&school_id)
             .await
             .map_err(|e| AppError { message: e })?;
 
-        // Validate staff role limits
-        if let JoinRole::Staff = create_request.role {
-            let staff_type = self.parse_staff_type(&create_request.r#type);
+        let school_obj_id = match school.id {
+            Some(i) => i,
+            None => {
+                return Err(AppError {
+                    message: format!("Failed to changes ObjectId into string"),
+                });
+            }
+        };
 
-            match staff_type {
-                SchoolStaffType::Director => {
-                    let count = self
-                        .staff_service
-                        .count_school_staff_by_type(SchoolStaffType::Director)
-                        .await
-                        .unwrap_or(0);
+        // Validate class_id if provided (will be validated in school DB later)
+        let class_id = if let Some(class_id_str) = &create_request.class_id {
+            Some(
+                parse_object_id(&IdType::String(class_id_str.clone()))
+                    .map_err(|e| AppError { message: e })?,
+            )
+        } else {
+            None
+        };
 
-                    if count >= 1 {
-                        return Err(AppError {
-                            message: "This school already has a Director".into(),
-                        });
-                    }
-                }
-                SchoolStaffType::HeadOfStudies => {
-                    let count = self
-                        .staff_service
-                        .count_school_staff_by_type(SchoolStaffType::HeadOfStudies)
-                        .await
-                        .unwrap_or(0);
-                    if count >= 5 {
-                        return Err(AppError {
-                            message: "This school already has 5 HeadOfStudies".into(),
-                        });
-                    }
-                }
+        // Validate that class_id is provided for student role
+        if let JoinRole::Student = create_request.role {
+            if class_id.is_none() {
+                return Err(AppError {
+                    message: "Class ID is required for student join requests".into(),
+                });
             }
         }
 
+        // Note: Staff role limits will be validated in the school database during acceptance
+
         // Duplicate check
-        if let Some(_) = self
+        if (self
             .join_request_repo
             .find_pending_by_email_and_school(&create_request.email, &school_id)
-            .await?
+            .await?)
+            .is_some()
         {
             return Err(AppError {
                 message: "A pending join request already exists for this email and school".into(),
             });
         }
 
+        let mut invited_user_id = None;
         // User already in school check
         if let Ok(user) = self
             .user_service
@@ -144,6 +130,8 @@ impl<'a> JoinSchoolRequestController<'a> {
                     });
                 }
             }
+
+            invited_user_id = user.id;
         }
 
         // Create the join request
@@ -151,7 +139,8 @@ impl<'a> JoinSchoolRequestController<'a> {
         let join_request = JoinSchoolRequest {
             id: None,
             school_id: school_obj_id,
-            invited_user_id: None,
+            invited_user_id,
+            class_id,
             role: create_request.role.clone(),
             email: create_request.email.clone(),
             r#type: create_request.r#type.clone(),
@@ -190,6 +179,23 @@ impl<'a> JoinSchoolRequestController<'a> {
                 Err(_) => continue,
             };
 
+            // Parse class_id if provided
+            let class_id = if let Some(class_id_str) = &create_request.class_id {
+                match parse_object_id(&IdType::String(class_id_str.clone())) {
+                    Ok(id) => Some(id),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
+            // Skip if class validation failed for student role
+            if let JoinRole::Student = create_request.role {
+                if class_id.is_none() {
+                    continue;
+                }
+            }
+
             if let Ok(Some(_)) = self
                 .join_request_repo
                 .find_pending_by_email_and_school(&create_request.email, &school_id)
@@ -202,6 +208,7 @@ impl<'a> JoinSchoolRequestController<'a> {
                 id: None,
                 school_id: school_obj_id,
                 invited_user_id: None,
+                class_id,
                 role: create_request.role.clone(),
                 email: create_request.email.clone(),
                 r#type: create_request.r#type.clone(),
@@ -239,7 +246,7 @@ impl<'a> JoinSchoolRequestController<'a> {
         respond_request: RespondToJoinRequest,
         accepted_by: Option<ObjectId>,
         state: web::Data<AppState>,
-    ) -> Result<JoinSchoolRequest, AppError> {
+    ) -> Result<JoinRequestWithToken, AppError> {
         let request_id = IdType::String(respond_request.request_id.clone());
         let request = self
             .join_request_repo
@@ -255,7 +262,7 @@ impl<'a> JoinSchoolRequestController<'a> {
             });
         }
 
-        // Get school & its DB
+        // Get school & DB
         let school_id = IdType::ObjectId(request.school_id);
         let school = self
             .school_service
@@ -281,7 +288,7 @@ impl<'a> JoinSchoolRequestController<'a> {
         self.create_role_entity_school_db(&request, &user, &school, &school_db)
             .await?;
 
-        // Link user to school (in main DB)
+        // Link user to school
         self.user_service
             .add_school_to_user(&IdType::ObjectId(user.id.unwrap()), &school_id)
             .await
@@ -293,7 +300,18 @@ impl<'a> JoinSchoolRequestController<'a> {
             .accept_request(&request_id, user.id.unwrap(), accepted_by)
             .await?;
 
-        Ok(updated_request)
+        // Create school token
+        let school_token = self
+            .school_service
+            .create_school_token(&school)
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        // ✅ Return combined object
+        Ok(JoinRequestWithToken {
+            request: updated_request,
+            school_token,
+        })
     }
 
     // ----------------------------------------------------------------------
@@ -314,34 +332,70 @@ impl<'a> JoinSchoolRequestController<'a> {
                 let student_repo = StudentRepo::new(school_db);
                 let student_service = StudentService::new(&student_repo);
 
+                // Validate class exists in school database before creating student
+                if let Some(class_id) = request.class_id {
+                    let class_repo = ClassRepo::new(school_db);
+                    let class_service =
+                        crate::services::class_service::ClassService::new(&class_repo);
+
+                    // Check if class exists in school database
+                    let class = class_service
+                        .get_class_by_id(&IdType::ObjectId(class_id))
+                        .await;
+                    if class.is_err() {
+                        return Err(AppError {
+                            message: "Class not found in school database".into(),
+                        });
+                    }
+                }
+
                 let student = Student {
                     id: None,
                     user_id: Some(user_id),
                     school_id: Some(school_id),
-                    class_id: None,
+                    class_id: request.class_id, // Use the class_id from the request
                     creator_id: Some(request.sent_by),
                     name: user.name.clone(),
                     email: user.email.clone(),
                     phone: user.phone.clone(),
                     gender: user.gender.clone(),
                     date_of_birth: user.age.clone(),
-                    registration_number: self.generate_registration_number(school).await,
+                    registration_number: generate_school_registration_number(school).await,
                     admission_year: Some(Utc::now().year()),
                     status: StudentStatus::Active,
-                    is_active: true,
+                    is_active: false,
                     tags: vec!["join-request".to_string()],
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                 };
 
-                student_service
+                let _created_student = student_service
                     .create_student(student)
                     .await
                     .map_err(|e| AppError { message: e })?;
+
+                // If class_id is provided, add student to class in school database
+                if let Some(_class_id) = request.class_id {
+                    let class_repo = ClassRepo::new(school_db);
+                    let _class_service =
+                        crate::services::class_service::ClassService::new(&class_repo);
+
+                    // Add student to class in school database
+                    // class_service
+                    //     .add_student_to_class(
+                    //         &IdType::ObjectId(class_id),
+                    //         &IdType::ObjectId(created_student.id.unwrap()),
+                    //     )
+                    //     .await
+                    //     .map_err(|e| AppError { message: e })?;
+                }
             }
             JoinRole::Teacher => {
                 let teacher_repo = TeacherRepo::new(school_db);
                 let teacher_service = TeacherService::new(&teacher_repo);
+
+                // Validate teacher type
+                let teacher_type = parse_teacher_type(&request.r#type);
 
                 let teacher = Teacher {
                     id: None,
@@ -352,10 +406,10 @@ impl<'a> JoinSchoolRequestController<'a> {
                     email: user.email.clone(),
                     phone: user.phone.clone(),
                     gender: user.gender.clone(),
-                    r#type: self.parse_teacher_type(&request.r#type),
-                    class_ids: None,
+                    r#type: teacher_type,
+                    class_ids: None, // Teachers can be assigned to classes later
                     subject_ids: None,
-                    is_active: true,
+                    is_active: false,
                     tags: vec!["join-request".to_string()],
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
@@ -370,6 +424,37 @@ impl<'a> JoinSchoolRequestController<'a> {
                 let staff_repo = SchoolStaffRepo::new(school_db);
                 let staff_service = SchoolStaffService::new(&staff_repo);
 
+                // Validate staff type and check limits in school database
+                let staff_type = parse_staff_type(&request.r#type);
+
+                // Check staff limits in school database
+                match staff_type {
+                    SchoolStaffType::Director => {
+                        let count = staff_service
+                            .count_school_staff_by_type(SchoolStaffType::Director)
+                            .await
+                            .map_err(|e| AppError { message: e })?;
+
+                        if count >= 1 {
+                            return Err(AppError {
+                                message: "This school already has a Director".into(),
+                            });
+                        }
+                    }
+                    SchoolStaffType::HeadOfStudies => {
+                        let count = staff_service
+                            .count_school_staff_by_type(SchoolStaffType::HeadOfStudies)
+                            .await
+                            .map_err(|e| AppError { message: e })?;
+
+                        if count >= 5 {
+                            return Err(AppError {
+                                message: "This school already has 5 HeadOfStudies".into(),
+                            });
+                        }
+                    }
+                }
+
                 let staff = SchoolStaff {
                     id: None,
                     user_id: Some(user_id),
@@ -377,8 +462,8 @@ impl<'a> JoinSchoolRequestController<'a> {
                     creator_id: Some(request.sent_by),
                     name: user.name.clone(),
                     email: user.email.clone(),
-                    r#type: self.parse_staff_type(&request.r#type),
-                    is_active: true,
+                    r#type: staff_type,
+                    is_active: false,
                     tags: vec!["join-request".to_string()],
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
@@ -395,29 +480,41 @@ impl<'a> JoinSchoolRequestController<'a> {
     }
 
     // ----------------------------------------------------------------------
-    // Utility helpers
+    // Class-related methods
     // ----------------------------------------------------------------------
-    async fn generate_registration_number(&self, school: &School) -> Option<String> {
-        let year = Utc::now().year();
-        let random = rand::random::<u16>() % 10000;
-        Some(format!("{}-{}-{:04}", school.username, year, random))
+
+    /// Get join requests by class ID
+    pub async fn get_join_requests_by_class(
+        &self,
+        class_id: &IdType,
+    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+        let requests = self.join_request_repo.find_by_class_id(class_id).await?;
+        Ok(requests)
     }
 
-    fn parse_teacher_type(&self, type_str: &str) -> TeacherType {
-        match type_str.to_lowercase().as_str() {
-            "headteacher" => TeacherType::HeadTeacher,
-            "subjectteacher" => TeacherType::SubjectTeacher,
-            "deputy" => TeacherType::Deputy,
-            _ => TeacherType::Regular,
-        }
+    /// Get pending join requests by class ID
+    pub async fn get_pending_join_requests_by_class(
+        &self,
+        class_id: &IdType,
+    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+        let requests = self
+            .join_request_repo
+            .find_pending_by_class_id(class_id)
+            .await?;
+        Ok(requests)
     }
 
-    fn parse_staff_type(&self, type_str: &str) -> SchoolStaffType {
-        match type_str.to_lowercase().as_str() {
-            "director" => SchoolStaffType::Director,
-            "headofstudies" => SchoolStaffType::HeadOfStudies,
-            _ => SchoolStaffType::HeadOfStudies,
-        }
+    /// Get join requests by school and class
+    pub async fn get_join_requests_by_school_and_class(
+        &self,
+        school_id: &IdType,
+        class_id: &IdType,
+    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+        let requests = self
+            .join_request_repo
+            .find_by_school_and_class(school_id, class_id)
+            .await?;
+        Ok(requests)
     }
 
     // ----------------------------------------------------------------------

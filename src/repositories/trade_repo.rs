@@ -125,12 +125,66 @@ impl TradeRepo {
         Ok(())
     }
 
-    pub async fn get_all_trades(&self) -> Result<Vec<Trade>, AppError> {
-        aggregate_many(
-            &self.collection.clone().clone_with_type::<Document>(),
-            vec![doc! { "$sort": { "updated_at": -1 } }],
-        )
-        .await
+    pub async fn get_all_trades(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Trade>, AppError> {
+        let mut pipeline = vec![];
+
+        // 🔎 Add search/filter functionality (case-insensitive)
+        if let Some(f) = filter {
+            let regex = doc! {
+                "$regex": f,
+                "$options": "i"
+            };
+            pipeline.push(doc! {
+                "$match": {
+                    "$or": [
+                        { "name": &regex },
+                        { "username": &regex },
+                        { "description": &regex },
+                        { "r#type": &regex },
+                    ]
+                }
+            });
+        }
+
+        // 🕒 Sort by updated_at (most recent first)
+        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
+
+        // ⏭ Pagination (skip)
+        if let Some(s) = skip {
+            pipeline.push(doc! { "$skip": s });
+        }
+
+        // ⏱ Limit (default: 50)
+        if let Some(l) = limit {
+            pipeline.push(doc! { "$limit": l });
+        } else {
+            pipeline.push(doc! { "$limit": 50 });
+        }
+
+        let mut cursor = self
+            .collection
+            .aggregate(pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch trades: {}", e),
+            })?;
+
+        let mut trades = Vec::new();
+        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate trades: {}", e),
+        })? {
+            let trade: Trade = bson::from_document(result).map_err(|e| AppError {
+                message: format!("Failed to deserialize trade: {}", e),
+            })?;
+            trades.push(trade);
+        }
+
+        Ok(trades)
     }
 
     pub async fn get_all_trades_with_others(&self) -> Result<Vec<TradeWithOthers>, AppError> {

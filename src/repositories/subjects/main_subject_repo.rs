@@ -96,12 +96,70 @@ impl MainSubjectRepo {
     /// Get all main subjects with all related collections
     pub async fn get_all_subjects_with_others(
         &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        is_active: Option<bool>, // optional filter for active/inactive subjects
     ) -> Result<Vec<MainSubjectWithOthers>, AppError> {
-        aggregate_many(
+        let mut pipeline = vec![];
+
+        // 🔍 Text filter: name, code, description, or level
+        if let Some(f) = filter {
+            let regex = doc! {
+                "$regex": f,
+                "$options": "i" // case-insensitive
+            };
+            pipeline.push(doc! {
+                "$match": {
+                    "$or": [
+                        { "name": &regex },
+                        { "code": &regex },
+                        { "description": &regex },
+                        { "level": &regex }
+                    ]
+                }
+            });
+        }
+
+        // ⚙️ Optional filter by active state
+        if let Some(active) = is_active {
+            pipeline.push(doc! {
+                "$match": { "is_active": active }
+            });
+        }
+
+        // 🧮 Add computed field for sorting (use updated_at or created_at)
+        pipeline.push(doc! {
+            "$addFields": {
+                "sort_date": { "$ifNull": [ "$updated_at", "$created_at" ] }
+            }
+        });
+
+        // 🕒 Sort newest first
+        pipeline.push(doc! {
+            "$sort": { "sort_date": -1 }
+        });
+
+        // ⏭️ Pagination: skip + limit
+        if let Some(s) = skip {
+            pipeline.push(doc! { "$skip": s });
+        }
+
+        // 🔢 Limit results (default 10)
+        pipeline.push(doc! { "$limit": limit.unwrap_or(10) });
+
+        // 🧩 Merge with relations (subject + others)
+        let mut relations_pipeline = main_subject_with_others_pipeline(doc! {});
+        pipeline.append(&mut relations_pipeline);
+
+        // 🧠 Run aggregation
+        let docs = aggregate_many(
             &self.collection.clone().clone_with_type::<Document>(),
-            main_subject_with_others_pipeline(doc! {}),
+            pipeline,
         )
-        .await
+        .await?;
+
+        Ok(docs)
     }
 
     /// Insert new main subject

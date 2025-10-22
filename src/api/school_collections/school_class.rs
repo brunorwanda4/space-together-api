@@ -328,6 +328,7 @@ async fn count_school_classes(
 
 #[get("/with-details")]
 async fn get_all_school_classes_with_details(
+    query: web::Query<RequestQuery>,
     req: actix_web::HttpRequest,
     state: web::Data<AppState>,
 ) -> impl Responder {
@@ -344,7 +345,10 @@ async fn get_all_school_classes_with_details(
     let repo = ClassRepo::new(&school_db);
     let service = ClassService::new(&repo);
 
-    match service.get_all_classes_with_school().await {
+    match service
+        .get_all_classes_with_school(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(classes) => HttpResponse::Ok().json(classes),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

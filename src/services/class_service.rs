@@ -36,8 +36,16 @@ impl<'a> ClassService<'a> {
     }
 
     /// Get all classes with school information
-    pub async fn get_all_classes_with_school(&self) -> Result<Vec<ClassWithSchool>, String> {
-        self.repo.get_all_with_school().await.map_err(|e| e.message)
+    pub async fn get_all_classes_with_school(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<ClassWithSchool>, String> {
+        self.repo
+            .get_all_with_school(filter, limit, skip)
+            .await
+            .map_err(|e| e.message)
     }
 
     /// Get active classes

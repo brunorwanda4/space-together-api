@@ -50,11 +50,17 @@ async fn get_all_students(
 }
 
 #[get("/with-details")]
-async fn get_all_students_with_details(state: web::Data<AppState>) -> impl Responder {
+async fn get_all_students_with_details(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = StudentRepo::new(&state.db.main_db());
     let service = StudentService::new(&repo);
 
-    match service.get_all_students_with_relations().await {
+    match service
+        .get_all_students_with_relations(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(students) => HttpResponse::Ok().json(students),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -917,13 +923,20 @@ async fn prepare_students_for_bulk_creation(
 
 /// Get class roster with student details
 #[get("/class/{class_id}/roster")]
-async fn get_class_roster(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+async fn get_class_roster(
+    query: web::Query<RequestQuery>,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = StudentRepo::new(&state.db.main_db());
     let service = StudentService::new(&repo);
 
     let class_id = IdType::from_string(path.into_inner());
 
-    match service.get_class_roster(&class_id).await {
+    match service
+        .get_class_roster(&class_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(roster) => HttpResponse::Ok().json(roster),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

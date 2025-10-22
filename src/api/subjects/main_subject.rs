@@ -10,7 +10,7 @@ use crate::{
         auth_user::AuthUserDto,
         subjects::main_subject::{MainSubject, SubjectQuery, UpdateMainSubject},
     },
-    models::{id_model::IdType, request_error_model::ReqErrModel},
+    models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::subjects::main_subject_repo::MainSubjectRepo,
     services::{event_service::EventService, subjects::main_subject_service::MainSubjectService},
 };
@@ -86,11 +86,22 @@ async fn get_subject_with_others_by_id(
 }
 
 #[get("/others")]
-async fn get_all_subjects_with_others(state: web::Data<AppState>) -> impl Responder {
+async fn get_all_subjects_with_others(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = MainSubjectRepo::new(&state.db.main_db());
     let service = MainSubjectService::new(&repo);
 
-    match service.get_all_subjects_with_others().await {
+    match service
+        .get_all_subjects_with_others(
+            query.filter.clone(),
+            query.limit,
+            query.skip,
+            query.is_active,
+        )
+        .await
+    {
         Ok(subject) => HttpResponse::Ok().json(subject),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }

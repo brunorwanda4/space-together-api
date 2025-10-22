@@ -8,18 +8,25 @@ use crate::{
         auth_user::AuthUserDto,
         trade::{Trade, UpdateTrade},
     },
-    models::{id_model::IdType, request_error_model::ReqErrModel},
+    models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::{sector_repo::SectorRepo, trade_repo::TradeRepo},
-    services::event_service::EventService,
-    services::{sector_service::SectorService, trade_service::TradeService},
+    services::{
+        event_service::EventService, sector_service::SectorService, trade_service::TradeService,
+    },
 };
 
 #[get("")]
-async fn get_all_trades(state: web::Data<AppState>) -> impl Responder {
+async fn get_all_trades(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = TradeRepo::new(&state.db.main_db());
     let service = TradeService::new(&repo);
 
-    match service.get_all_trades().await {
+    match service
+        .get_all_trades(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(trades) => HttpResponse::Ok().json(trades),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

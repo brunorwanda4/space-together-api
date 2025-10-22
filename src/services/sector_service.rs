@@ -18,8 +18,16 @@ impl<'a> SectorService<'a> {
     }
 
     /// Get all sectors
-    pub async fn get_all_sectors(&self) -> Result<Vec<Sector>, String> {
-        self.repo.get_all_sectors().await.map_err(|e| e.message)
+    pub async fn get_all_sectors(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Sector>, String> {
+        self.repo
+            .get_all_sectors(filter, limit, skip)
+            .await
+            .map_err(|e| e.message)
     }
 
     /// Create a new sector
@@ -73,6 +81,20 @@ impl<'a> SectorService<'a> {
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "Sector not found".to_string())
+    }
+
+    pub async fn get_sectors_by_ids(&self, ids: Vec<IdType>) -> Result<Vec<Sector>, String> {
+        let sectors = self
+            .repo
+            .find_by_ids(ids)
+            .await
+            .map_err(|e| e.message.clone())?;
+
+        if sectors.is_empty() {
+            Err("No sectors found for the provided IDs".to_string())
+        } else {
+            Ok(sectors)
+        }
     }
 
     /// Update a sector by id

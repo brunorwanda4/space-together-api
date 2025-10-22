@@ -49,9 +49,15 @@ impl<'a> MainSubjectService<'a> {
             .map_err(|e| e.message)
     }
 
-    pub async fn get_all_subjects_with_others(&self) -> Result<Vec<MainSubjectWithOthers>, String> {
+    pub async fn get_all_subjects_with_others(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        is_active: Option<bool>,
+    ) -> Result<Vec<MainSubjectWithOthers>, String> {
         self.repo
-            .get_all_subjects_with_others()
+            .get_all_subjects_with_others(filter, limit, skip, is_active)
             .await
             .map_err(|e| e.message)
     }

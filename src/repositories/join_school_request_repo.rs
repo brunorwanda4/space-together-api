@@ -1,5 +1,6 @@
 use crate::{
     domain::{
+        class::Class,
         join_school_request::{JoinSchoolRequest, JoinSchoolRequestWithRelations, JoinStatus},
         school::School,
         user::User,
@@ -43,6 +44,11 @@ impl JoinSchoolRequestRepo {
 
         let invited_user_id_index = IndexModel::builder()
             .keys(doc! { "invited_user_id": 1 })
+            .options(IndexOptions::builder().build())
+            .build();
+
+        let class_id_index = IndexModel::builder()
+            .keys(doc! { "class_id": 1 })
             .options(IndexOptions::builder().build())
             .build();
 
@@ -91,10 +97,16 @@ impl JoinSchoolRequestRepo {
             .options(IndexOptions::builder().build())
             .build();
 
+        let school_class_index = IndexModel::builder()
+            .keys(doc! { "school_id": 1, "class_id": 1 })
+            .options(IndexOptions::builder().build())
+            .build();
+
         let indexes = vec![
             email_index,
             school_id_index,
             invited_user_id_index,
+            class_id_index,
             status_index,
             role_index,
             sent_by_index,
@@ -103,6 +115,7 @@ impl JoinSchoolRequestRepo {
             school_status_index,
             email_status_index,
             user_school_index,
+            school_class_index,
         ];
 
         for index in indexes {
@@ -229,9 +242,15 @@ impl JoinSchoolRequestRepo {
                     message: format!("Failed to deserialize join request: {}", e),
                 })?;
 
-            // Extract school, invited_user, and sender relationships
+            // Extract school, class, invited_user, and sender relationships
             let school: Option<School> = doc
                 .get_array("school")
+                .ok()
+                .and_then(|arr| arr.first())
+                .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
+
+            let class: Option<Class> = doc
+                .get_array("class")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
@@ -251,6 +270,7 @@ impl JoinSchoolRequestRepo {
             results.push(JoinSchoolRequestWithRelations {
                 request,
                 school,
+                class,
                 invited_user,
                 sender,
             });
@@ -270,6 +290,56 @@ impl JoinSchoolRequestRepo {
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to find join requests by school_id: {}", e),
+            })?;
+
+        let mut requests = Vec::new();
+        while let Some(request) = cursor.next().await {
+            requests.push(request.map_err(|e| AppError {
+                message: format!("Failed to process join request: {}", e),
+            })?);
+        }
+        Ok(requests)
+    }
+
+    pub async fn find_by_class_id(
+        &self,
+        class_id: &IdType,
+    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+        let obj_id = parse_object_id(class_id).map_err(|e| AppError { message: e })?;
+        let mut cursor = self
+            .collection
+            .find(doc! { "class_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find join requests by class_id: {}", e),
+            })?;
+
+        let mut requests = Vec::new();
+        while let Some(request) = cursor.next().await {
+            requests.push(request.map_err(|e| AppError {
+                message: format!("Failed to process join request: {}", e),
+            })?);
+        }
+        Ok(requests)
+    }
+
+    pub async fn find_by_school_and_class(
+        &self,
+        school_id: &IdType,
+        class_id: &IdType,
+    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+        let school_obj_id = parse_object_id(school_id).map_err(|e| AppError { message: e })?;
+        let class_obj_id = parse_object_id(class_id).map_err(|e| AppError { message: e })?;
+
+        let mut cursor = self
+            .collection
+            .find(doc! {
+                "school_id": school_obj_id,
+                "class_id": class_obj_id
+            })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find join requests by school and class: {}", e),
             })?;
 
         let mut requests = Vec::new();
@@ -390,6 +460,33 @@ impl JoinSchoolRequestRepo {
     ) -> Result<Vec<JoinSchoolRequest>, AppError> {
         self.find_by_email_and_status(email, JoinStatus::Pending)
             .await
+    }
+
+    pub async fn find_pending_by_class_id(
+        &self,
+        class_id: &IdType,
+    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+        let obj_id = parse_object_id(class_id).map_err(|e| AppError { message: e })?;
+        let mut cursor = self
+            .collection
+            .find(doc! {
+                "class_id": obj_id,
+                "status": bson::to_bson(&JoinStatus::Pending).map_err(|e| AppError {
+                    message: format!("Failed to serialize status: {}", e),
+                })?
+            })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find pending join requests by class_id: {}", e),
+            })?;
+
+        let mut requests = Vec::new();
+        while let Some(request) = cursor.next().await {
+            requests.push(request.map_err(|e| AppError {
+                message: format!("Failed to process join request: {}", e),
+            })?);
+        }
+        Ok(requests)
     }
 
     pub async fn find_pending_by_email_and_school(
@@ -614,6 +711,12 @@ impl JoinSchoolRequestRepo {
             match_stage.insert("school_id", school_obj_id);
         }
 
+        if let Some(class_id) = query.class_id {
+            let class_obj_id =
+                parse_object_id(&IdType::String(class_id)).map_err(|e| AppError { message: e })?;
+            match_stage.insert("class_id", class_obj_id);
+        }
+
         if let Some(status) = query.status {
             match_stage.insert(
                 "status",
@@ -680,6 +783,147 @@ impl JoinSchoolRequestRepo {
         Ok(requests)
     }
 
+    // Query with relations - FIXED VERSION
+    pub async fn query_with_relations(
+        &self,
+        query: &crate::domain::join_school_request::JoinRequestQuery,
+    ) -> Result<Vec<crate::domain::join_school_request::JoinSchoolRequestWithRelations>, AppError>
+    {
+        // Build the match stage from the query
+        let mut match_stage = Document::new();
+
+        if let Some(email) = &query.email {
+            match_stage.insert("email", doc! { "$regex": email, "$options": "i" });
+        }
+
+        if let Some(school_id) = &query.school_id {
+            let school_obj_id = parse_object_id(&IdType::String(school_id.clone()))
+                .map_err(|e| AppError { message: e })?;
+            match_stage.insert("school_id", school_obj_id);
+        }
+
+        if let Some(class_id) = &query.class_id {
+            let class_obj_id = parse_object_id(&IdType::String(class_id.clone()))
+                .map_err(|e| AppError { message: e })?;
+            match_stage.insert("class_id", class_obj_id);
+        }
+
+        if let Some(status) = &query.status {
+            match_stage.insert(
+                "status",
+                bson::to_bson(status).map_err(|e| AppError {
+                    message: format!("Failed to serialize status: {}", e),
+                })?,
+            );
+        }
+
+        if let Some(role) = &query.role {
+            match_stage.insert(
+                "role",
+                bson::to_bson(role).map_err(|e| AppError {
+                    message: format!("Failed to serialize role: {}", e),
+                })?,
+            );
+        }
+
+        if let Some(older_than_days) = query.older_than_days {
+            let cutoff_date = Utc::now() - chrono::Duration::days(older_than_days);
+            match_stage.insert(
+                "created_at",
+                doc! { "$lte": bson::to_bson(&cutoff_date).unwrap() },
+            );
+        }
+
+        // Build the pipeline with relations
+        let mut pipeline = join_school_request_with_relations_pipeline(match_stage);
+
+        // Add skip and limit if provided
+        if let Some(skip) = query.skip {
+            pipeline.push(doc! { "$skip": skip });
+        }
+
+        if let Some(limit) = query.limit {
+            pipeline.push(doc! { "$limit": limit });
+        }
+
+        // Run the aggregation pipeline
+        let mut cursor = self
+            .collection
+            .clone_with_type::<Document>()
+            .aggregate(pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to aggregate join requests with relations: {}", e),
+            })?;
+
+        let mut results = Vec::new();
+        while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to process aggregated document: {}", e),
+        })? {
+            // Deserialize the base join request
+            let request: JoinSchoolRequest =
+                mongodb::bson::from_document(doc.clone()).map_err(|e| AppError {
+                    message: format!("Failed to deserialize join request: {}", e),
+                })?;
+
+            // Extract the relations (they're single objects because of $unwind)
+            let school: Option<School> = doc
+                .get_document("school")
+                .ok()
+                .and_then(|doc| mongodb::bson::from_document(doc.clone()).ok())
+                .or_else(|| {
+                    // Fallback: try to get from array (in case unwind didn't work as expected)
+                    doc.get_array("school")
+                        .ok()
+                        .and_then(|arr| arr.first())
+                        .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
+                });
+
+            let class: Option<Class> = doc
+                .get_document("class")
+                .ok()
+                .and_then(|doc| mongodb::bson::from_document(doc.clone()).ok())
+                .or_else(|| {
+                    doc.get_array("class")
+                        .ok()
+                        .and_then(|arr| arr.first())
+                        .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
+                });
+
+            let invited_user: Option<User> = doc
+                .get_document("invited_user")
+                .ok()
+                .and_then(|doc| mongodb::bson::from_document(doc.clone()).ok())
+                .or_else(|| {
+                    doc.get_array("invited_user")
+                        .ok()
+                        .and_then(|arr| arr.first())
+                        .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
+                });
+
+            let sender: Option<User> = doc
+                .get_document("sender")
+                .ok()
+                .and_then(|doc| mongodb::bson::from_document(doc.clone()).ok())
+                .or_else(|| {
+                    doc.get_array("sender")
+                        .ok()
+                        .and_then(|arr| arr.first())
+                        .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
+                });
+
+            results.push(JoinSchoolRequestWithRelations {
+                request,
+                school,
+                class,
+                invited_user,
+                sender,
+            });
+        }
+
+        Ok(results)
+    }
+
     // Add the missing methods that the controller expects
     pub async fn bulk_create(
         &self,
@@ -724,29 +968,6 @@ impl JoinSchoolRequestRepo {
         }
 
         Ok(updated_requests)
-    }
-
-    pub async fn query_with_relations(
-        &self,
-        query: &crate::domain::join_school_request::JoinRequestQuery,
-    ) -> Result<Vec<crate::domain::join_school_request::JoinSchoolRequestWithRelations>, AppError>
-    {
-        let requests = self.query_requests(query.clone()).await?;
-
-        // For now, return without relations. You can implement the lookup logic later.
-        let result = requests
-            .into_iter()
-            .map(
-                |request| crate::domain::join_school_request::JoinSchoolRequestWithRelations {
-                    request,
-                    school: None,
-                    invited_user: None,
-                    sender: None,
-                },
-            )
-            .collect();
-
-        Ok(result)
     }
 
     pub async fn count_by_status(&self, status: JoinStatus) -> Result<u64, AppError> {
@@ -913,6 +1134,12 @@ impl JoinSchoolRequestRepo {
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
 
+            let class: Option<Class> = doc
+                .get_array("class")
+                .ok()
+                .and_then(|arr| arr.first())
+                .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
+
             let invited_user: Option<User> = doc
                 .get_array("invited_user")
                 .ok()
@@ -925,9 +1152,10 @@ impl JoinSchoolRequestRepo {
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
 
-            let result = crate::domain::join_school_request::JoinSchoolRequestWithRelations {
+            let result = JoinSchoolRequestWithRelations {
                 request,
                 school,
+                class,
                 invited_user,
                 sender,
             };

@@ -35,11 +35,17 @@ async fn get_all_classes(
 }
 
 #[get("/with-school")]
-async fn get_all_classes_with_school(state: web::Data<AppState>) -> impl Responder {
+async fn get_all_classes_with_school(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = ClassRepo::new(&state.db.main_db());
     let service = ClassService::new(&repo);
 
-    match service.get_all_classes_with_school().await {
+    match service
+        .get_all_classes_with_school(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(classes) => HttpResponse::Ok().json(classes),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

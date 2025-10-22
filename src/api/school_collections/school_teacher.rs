@@ -290,6 +290,7 @@ async fn count_teachers(
 async fn get_all_teachers_with_details(
     req: actix_web::HttpRequest,
     state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
@@ -304,7 +305,10 @@ async fn get_all_teachers_with_details(
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
 
-    match service.get_all_teachers_with_relations().await {
+    match service
+        .get_all_teachers_with_relations(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -1025,6 +1029,7 @@ async fn is_teacher_in_subject(
 /// Get class teachers with details
 #[get("/class/{class_id}/teachers")]
 async fn get_class_teachers(
+    query: web::Query<RequestQuery>,
     req: actix_web::HttpRequest,
     path: web::Path<String>,
     state: web::Data<AppState>,
@@ -1043,7 +1048,10 @@ async fn get_class_teachers(
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
 
-    match service.get_class_teachers(&class_id).await {
+    match service
+        .get_class_teachers(&class_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -1055,6 +1063,7 @@ async fn get_subject_teachers(
     req: actix_web::HttpRequest,
     path: web::Path<String>,
     state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
@@ -1070,7 +1079,10 @@ async fn get_subject_teachers(
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
 
-    match service.get_subject_teachers(&subject_id).await {
+    match service
+        .get_subject_teachers(&subject_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

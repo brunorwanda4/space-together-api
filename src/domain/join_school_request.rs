@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
-    domain::{school::School, user::User},
+    domain::{class::Class, school::School, user::User},
     helpers::object_id_helpers,
 };
 
@@ -49,6 +49,12 @@ pub struct JoinSchoolRequest {
         deserialize_with = "object_id_helpers::deserialize"
     )]
     pub invited_user_id: Option<ObjectId>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize"
+    )]
+    pub class_id: Option<ObjectId>,
 
     // Role that the invited user will have in this school
     pub role: JoinRole,
@@ -95,6 +101,7 @@ pub struct CreateJoinSchoolRequest {
     pub r#type: String, // i was for get to add this
     pub school_id: String,
     pub message: Option<String>,
+    pub class_id: Option<String>,
 }
 
 /// Bulk create wrapper
@@ -149,6 +156,8 @@ pub struct JoinRequestQuery {
     /// optional filter by school id (string)
     pub school_id: Option<String>,
 
+    pub class_id: Option<String>,
+
     /// optional filter by status
     pub status: Option<JoinStatus>,
 
@@ -172,10 +181,20 @@ pub struct JoinSchoolRequestWithRelations {
     pub school: Option<School>,
 
     #[serde(default)]
+    pub class: Option<Class>,
+
+    #[serde(default)]
     pub invited_user: Option<User>,
 
     #[serde(default)]
     pub sender: Option<User>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JoinRequestWithToken {
+    #[serde(flatten)]
+    pub request: JoinSchoolRequest,
+    pub school_token: String,
 }
 
 impl fmt::Display for JoinRole {

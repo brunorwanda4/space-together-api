@@ -22,13 +22,10 @@ use crate::{
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::{
         join_school_request_repo::JoinSchoolRequestRepo, school_repo::SchoolRepo,
-        school_staff_repo::SchoolStaffRepo, student_repo::StudentRepo, teacher_repo::TeacherRepo,
         user_repo::UserRepo,
     },
     services::{
-        event_service::EventService, school_service::SchoolService,
-        school_staff_service::SchoolStaffService, student_service::StudentService,
-        teacher_service::TeacherService, user_service::UserService,
+        event_service::EventService, school_service::SchoolService, user_service::UserService,
     },
 };
 
@@ -214,7 +211,22 @@ async fn create_join_request(
 
     let controller = create_controller(&state);
     match create_join_request_handler(web::Data::new(controller), data).await {
-        Ok(response) => response,
+        Ok(response) => {
+            // 🔔 Broadcast real-time event for created join request
+            // We'll need to extract the created request ID from the response or fetch the latest
+            // For now, we'll broadcast a generic event and let clients refetch if needed
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                EventService::broadcast_created(
+                    &state_clone,
+                    "join_school_request",
+                    "new",
+                    &serde_json::json!({ "action": "created", "by_user": logged_user.id }),
+                )
+                .await;
+            });
+            response
+        }
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
@@ -236,7 +248,20 @@ async fn create_bulk_join_requests(
 
     let controller = create_controller(&state);
     match bulk_create_join_requests_handler(web::Data::new(controller), data).await {
-        Ok(response) => response,
+        Ok(response) => {
+            // 🔔 Broadcast real-time event for bulk creation
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                EventService::broadcast_created(
+                    &state_clone,
+                    "join_school_request",
+                    "bulk",
+                    &serde_json::json!({ "action": "bulk_created", "by_user": logged_user.id }),
+                )
+                .await;
+            });
+            response
+        }
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
@@ -286,7 +311,7 @@ async fn accept_join_request(
     }
 
     let respond_request = RespondToJoinRequest {
-        request_id,
+        request_id: request_id.clone(),
         status: crate::domain::join_school_request::JoinStatus::Accepted,
         responded_by: Some(logged_user.id.to_string()),
         invited_user_id: Some(logged_user.id.to_string()),
@@ -297,11 +322,34 @@ async fn accept_join_request(
     match accept_join_request_handler(
         web::Data::new(controller),
         web::Json(respond_request),
-        state,
+        state.clone(),
     )
     .await
     {
-        Ok(response) => response,
+        Ok(response) => {
+            // 🔔 Broadcast real-time event for updated join request
+            let state_clone = state.clone();
+            let request_id_clone = request_id.clone();
+            actix_rt::spawn(async move {
+                let controller = create_controller(&state_clone);
+                if let Ok(Some(updated_request)) = controller
+                    .join_request_repo
+                    .find_by_id(&IdType::String(request_id_clone))
+                    .await
+                {
+                    if let Some(id) = updated_request.id {
+                        EventService::broadcast_updated(
+                            &state_clone,
+                            "join_school_request",
+                            &id.to_hex(),
+                            &updated_request,
+                        )
+                        .await;
+                    }
+                }
+            });
+            response
+        }
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
@@ -351,7 +399,7 @@ async fn reject_join_request(
     }
 
     let respond_request = RespondToJoinRequest {
-        request_id,
+        request_id: request_id.clone(),
         status: crate::domain::join_school_request::JoinStatus::Rejected,
         responded_by: Some(logged_user.id.clone()),
         invited_user_id: None,
@@ -361,7 +409,30 @@ async fn reject_join_request(
     let controller = create_controller(&state);
     match reject_join_request_handler(web::Data::new(controller), web::Json(respond_request)).await
     {
-        Ok(response) => response,
+        Ok(response) => {
+            // 🔔 Broadcast real-time event for updated join request
+            let state_clone = state.clone();
+            let request_id_clone = request_id.clone();
+            actix_rt::spawn(async move {
+                let controller = create_controller(&state_clone);
+                if let Ok(Some(updated_request)) = controller
+                    .join_request_repo
+                    .find_by_id(&IdType::String(request_id_clone))
+                    .await
+                {
+                    if let Some(id) = updated_request.id {
+                        EventService::broadcast_updated(
+                            &state_clone,
+                            "join_school_request",
+                            &id.to_hex(),
+                            &updated_request,
+                        )
+                        .await;
+                    }
+                }
+            });
+            response
+        }
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
@@ -406,7 +477,7 @@ async fn cancel_join_request(
     }
 
     let respond_request = RespondToJoinRequest {
-        request_id,
+        request_id: request_id.clone(),
         status: crate::domain::join_school_request::JoinStatus::Cancelled,
         responded_by: Some(logged_user.id.clone()),
         invited_user_id: None,
@@ -416,7 +487,30 @@ async fn cancel_join_request(
     let controller = create_controller(&state);
     match cancel_join_request_handler(web::Data::new(controller), web::Json(respond_request)).await
     {
-        Ok(response) => response,
+        Ok(response) => {
+            // 🔔 Broadcast real-time event for updated join request
+            let state_clone = state.clone();
+            let request_id_clone = request_id.clone();
+            actix_rt::spawn(async move {
+                let controller = create_controller(&state_clone);
+                if let Ok(Some(updated_request)) = controller
+                    .join_request_repo
+                    .find_by_id(&IdType::String(request_id_clone))
+                    .await
+                {
+                    if let Some(id) = updated_request.id {
+                        EventService::broadcast_updated(
+                            &state_clone,
+                            "join_school_request",
+                            &id.to_hex(),
+                            &updated_request,
+                        )
+                        .await;
+                    }
+                }
+            });
+            response
+        }
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
@@ -439,12 +533,36 @@ async fn update_join_request_expiration(
 
     let controller = create_controller(&state);
     let mut update_data = data.into_inner();
-    update_data.request_id = path.into_inner();
+    let request_id = path.into_inner();
+    update_data.request_id = request_id.clone();
 
     match update_request_expiration_handler(web::Data::new(controller), web::Json(update_data))
         .await
     {
-        Ok(response) => response,
+        Ok(response) => {
+            // 🔔 Broadcast real-time event for updated join request
+            let state_clone = state.clone();
+            let request_id_clone = request_id.clone();
+            actix_rt::spawn(async move {
+                let controller = create_controller(&state_clone);
+                if let Ok(Some(updated_request)) = controller
+                    .join_request_repo
+                    .find_by_id(&IdType::String(request_id_clone))
+                    .await
+                {
+                    if let Some(id) = updated_request.id {
+                        EventService::broadcast_updated(
+                            &state_clone,
+                            "join_school_request",
+                            &id.to_hex(),
+                            &updated_request,
+                        )
+                        .await;
+                    }
+                }
+            });
+            response
+        }
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
@@ -466,7 +584,20 @@ async fn bulk_respond_to_join_requests(
 
     let controller = create_controller(&state);
     match bulk_respond_to_requests_handler(web::Data::new(controller), data).await {
-        Ok(response) => response,
+        Ok(response) => {
+            // 🔔 Broadcast real-time events for bulk update
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                EventService::broadcast_updated(
+                    &state_clone,
+                    "join_school_request",
+                    "bulk",
+                    &serde_json::json!({ "action": "bulk_updated", "by_user": logged_user.id }),
+                )
+                .await;
+            });
+            response
+        }
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
@@ -499,7 +630,7 @@ async fn delete_join_request(
 
     match controller.join_request_repo.delete(&request_id).await {
         Ok(_) => {
-            // Broadcast deleted join request event
+            // 🔔 Broadcast real-time event for deleted join request
             if let Some(request) = request_before_delete {
                 let state_clone = state.clone();
                 actix_rt::spawn(async move {
@@ -720,6 +851,61 @@ async fn get_my_join_requests(
     }
 }
 
+/// Get join requests for a specific class
+#[get("/class/{class_id}")]
+async fn get_join_requests_by_class(
+    class_id: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let controller = create_controller(&state);
+
+    match controller
+        .get_join_requests_by_class(&IdType::String(class_id.into_inner()))
+        .await
+    {
+        Ok(requests) => HttpResponse::Ok().json(requests),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get pending join requests for a specific class
+#[get("/class/{class_id}/pending")]
+async fn get_pending_join_requests_by_class(
+    class_id: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let controller = create_controller(&state);
+
+    match controller
+        .get_pending_join_requests_by_class(&IdType::String(class_id.into_inner()))
+        .await
+    {
+        Ok(requests) => HttpResponse::Ok().json(requests),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get join requests for a specific school and class
+#[get("/school/{school_id}/class/{class_id}")]
+async fn get_join_requests_by_school_and_class(
+    path: web::Path<(String, String)>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let (school_id, class_id) = path.into_inner();
+    let controller = create_controller(&state);
+
+    match controller
+        .get_join_requests_by_school_and_class(
+            &IdType::String(school_id),
+            &IdType::String(class_id),
+        )
+        .await
+    {
+        Ok(requests) => HttpResponse::Ok().json(requests),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
 /// Helper function to create controller instance
 fn create_controller(state: &AppState) -> JoinSchoolRequestController<'static> {
     let db = state.db.main_db();
@@ -727,20 +913,11 @@ fn create_controller(state: &AppState) -> JoinSchoolRequestController<'static> {
     // Leak repos so they live for the program lifetime ('static)
     let user_repo: &'static UserRepo = Box::leak(Box::new(UserRepo::new(&db)));
     let school_repo: &'static SchoolRepo = Box::leak(Box::new(SchoolRepo::new(&db)));
-    let teacher_repo: &'static TeacherRepo = Box::leak(Box::new(TeacherRepo::new(&db)));
-    let student_repo: &'static StudentRepo = Box::leak(Box::new(StudentRepo::new(&db)));
-    let staff_repo: &'static SchoolStaffRepo = Box::leak(Box::new(SchoolStaffRepo::new(&db)));
 
     // Leak services too (since they borrow from leaked repos)
     let user_service: &'static UserService = Box::leak(Box::new(UserService::new(user_repo)));
     let school_service: &'static SchoolService =
         Box::leak(Box::new(SchoolService::new(school_repo)));
-    let teacher_service: &'static TeacherService =
-        Box::leak(Box::new(TeacherService::new(teacher_repo)));
-    let student_service: &'static StudentService =
-        Box::leak(Box::new(StudentService::new(student_repo)));
-    let staff_service: &'static SchoolStaffService =
-        Box::leak(Box::new(SchoolStaffService::new(staff_repo)));
 
     let join_request_repo = JoinSchoolRequestRepo::new(&db);
 
@@ -748,9 +925,6 @@ fn create_controller(state: &AppState) -> JoinSchoolRequestController<'static> {
         join_request_repo,
         user_service,
         school_service,
-        teacher_service,
-        student_service,
-        staff_service,
     }
 }
 
@@ -758,6 +932,9 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/join-school-requests")
             // Public routes (read-only, some with basic auth)
+            .service(get_join_requests_by_class) // GET /join-requests/class/{class_id} - Get all join requests for a specific class
+            .service(get_pending_join_requests_by_class) // GET /join-requests/class/{class_id}/pending - Get pending join requests for a specific class
+            .service(get_join_requests_by_school_and_class) // GET /join-requests/school/{school_id}/class/{class_id} - Get join requests for specific school and class combination
             .service(get_all_join_requests) // GET /join-school-requests - Get all join requests with filtering
             .service(get_all_join_requests_with_relations) // GET /join-school-requests/with-relations - Get all join requests with relations
             .service(get_join_request_by_id) // GET /join-school-requests/{id} - Get join request by ID

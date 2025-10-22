@@ -115,3 +115,11 @@ impl fmt::Display for SchoolStaffType {
         )
     }
 }
+
+pub fn parse_staff_type(type_str: &str) -> SchoolStaffType {
+    match type_str.to_lowercase().as_str() {
+        "director" => SchoolStaffType::Director,
+        "headofstudies" => SchoolStaffType::HeadOfStudies,
+        _ => SchoolStaffType::HeadOfStudies,
+    }
+}

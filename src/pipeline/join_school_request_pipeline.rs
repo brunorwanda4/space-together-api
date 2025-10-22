@@ -17,6 +17,21 @@ pub fn join_school_request_with_relations_pipeline(match_stage: Document) -> Vec
                 "preserveNullAndEmptyArrays": true
             }
         },
+        // Add class lookup
+        doc! {
+            "$lookup": {
+                "from": "classes",
+                "localField": "class_id",
+                "foreignField": "_id",
+                "as": "class"
+            }
+        },
+        doc! {
+            "$unwind": {
+                "path": "$class",
+                "preserveNullAndEmptyArrays": true
+            }
+        },
         doc! {
             "$lookup": {
                 "from": "users",

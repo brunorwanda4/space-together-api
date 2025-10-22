@@ -101,9 +101,50 @@ impl SectorRepo {
             })
     }
 
-    pub async fn get_all_sectors(&self) -> Result<Vec<Sector>, AppError> {
-        let pipeline = vec![doc! { "$sort": { "updated_at": -1 } }];
+    pub async fn get_all_sectors(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Sector>, AppError> {
+        let mut pipeline = vec![];
 
+        // 🔍 Add search/filter functionality
+        if let Some(f) = filter {
+            let regex = doc! {
+                "$regex": f,
+                "$options": "i" // case-insensitive
+            };
+            pipeline.push(doc! {
+                "$match": {
+                    "$or": [
+                        { "name": &regex },
+                        { "username": &regex },
+                        { "description": &regex },
+                        { "country": &regex },
+                        { "type": &regex },
+                    ]
+                }
+            });
+        }
+
+        // 🕒 Sort by updated_at (most recent first)
+        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
+
+        // ⏭ Pagination (skip)
+        if let Some(s) = skip {
+            pipeline.push(doc! { "$skip": s });
+        }
+
+        // ⏱ Limit
+        if let Some(l) = limit {
+            pipeline.push(doc! { "$limit": l });
+        } else {
+            // Default limit if none provided
+            pipeline.push(doc! { "$limit": 50 });
+        }
+
+        // 🚀 Run aggregation
         let mut cursor = self
             .collection
             .aggregate(pipeline)
@@ -181,5 +222,33 @@ impl SectorRepo {
         }
 
         Ok(())
+    }
+
+    pub async fn find_by_ids(&self, ids: Vec<IdType>) -> Result<Vec<Sector>, AppError> {
+        // Convert string IDs into MongoDB ObjectIds
+        let object_ids: Vec<ObjectId> = ids
+            .into_iter()
+            .filter_map(|id| ObjectId::parse_str(id.as_string()).ok())
+            .collect();
+
+        if object_ids.is_empty() {
+            return Ok(vec![]); // No valid IDs — return empty list
+        }
+
+        // Build the query to match multiple IDs
+        let filter = doc! { "_id": { "$in": object_ids } };
+
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to fetch sectors by ids: {}", e),
+        })?;
+
+        let mut sectors = Vec::new();
+        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate sectors: {}", e),
+        })? {
+            sectors.push(result);
+        }
+
+        Ok(sectors)
     }
 }

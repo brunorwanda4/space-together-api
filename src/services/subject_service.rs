@@ -41,9 +41,12 @@ impl<'a> SubjectService<'a> {
     /// Get all subjects with relations
     pub async fn get_all_subjects_with_relations(
         &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
     ) -> Result<Vec<SubjectWithRelations>, String> {
         self.repo
-            .get_all_with_relations()
+            .get_all_with_relations(filter, limit, skip)
             .await
             .map_err(|e| e.message)
     }

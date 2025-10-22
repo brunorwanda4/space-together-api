@@ -45,6 +45,7 @@ async fn get_all_school_subjects(
 
 #[get("/with-relations")]
 async fn get_all_school_subjects_with_relations(
+    query: web::Query<RequestQuery>,
     req: actix_web::HttpRequest,
     state: web::Data<AppState>,
 ) -> impl Responder {
@@ -61,7 +62,10 @@ async fn get_all_school_subjects_with_relations(
     let repo = SubjectRepo::new(&school_db);
     let service = SubjectService::new(&repo);
 
-    match service.get_all_subjects_with_relations().await {
+    match service
+        .get_all_subjects_with_relations(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(subjects) => HttpResponse::Ok().json(subjects),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

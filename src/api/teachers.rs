@@ -51,11 +51,17 @@ async fn get_all_teachers(
 }
 
 #[get("/with-details")]
-async fn get_all_teachers_with_details(state: web::Data<AppState>) -> impl Responder {
+async fn get_all_teachers_with_details(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = TeacherRepo::new(&state.db.main_db());
     let service = TeacherService::new(&repo);
 
-    match service.get_all_teachers_with_relations().await {
+    match service
+        .get_all_teachers_with_relations(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -826,13 +832,20 @@ async fn prepare_teachers_for_bulk_creation(
 
 /// Get class teachers with details
 #[get("/class/{class_id}/teachers")]
-async fn get_class_teachers(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+async fn get_class_teachers(
+    query: web::Query<RequestQuery>,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = TeacherRepo::new(&state.db.main_db());
     let service = TeacherService::new(&repo);
 
     let class_id = IdType::from_string(path.into_inner());
 
-    match service.get_class_teachers(&class_id).await {
+    match service
+        .get_class_teachers(&class_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -841,6 +854,7 @@ async fn get_class_teachers(path: web::Path<String>, state: web::Data<AppState>)
 /// Get subject teachers with details
 #[get("/subject/{subject_id}/teachers")]
 async fn get_subject_teachers(
+    query: web::Query<RequestQuery>,
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
@@ -849,7 +863,10 @@ async fn get_subject_teachers(
 
     let subject_id = IdType::from_string(path.into_inner());
 
-    match service.get_subject_teachers(&subject_id).await {
+    match service
+        .get_subject_teachers(&subject_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

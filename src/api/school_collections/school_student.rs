@@ -306,7 +306,7 @@ async fn count_students(
         .count_students_by_school_id(
             &IdType::from_string(claims.id.clone()),
             query.gender.clone(),
-            query.status.clone(),
+            query.status,
         )
         .await
     {
@@ -319,6 +319,7 @@ async fn count_students(
 async fn get_all_students_with_details(
     req: actix_web::HttpRequest,
     state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
@@ -333,7 +334,10 @@ async fn get_all_students_with_details(
     let repo = StudentRepo::new(&school_db);
     let service = StudentService::new(&repo);
 
-    match service.get_all_students_with_relations().await {
+    match service
+        .get_all_students_with_relations(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(students) => HttpResponse::Ok().json(students),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -1012,6 +1016,7 @@ async fn is_student_in_class(
 /// Get class roster with student details
 #[get("/class/{class_id}/roster")]
 async fn get_class_roster(
+    query: web::Query<RequestQuery>,
     req: actix_web::HttpRequest,
     path: web::Path<String>,
     state: web::Data<AppState>,
@@ -1030,7 +1035,10 @@ async fn get_class_roster(
     let repo = StudentRepo::new(&school_db);
     let service = StudentService::new(&repo);
 
-    match service.get_class_roster(&class_id).await {
+    match service
+        .get_class_roster(&class_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(roster) => HttpResponse::Ok().json(roster),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
