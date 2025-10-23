@@ -5,6 +5,7 @@ use mongodb::bson::oid::ObjectId;
 
 use crate::{
     config::state::AppState,
+    controller::class_controller::ClassController,
     domain::class::{
         BulkClassesForSchoolRequest, BulkClassesRequest, BulkUpdateRequest, Class, UpdateClass,
     },
@@ -12,9 +13,53 @@ use crate::{
         api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel,
         school_token_model::SchoolToken,
     },
-    repositories::class_repo::ClassRepo,
-    services::{class_service::ClassService, event_service::EventService},
+    repositories::{
+        class_repo::ClassRepo, main_class_repo::MainClassRepo, school_repo::SchoolRepo,
+        teacher_repo::TeacherRepo, trade_repo::TradeRepo, user_repo::UserRepo,
+    },
+    services::{
+        class_service::ClassService, event_service::EventService,
+        main_class_service::MainClassService, school_service::SchoolService,
+        teacher_service::TeacherService, trade_service::TradeService, user_service::UserService,
+    },
 };
+
+fn create_class_controller(
+    state: &web::Data<AppState>,
+    claims: &SchoolToken,
+) -> ClassController<'static> {
+    let school_db = state.db.get_db(&claims.database_name);
+    let main_db = state.db.main_db();
+
+    // --- Leak repos so they live for program lifetime ---
+    let trade_repo: &'static TradeRepo = Box::leak(Box::new(TradeRepo::new(&main_db)));
+    let class_repo = ClassRepo::new(&school_db); // owned, not leaked
+    let school_repo: &'static SchoolRepo = Box::leak(Box::new(SchoolRepo::new(&main_db)));
+    let user_repo: &'static UserRepo = Box::leak(Box::new(UserRepo::new(&main_db)));
+    let main_class_repo: &'static MainClassRepo = Box::leak(Box::new(MainClassRepo::new(&main_db)));
+    let teacher_repo: &'static TeacherRepo = Box::leak(Box::new(TeacherRepo::new(&school_db)));
+
+    // --- Leak services (each borrows from the leaked repos) ---
+    let trade_service: &'static TradeService = Box::leak(Box::new(TradeService::new(trade_repo)));
+    let school_service: &'static SchoolService =
+        Box::leak(Box::new(SchoolService::new(school_repo)));
+    let user_service: &'static UserService = Box::leak(Box::new(UserService::new(user_repo)));
+    let main_class_service: &'static MainClassService = Box::leak(Box::new(MainClassService::new(
+        main_class_repo,
+        trade_service,
+    )));
+    let teacher_service: &'static TeacherService =
+        Box::leak(Box::new(TeacherService::new(teacher_repo)));
+
+    // --- Build controller ---
+    ClassController::new(
+        class_repo,
+        school_service,
+        user_service,
+        teacher_service,
+        main_class_service,
+    )
+}
 
 #[get("")]
 async fn get_all_school_classes(
@@ -22,7 +67,6 @@ async fn get_all_school_classes(
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    // Get school claims from extensions (set by SchoolTokenMiddleware)
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
         None => {
@@ -32,7 +76,6 @@ async fn get_all_school_classes(
         }
     };
 
-    // Use school database from claims
     let school_db = state.db.get_db(&claims.database_name);
     let repo = ClassRepo::new(&school_db);
     let service = ClassService::new(&repo);
@@ -326,6 +369,8 @@ async fn count_school_classes(
     }
 }
 
+// UPDATED ENDPOINTS USING ClassController
+
 #[get("/with-details")]
 async fn get_all_school_classes_with_details(
     query: web::Query<RequestQuery>,
@@ -341,16 +386,40 @@ async fn get_all_school_classes_with_details(
         }
     };
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = ClassRepo::new(&school_db);
-    let service = ClassService::new(&repo);
+    let class_controller = create_class_controller(&state, &claims);
 
-    match service
+    match class_controller
         .get_all_classes_with_school(query.filter.clone(), query.limit, query.skip)
         .await
     {
         Ok(classes) => HttpResponse::Ok().json(classes),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+#[get("/with-others")]
+async fn get_all_school_classes_with_others(
+    query: web::Query<RequestQuery>,
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_all_school_classes_with_others(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(classes) => HttpResponse::Ok().json(classes),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
@@ -370,13 +439,14 @@ async fn get_school_class_by_id_with_details(
     };
 
     let class_id = IdType::from_string(path.into_inner());
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = ClassRepo::new(&school_db);
-    let service = ClassService::new(&repo);
+    let class_controller = create_class_controller(&state, &claims);
 
-    match service.get_class_by_id_with_others(&class_id).await {
+    match class_controller
+        .get_class_by_id_with_others(&class_id)
+        .await
+    {
         Ok(class) => HttpResponse::Ok().json(class),
-        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
     }
 }
 
@@ -396,13 +466,14 @@ async fn get_school_class_by_username_with_details(
     };
 
     let username = path.into_inner();
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = ClassRepo::new(&school_db);
-    let service = ClassService::new(&repo);
+    let class_controller = create_class_controller(&state, &claims);
 
-    match service.get_class_by_username_with_others(&username).await {
+    match class_controller
+        .get_class_by_username_with_others(&username)
+        .await
+    {
         Ok(class) => HttpResponse::Ok().json(class),
-        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
     }
 }
 
@@ -422,13 +493,11 @@ async fn get_school_class_by_code_with_details(
     };
 
     let code = path.into_inner();
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = ClassRepo::new(&school_db);
-    let service = ClassService::new(&repo);
+    let class_controller = create_class_controller(&state, &claims);
 
-    match service.get_class_by_code_with_others(&code).await {
+    match class_controller.get_class_by_code_with_others(&code).await {
         Ok(class) => HttpResponse::Ok().json(class),
-        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
     }
 }
 
@@ -786,6 +855,34 @@ async fn prepare_school_classes_for_bulk_creation(
     }
 }
 
+// NEW: Get classes by school with relations
+#[get("/school/{school_id}/with-relations")]
+async fn get_classes_by_school_with_relations(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let school_id = IdType::from_string(path.into_inner());
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_classes_by_school_with_relations(&school_id)
+        .await
+    {
+        Ok(classes) => HttpResponse::Ok().json(classes),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/school/classes")
@@ -793,8 +890,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             // Public routes (read-only)
             .service(get_all_school_classes) // GET /school/classes - Get all classes in school
             .service(get_all_school_classes_with_details) // GET /school/classes/with-details - Get all classes with details in school
+            .service(get_all_school_classes_with_others) // GET /school/classes/with-others - Get all classes with others
             .service(get_active_school_classes) // GET /school/classes/active - Get active classes in school
-            .service(get_school_class_by_id) // GET /school/classes/{id} - Get class by ID in school
             .service(get_school_class_by_id_with_details) // GET /school/classes/{id}/with-details - Get class by ID with details in school
             .service(get_school_class_by_username) // GET /school/classes/username/{username} - Get class by username in school
             .service(get_school_class_by_username_with_details) // GET /school/classes/username/{username}/with-details - Get class by username with details in school
@@ -803,6 +900,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_school_classes_by_creator_id) // GET /school/classes/creator/{creator_id} - Get classes by creator ID in school
             .service(get_school_classes_by_teacher_id) // GET /school/classes/teacher/{teacher_id} - Get classes by teacher ID in school
             .service(get_school_classes_by_main_class_id) // GET /school/classes/main-class/{main_class_id} - Get classes by main class ID in school
+            .service(get_school_class_by_id) // GET /school/classes/{id} - Get class by ID in school
             .service(count_school_classes) // GET /school/classes/stats/count - Count classes in school
             .service(count_school_classes_by_creator_id) // GET /school/classes/stats/count-by-creator/{creator_id} - Count classes by creator ID in school
             // Protected routes (require school token)
@@ -814,6 +912,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(create_many_school_classes) // POST /school/classes/bulk - Create multiple classes in school
             .service(create_many_school_classes_with_validation) // POST /school/classes/bulk/validation - Create multiple classes with validation in school
             .service(update_many_school_classes) // PUT /school/classes/bulk - Update multiple classes in school
-            .service(prepare_school_classes_for_bulk_creation), // POST /school/classes/bulk/prepare - Prepare classes for bulk creation in school
+            .service(prepare_school_classes_for_bulk_creation) // POST /school/classes/bulk/prepare - Prepare classes for bulk creation in school
+            // New cross-database relations endpoint
+            .service(get_classes_by_school_with_relations), // GET /school/classes/school/{school_id}/with-relations - Get classes by school with relations
     );
 }

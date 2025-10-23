@@ -3,7 +3,6 @@ use mongodb::bson::{doc, Document};
 pub fn class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
     vec![
         doc! { "$match": match_stage },
-        // Lookup school
         doc! {
             "$lookup": {
                 "from": "schools",
@@ -13,7 +12,6 @@ pub fn class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
             }
         },
         doc! { "$unwind": { "path": "$school", "preserveNullAndEmptyArrays": true } },
-        // Lookup creator (user)
         doc! {
             "$lookup": {
                 "from": "users",
@@ -23,7 +21,6 @@ pub fn class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
             }
         },
         doc! { "$unwind": { "path": "$creator", "preserveNullAndEmptyArrays": true } },
-        // Lookup class teacher (user)
         doc! {
             "$lookup": {
                 "from": "teachers",
@@ -33,7 +30,6 @@ pub fn class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
             }
         },
         doc! { "$unwind": { "path": "$class_teacher", "preserveNullAndEmptyArrays": true } },
-        // Lookup main class if exists
         doc! {
             "$lookup": {
                 "from": "main_classes",
@@ -45,6 +41,7 @@ pub fn class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
         doc! { "$unwind": { "path": "$main_class", "preserveNullAndEmptyArrays": true } },
     ]
 }
+
 pub fn class_with_school_pipeline(match_stage: Document) -> Vec<Document> {
     vec![
         doc! { "$match": match_stage },

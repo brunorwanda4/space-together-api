@@ -1,9 +1,15 @@
 use crate::domain::class::{Class, ClassWithOthers, ClassWithSchool, UpdateClass};
+use crate::domain::main_class::MainClass;
+use crate::domain::school::School;
+use crate::domain::teacher::Teacher;
+use crate::domain::user::User;
 use crate::errors::AppError;
-use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
+use crate::helpers::aggregate_helpers::aggregate_many;
 use crate::models::id_model::IdType;
 use crate::pipeline::class_pipeline::{class_with_others_pipeline, class_with_school_pipeline};
 use crate::utils::object_id::parse_object_id;
+use crate::utils::school_utils::sanitize_school;
+use crate::utils::user_utils::sanitize_user;
 
 use chrono::Utc;
 use futures::{StreamExt, TryStreamExt};
@@ -82,38 +88,175 @@ impl ClassRepo {
         Ok(docs)
     }
 
+    pub async fn find_class_with_others(
+        &self,
+        filter: Option<Document>,
+        search: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<ClassWithOthers>, AppError> {
+        // --- Build match filter ---
+        let mut query = filter.unwrap_or_else(|| doc! {});
+
+        // Convert possible string _id filters to ObjectId
+        if let Ok(school_id) = query.get_str("school_id") {
+            if let Ok(obj_id) = ObjectId::parse_str(school_id) {
+                query.insert("school_id", obj_id);
+            }
+        }
+        if let Ok(creator_id) = query.get_str("creator_id") {
+            if let Ok(obj_id) = ObjectId::parse_str(creator_id) {
+                query.insert("creator_id", obj_id);
+            }
+        }
+        if let Ok(class_teacher_id) = query.get_str("class_teacher_id") {
+            if let Ok(obj_id) = ObjectId::parse_str(class_teacher_id) {
+                query.insert("class_teacher_id", obj_id);
+            }
+        }
+        if let Ok(main_class_id) = query.get_str("main_class_id") {
+            if let Ok(obj_id) = ObjectId::parse_str(main_class_id) {
+                query.insert("main_class_id", obj_id);
+            }
+        }
+
+        // --- Add search ---
+        if let Some(search_text) = search {
+            let regex = doc! { "$regex": search_text, "$options": "i" };
+            query.insert(
+                "$or",
+                vec![
+                    doc! { "name": &regex },
+                    doc! { "username": &regex },
+                    doc! { "code": &regex },
+                    doc! { "description": &regex },
+                    doc! { "subject": &regex },
+                ],
+            );
+        }
+
+        // --- Build pipeline ---
+        let mut pipeline = class_with_others_pipeline(query);
+        if let Some(skip_val) = skip {
+            pipeline.push(doc! { "$skip": skip_val });
+        }
+        if let Some(limit_val) = limit {
+            pipeline.push(doc! { "$limit": limit_val });
+        }
+
+        // --- Execute aggregation ---
+        let mut cursor = self
+            .collection
+            .clone_with_type::<Document>()
+            .aggregate(pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to aggregate classes with others: {}", e),
+            })?;
+
+        let mut results = Vec::new();
+
+        // --- Iterate through results ---
+        while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to process aggregated class: {}", e),
+        })? {
+            let mut base_doc = doc.clone();
+            base_doc.remove("school");
+            base_doc.remove("creator");
+            base_doc.remove("class_teacher");
+            base_doc.remove("main_class");
+
+            let class: Class = mongodb::bson::from_document(base_doc).map_err(|e| AppError {
+                message: format!("Failed to deserialize class: {}", e),
+            })?;
+
+            let mut school = doc
+                .get_document("school")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document::<School>(d.clone()).ok())
+                .map(sanitize_school);
+            if let Some(s) = school {
+                school = Some(sanitize_school(s));
+            }
+
+            let mut creator = doc
+                .get_document("creator")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document::<User>(d.clone()).ok())
+                .map(sanitize_user);
+            if let Some(c) = creator {
+                creator = Some(sanitize_user(c));
+            }
+
+            let class_teacher = doc
+                .get_document("class_teacher")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document::<Teacher>(d.clone()).ok());
+
+            let main_class = doc
+                .get_document("main_class")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document::<MainClass>(d.clone()).ok());
+
+            results.push(ClassWithOthers {
+                class,
+                school,
+                creator,
+                class_teacher,
+                main_class,
+            });
+        }
+
+        Ok(results)
+    }
+
     pub async fn find_by_id_with_others(
         &self,
         id: &IdType,
     ) -> Result<Option<ClassWithOthers>, AppError> {
         let obj_id = parse_object_id(id)?;
-        aggregate_single(
-            &self.collection.clone().clone_with_type::<Document>(),
-            class_with_others_pipeline(doc! { "_id": obj_id }),
-        )
-        .await
+        let results = self
+            .find_class_with_others(
+                Some(doc! { "_id": obj_id }),
+                None,    // no search text
+                Some(1), // limit to one
+                None,    // no skip
+            )
+            .await?;
+
+        Ok(results.into_iter().next())
     }
 
     pub async fn find_by_username_with_others(
         &self,
         username: &str,
     ) -> Result<Option<ClassWithOthers>, AppError> {
-        aggregate_single(
-            &self.collection.clone().clone_with_type::<Document>(),
-            class_with_others_pipeline(doc! { "username": username }),
-        )
-        .await
+        let results = self
+            .find_class_with_others(
+                Some(doc! { "username": username }),
+                None,    // no search
+                Some(1), // limit to one
+                None,    // no skip
+            )
+            .await?;
+
+        Ok(results.into_iter().next())
     }
 
     pub async fn find_by_code_with_others(
         &self,
         code: &str,
     ) -> Result<Option<ClassWithOthers>, AppError> {
-        aggregate_single(
-            &self.collection.clone().clone_with_type::<Document>(),
-            class_with_others_pipeline(doc! { "code": code }),
-        )
-        .await
+        let results = self
+            .find_class_with_others(
+                Some(doc! { "code": code }),
+                None,    // no search
+                Some(1), // limit to one
+                None,    // no skip
+            )
+            .await?;
+
+        Ok(results.into_iter().next())
     }
 
     pub async fn find_by_id(&self, id: &IdType) -> Result<Option<Class>, AppError> {

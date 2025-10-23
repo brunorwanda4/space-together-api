@@ -114,6 +114,21 @@ impl<'a> ClassService<'a> {
         Ok(sanitize_class(class))
     }
 
+    pub async fn get_all_school_classes_with_others(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<ClassWithOthers>, String> {
+        let class = self
+            .repo
+            .find_class_with_others(None, filter, limit, skip)
+            .await
+            .map_err(|e| e.message.clone())?;
+
+        Ok(class)
+    }
+
     /// Get class by ID with related information
     pub async fn get_class_by_id_with_others(
         &self,

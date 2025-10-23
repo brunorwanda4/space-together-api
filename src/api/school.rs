@@ -426,7 +426,12 @@ async fn setup_school_academics(
     );
 
     match school_controller
-        .setup_school_academics(&target_school_id, data.into_inner(), state.clone())
+        .setup_school_academics(
+            &target_school_id,
+            data.into_inner(),
+            state.clone(),
+            logged_user,
+        )
         .await
     {
         Ok(response) => {

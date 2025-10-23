@@ -91,6 +91,21 @@ async fn get_class_by_id_with_details(
     }
 }
 
+#[get("/with-others")]
+async fn get_all_school_classes_with_others(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let repo = ClassRepo::new(&state.db.main_db());
+    match repo
+        .find_class_with_others(None, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(classes) => HttpResponse::Ok().json(classes),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
 #[get("/username/{username}")]
 async fn get_class_by_username(
     path: web::Path<String>,
@@ -685,6 +700,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             // Public routes (read-only)
             .service(get_all_classes) // GET /classes - Get all classes
             .service(get_all_classes_with_school) // GET /classes/with-school - Get all classes with school information
+            .service(get_all_school_classes_with_others) // GET /classes/with-others - Get all classes with others
             .service(get_active_classes) // GET /classes/active - Get all active classes
             .service(get_class_by_id_with_details) // GET /classes/{id}/with-details - Get class by ID with full details
             .service(get_class_by_username) // GET /classes/username/{username} - Get class by username

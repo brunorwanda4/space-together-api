@@ -1,7 +1,7 @@
 use crate::domain::school::School;
 
 /// Sanitize a single school by removing sensitive fields
-pub fn sanitize_school(school: School) -> School {
+pub fn sanitize_school(mut school: School) -> School {
     // TODO: to remover school data which are unique example code, database name
     // Remove any sensitive fields if needed
     // For schools, you might want to remove internal fields or format data
@@ -9,6 +9,7 @@ pub fn sanitize_school(school: School) -> School {
 
     // You can add any school-specific sanitization logic here
     // For example: format phone numbers, normalize addresses, etc.
+    school.code = None;
     school
 }
 

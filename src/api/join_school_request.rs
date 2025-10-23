@@ -200,7 +200,7 @@ async fn create_join_request(
     data: web::Json<CreateJoinSchoolRequest>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let logged_user = user.into_inner();
+    let logged_user = user.clone().into_inner();
 
     // Only admin, staff, or teachers can create join requests
     if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
@@ -210,7 +210,7 @@ async fn create_join_request(
     }
 
     let controller = create_controller(&state);
-    match create_join_request_handler(web::Data::new(controller), data).await {
+    match create_join_request_handler(web::Data::new(controller), data, user).await {
         Ok(response) => {
             // 🔔 Broadcast real-time event for created join request
             // We'll need to extract the created request ID from the response or fetch the latest
@@ -824,7 +824,7 @@ async fn get_my_pending_join_requests(
 
     match controller
         .join_request_repo
-        .find_pending_by_email(&logged_user.email)
+        .find_pending_with_relations_by_email(&logged_user.email)
         .await
     {
         Ok(requests) => HttpResponse::Ok().json(requests),
@@ -843,7 +843,7 @@ async fn get_my_join_requests(
 
     match controller
         .join_request_repo
-        .find_by_email(&logged_user.email)
+        .find_by_email_and_status_with_relations(&logged_user.email, None)
         .await
     {
         Ok(requests) => HttpResponse::Ok().json(requests),

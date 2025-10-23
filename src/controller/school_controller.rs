@@ -1,9 +1,13 @@
+use std::str::FromStr;
+
 use actix_web::web;
 use chrono::{Datelike, Utc};
+use mongodb::bson::oid::ObjectId;
 
 use crate::{
     config::state::AppState,
     domain::{
+        auth_user::AuthUserDto,
         class::{Class, ClassType},
         school::{SchoolAcademicRequest, SchoolAcademicResponse},
         subject::Subject,
@@ -48,6 +52,7 @@ impl<'a> SchoolController<'a> {
         school_id: &IdType,
         req: SchoolAcademicRequest,
         state: web::Data<AppState>,
+        logged_user: AuthUserDto,
     ) -> Result<SchoolAcademicResponse, String> {
         // Initialize services
         let school_service = SchoolService::new(self.school_repo);
@@ -84,6 +89,11 @@ impl<'a> SchoolController<'a> {
             (false, true) => trade_service.get_trades_by_sector_ids(&sector_ids).await?,
             (false, false) => return Err("No sectors or trades selected".to_string()),
         };
+
+        let creator_id = Some(
+            ObjectId::from_str(&logged_user.id)
+                .map_err(|e| format!("Failed to change creator id: {}", e))?,
+        );
 
         let mut created_subjects_count = 0;
 
@@ -142,7 +152,7 @@ impl<'a> SchoolController<'a> {
                     capacity: Some(30),
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
-                    creator_id: school.creator_id,
+                    creator_id,
                     main_class_id: main_class.id,
                 };
 
@@ -218,7 +228,7 @@ impl<'a> SchoolController<'a> {
                     name: subject_name,
                     username: subject_username,
                     class_id: class.id,
-                    creator_id: school.creator_id,
+                    creator_id,
                     class_teacher_id: None,
                     main_subject_id: main_subject.id,
                     subject_type: main_subject.category.clone(),

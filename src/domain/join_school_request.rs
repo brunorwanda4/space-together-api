@@ -23,7 +23,6 @@ pub enum JoinStatus {
     Expired,
     Cancelled,
 }
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JoinSchoolRequest {
     #[serde(
@@ -36,56 +35,42 @@ pub struct JoinSchoolRequest {
     )]
     pub id: Option<ObjectId>,
 
-    // The school that sent the request
     #[serde(
         serialize_with = "object_id_helpers::serialize_oid",
         deserialize_with = "object_id_helpers::deserialize_oid"
     )]
     pub school_id: ObjectId,
 
-    // The user receiving the invitation (could be teacher/student/staff)
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        default
     )]
     pub invited_user_id: Option<ObjectId>,
 
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        default
     )]
-    pub class_id: Option<ObjectId>,
+    pub class_id: Option<ObjectId>, // ✅ fixed here
 
-    // Role that the invited user will have in this school
     pub role: JoinRole,
     pub email: String,
-
-    // user type role after created
-    pub r#type: String, // if user is school staff: Director,HeadOfStudies. student: Active, teacher:  Regular, HeadTeacher, SubjectTeacher, Deputy
-
-    // Message or reason for joining (optional)
+    pub r#type: String,
     pub message: Option<String>,
 
-    // Request status
     pub status: JoinStatus,
-
-    // When request was sent
     pub sent_at: DateTime<Utc>,
-
-    // When it was accepted/rejected (optional)
     pub responded_at: Option<DateTime<Utc>>,
-
-    // When the request will expire (optional)
     pub expires_at: Option<DateTime<Utc>>,
 
-    // Who sent the invitation (usually school admin/staff)
     #[serde(
         serialize_with = "object_id_helpers::serialize_oid",
         deserialize_with = "object_id_helpers::deserialize_oid"
     )]
     pub sent_by: ObjectId,
 
-    // dates
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

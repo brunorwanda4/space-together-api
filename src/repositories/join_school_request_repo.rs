@@ -9,6 +9,9 @@ use crate::{
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
     pipeline::join_school_request_pipeline::join_school_request_with_relations_pipeline,
+    utils::{
+        class_utils::sanitize_class, school_utils::sanitize_school, user_utils::sanitize_user,
+    },
 };
 use std::time::Duration as StdDuration;
 
@@ -243,30 +246,38 @@ impl JoinSchoolRequestRepo {
                 })?;
 
             // Extract school, class, invited_user, and sender relationships
-            let school: Option<School> = doc
+            let mut school: Option<School> = doc
                 .get_array("school")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
-
-            let class: Option<Class> = doc
+            if let Some(req_school) = school {
+                school = Some(sanitize_school(req_school));
+            }
+            let mut class: Option<Class> = doc
                 .get_array("class")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
-
-            let invited_user: Option<User> = doc
+            if let Some(req_class) = class {
+                class = Some(sanitize_class(req_class));
+            }
+            let mut invited_user: Option<User> = doc
                 .get_array("invited_user")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
-
-            let sender: Option<User> = doc
+            if let Some(req_invited_user) = invited_user {
+                invited_user = Some(sanitize_user(req_invited_user));
+            }
+            let mut sender: Option<User> = doc
                 .get_array("sender")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
-
+            if let Some(req_sender) = sender {
+                sender = Some(sanitize_user(req_sender));
+            }
             results.push(JoinSchoolRequestWithRelations {
                 request,
                 school,
@@ -427,38 +438,130 @@ impl JoinSchoolRequestRepo {
         Ok(requests)
     }
 
-    pub async fn find_by_email_and_status(
+    pub async fn find_by_email_and_status_with_relations(
         &self,
         email: &str,
-        status: JoinStatus,
-    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+        status: Option<JoinStatus>,
+    ) -> Result<Vec<JoinSchoolRequestWithRelations>, AppError> {
+        // Build the base filter
+        let mut filter = doc! { "email": email };
+
+        if let Some(s) = &status {
+            filter.insert(
+                "status",
+                bson::to_bson(s).map_err(|e| AppError {
+                    message: format!("Failed to serialize status: {}", e),
+                })?,
+            );
+        }
+
+        // Build aggregation pipeline with relations
+        let pipeline = join_school_request_with_relations_pipeline(filter);
+
+        // Execute aggregation
         let mut cursor = self
             .collection
-            .find(doc! {
-                "email": email,
-                "status": bson::to_bson(&status).map_err(|e| AppError {
-                    message: format!("Failed to serialize status: {}", e),
-                })?
-            })
+            .clone_with_type::<Document>()
+            .aggregate(pipeline)
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to find join requests by email and status: {}", e),
+                message: format!("Failed to aggregate join requests with relations: {}", e),
             })?;
 
-        let mut requests = Vec::new();
-        while let Some(request) = cursor.next().await {
-            requests.push(request.map_err(|e| AppError {
-                message: format!("Failed to process join request: {}", e),
-            })?);
+        let mut results = Vec::new();
+
+        // Iterate through results
+        while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to process aggregated result: {}", e),
+        })? {
+            // Deserialize base join request
+            let request: JoinSchoolRequest =
+                mongodb::bson::from_document(doc.clone()).map_err(|e| AppError {
+                    message: format!("Failed to deserialize join request: {}", e),
+                })?;
+
+            // --- Deserialize relations safely (supports both $unwind and array forms) ---
+            let mut school: Option<School> = doc
+                .get_document("school")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document(d.clone()).ok())
+                .or_else(|| {
+                    doc.get_array("school")
+                        .ok()
+                        .and_then(|arr| arr.first())
+                        .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
+                });
+            if let Some(s) = school {
+                school = Some(sanitize_school(s));
+            }
+
+            let mut class: Option<Class> = doc
+                .get_document("class")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document(d.clone()).ok())
+                .or_else(|| {
+                    doc.get_array("class")
+                        .ok()
+                        .and_then(|arr| arr.first())
+                        .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
+                });
+            if let Some(c) = class {
+                class = Some(sanitize_class(c));
+            }
+
+            let mut invited_user: Option<User> = doc
+                .get_document("invited_user")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document(d.clone()).ok())
+                .or_else(|| {
+                    doc.get_array("invited_user")
+                        .ok()
+                        .and_then(|arr| arr.first())
+                        .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
+                });
+            if let Some(u) = invited_user {
+                invited_user = Some(sanitize_user(u));
+            }
+
+            let mut sender: Option<User> = doc
+                .get_document("sender")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document(d.clone()).ok())
+                .or_else(|| {
+                    doc.get_array("sender")
+                        .ok()
+                        .and_then(|arr| arr.first())
+                        .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
+                });
+            if let Some(u) = sender {
+                sender = Some(sanitize_user(u));
+            }
+
+            results.push(JoinSchoolRequestWithRelations {
+                request,
+                school,
+                class,
+                invited_user,
+                sender,
+            });
         }
-        Ok(requests)
+
+        Ok(results)
     }
 
-    pub async fn find_pending_by_email(
+    // pub async fn find_pending_by_email(
+    //     &self,
+    //     email: &str,
+    // ) -> Result<Vec<JoinSchoolRequest>, AppError> {
+    //     self.find_by_email_and_status(email, JoinStatus::Pending)
+    //         .await
+    // }
+
+    pub async fn find_pending_with_relations_by_email(
         &self,
         email: &str,
-    ) -> Result<Vec<JoinSchoolRequest>, AppError> {
-        self.find_by_email_and_status(email, JoinStatus::Pending)
+    ) -> Result<Vec<JoinSchoolRequestWithRelations>, AppError> {
+        self.find_by_email_and_status_with_relations(email, Some(JoinStatus::Pending))
             .await
     }
 
@@ -867,7 +970,7 @@ impl JoinSchoolRequestRepo {
                 })?;
 
             // Extract the relations (they're single objects because of $unwind)
-            let school: Option<School> = doc
+            let mut school: Option<School> = doc
                 .get_document("school")
                 .ok()
                 .and_then(|doc| mongodb::bson::from_document(doc.clone()).ok())
@@ -878,8 +981,11 @@ impl JoinSchoolRequestRepo {
                         .and_then(|arr| arr.first())
                         .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
                 });
+            if let Some(req_school) = school {
+                school = Some(sanitize_school(req_school));
+            }
 
-            let class: Option<Class> = doc
+            let mut class: Option<Class> = doc
                 .get_document("class")
                 .ok()
                 .and_then(|doc| mongodb::bson::from_document(doc.clone()).ok())
@@ -889,8 +995,11 @@ impl JoinSchoolRequestRepo {
                         .and_then(|arr| arr.first())
                         .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
                 });
+            if let Some(req_class) = class {
+                class = Some(sanitize_class(req_class));
+            }
 
-            let invited_user: Option<User> = doc
+            let mut invited_user: Option<User> = doc
                 .get_document("invited_user")
                 .ok()
                 .and_then(|doc| mongodb::bson::from_document(doc.clone()).ok())
@@ -900,8 +1009,10 @@ impl JoinSchoolRequestRepo {
                         .and_then(|arr| arr.first())
                         .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
                 });
-
-            let sender: Option<User> = doc
+            if let Some(req_invited_user) = invited_user {
+                invited_user = Some(sanitize_user(req_invited_user));
+            }
+            let mut sender: Option<User> = doc
                 .get_document("sender")
                 .ok()
                 .and_then(|doc| mongodb::bson::from_document(doc.clone()).ok())
@@ -911,7 +1022,9 @@ impl JoinSchoolRequestRepo {
                         .and_then(|arr| arr.first())
                         .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok())
                 });
-
+            if let Some(req_sender) = sender {
+                sender = Some(sanitize_user(req_sender));
+            }
             results.push(JoinSchoolRequestWithRelations {
                 request,
                 school,
@@ -1106,8 +1219,7 @@ impl JoinSchoolRequestRepo {
     pub async fn find_with_relations_by_id(
         &self,
         id: &IdType,
-    ) -> Result<Option<crate::domain::join_school_request::JoinSchoolRequestWithRelations>, AppError>
-    {
+    ) -> Result<Option<JoinSchoolRequestWithRelations>, AppError> {
         let obj_id = parse_object_id(id).map_err(|e| AppError { message: e })?;
         let pipeline = join_school_request_with_relations_pipeline(doc! {"_id": obj_id});
 
@@ -1128,30 +1240,39 @@ impl JoinSchoolRequestRepo {
                     message: format!("Failed to deserialize join request: {}", e),
                 })?;
 
-            let school: Option<School> = doc
+            let mut school: Option<School> = doc
                 .get_array("school")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
+            if let Some(req_school) = school {
+                school = Some(sanitize_school(req_school));
+            }
 
-            let class: Option<Class> = doc
+            let mut class: Option<Class> = doc
                 .get_array("class")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
-
-            let invited_user: Option<User> = doc
+            if let Some(req_class) = class {
+                class = Some(sanitize_class(req_class));
+            }
+            let mut invited_user: Option<User> = doc
                 .get_array("invited_user")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
-
-            let sender: Option<User> = doc
+            if let Some(req_invited_user) = invited_user {
+                invited_user = Some(sanitize_user(req_invited_user));
+            }
+            let mut sender: Option<User> = doc
                 .get_array("sender")
                 .ok()
                 .and_then(|arr| arr.first())
                 .and_then(|bson| mongodb::bson::from_bson(bson.clone()).ok());
-
+            if let Some(req_sender) = sender {
+                sender = Some(sanitize_user(req_sender));
+            }
             let result = JoinSchoolRequestWithRelations {
                 request,
                 school,

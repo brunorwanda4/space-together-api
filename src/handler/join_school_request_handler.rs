@@ -1,12 +1,17 @@
+use std::str::FromStr;
+
 use actix_web::{web, HttpResponse};
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
     config::state::AppState,
     controller::join_school_request_controller::JoinSchoolRequestController,
-    domain::join_school_request::{
-        BulkCreateJoinSchoolRequest, BulkRespondRequest, CreateJoinSchoolRequest, JoinRequestQuery,
-        RespondToJoinRequest, UpdateRequestExpiration,
+    domain::{
+        auth_user::AuthUserDto,
+        join_school_request::{
+            BulkCreateJoinSchoolRequest, BulkRespondRequest, CreateJoinSchoolRequest,
+            JoinRequestQuery, RespondToJoinRequest, UpdateRequestExpiration,
+        },
     },
     errors::AppError,
     models::id_model::IdType,
@@ -16,11 +21,15 @@ use crate::{
 pub async fn create_join_request_handler(
     controller: web::Data<JoinSchoolRequestController<'_>>,
     create_request: web::Json<CreateJoinSchoolRequest>,
+    user: web::ReqData<AuthUserDto>,
     // In real implementation, you'd get sent_by from auth middleware
 ) -> Result<HttpResponse, AppError> {
-    let sent_by = ObjectId::new(); // This should come from authenticated user
+    let logged_user_id = ObjectId::from_str(&user.id).map_err(|e| AppError {
+        message: format!("Failed to change logged user objectId: {}", e),
+    })?;
+
     let result = controller
-        .create_join_request(create_request.into_inner(), sent_by)
+        .create_join_request(create_request.into_inner(), logged_user_id)
         .await?;
     Ok(HttpResponse::Created().json(result))
 }
