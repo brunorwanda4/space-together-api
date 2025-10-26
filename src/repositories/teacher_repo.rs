@@ -423,31 +423,39 @@ impl TeacherRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
+        extra_filter: Option<Document>, // Additional conditions like is_active
     ) -> Result<Vec<Teacher>, AppError> {
         let mut pipeline = vec![];
 
-        // Add search/filter functionality
+        // Build the $match document
+        let mut match_doc = Document::new();
+
         if let Some(f) = filter {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i"  // case insensitive
-            };
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        { "name": &regex },
-                        { "email": &regex },
-                        { "phone": &regex },
-                        { "tags": &regex },
-                    ]
-                }
-            });
+            let regex = doc! { "$regex": f, "$options": "i" };
+            match_doc.insert(
+                "$or",
+                vec![
+                    doc! { "name": &regex },
+                    doc! { "email": &regex },
+                    doc! { "phone": &regex },
+                    doc! { "tags": &regex },
+                ],
+            );
         }
 
-        // Add sorting by updated_at (most recent first)
+        // Merge extra filter if provided
+        if let Some(extra) = extra_filter {
+            match_doc.extend(extra);
+        }
+
+        if !match_doc.is_empty() {
+            pipeline.push(doc! { "$match": match_doc });
+        }
+
+        // Sorting
         pipeline.push(doc! { "$sort": { "updated_at": -1 } });
 
-        // Add pagination
+        // Pagination
         if let Some(s) = skip {
             pipeline.push(doc! { "$skip": s });
         }
@@ -455,10 +463,10 @@ impl TeacherRepo {
         if let Some(l) = limit {
             pipeline.push(doc! { "$limit": l });
         } else {
-            // Default limit if none provided
             pipeline.push(doc! { "$limit": 50 });
         }
 
+        // Execute aggregation
         let mut cursor = self
             .collection
             .aggregate(pipeline)
@@ -481,21 +489,13 @@ impl TeacherRepo {
     }
 
     pub async fn get_active_teachers(&self) -> Result<Vec<Teacher>, AppError> {
-        let mut cursor = self
-            .collection
-            .find(doc! { "is_active": true })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find active teachers: {}", e),
-            })?;
-
-        let mut teachers = Vec::new();
-        while let Some(teacher) = cursor.next().await {
-            teachers.push(teacher.map_err(|e| AppError {
-                message: format!("Failed to process teacher: {}", e),
-            })?);
-        }
-        Ok(teachers)
+        self.get_all_teachers(
+            None,                             // no search text
+            None,                             // no limit
+            None,                             // no skip
+            Some(doc! { "is_active": true }), // extra filter
+        )
+        .await
     }
 
     pub async fn update_teacher(

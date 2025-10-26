@@ -5,6 +5,7 @@ use mongodb::bson::oid::ObjectId;
 
 use crate::{
     config::state::AppState,
+    controller::teacher_controller::TeacherController,
     domain::teacher::{
         BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PrepareTeacherRequest, Teacher,
         TeacherCountQuery, TeacherType, UpdateTeacher,
@@ -13,17 +14,60 @@ use crate::{
         api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel,
         school_token_model::SchoolToken,
     },
-    repositories::teacher_repo::TeacherRepo,
-    services::{event_service::EventService, teacher_service::TeacherService},
+    repositories::{
+        class_repo::ClassRepo, school_repo::SchoolRepo, subject_repo::SubjectRepo,
+        teacher_repo::TeacherRepo, user_repo::UserRepo,
+    },
+    services::{
+        class_service::ClassService, event_service::EventService, school_service::SchoolService,
+        subject_service::SubjectService, teacher_service::TeacherService,
+        user_service::UserService,
+    },
 };
 
+// Helper function to create TeacherController
+fn create_teacher_controller(
+    state: &web::Data<AppState>,
+    claims: &SchoolToken,
+) -> TeacherController<'static> {
+    let school_db = state.db.get_db(&claims.database_name);
+    let main_db = state.db.main_db();
+
+    // === Repositories ===
+    let teacher_repo: &'static TeacherRepo = Box::leak(Box::new(TeacherRepo::new(&school_db)));
+    let school_repo: &'static SchoolRepo = Box::leak(Box::new(SchoolRepo::new(&main_db)));
+    let user_repo: &'static UserRepo = Box::leak(Box::new(UserRepo::new(&main_db)));
+    let subject_repo: &'static SubjectRepo = Box::leak(Box::new(SubjectRepo::new(&school_db)));
+    let class_repo: &'static ClassRepo = Box::leak(Box::new(ClassRepo::new(&school_db)));
+
+    // === Services ===
+    let school_service: &'static SchoolService =
+        Box::leak(Box::new(SchoolService::new(school_repo)));
+    let user_service: &'static UserService = Box::leak(Box::new(UserService::new(user_repo)));
+    let teacher_service: &'static TeacherService =
+        Box::leak(Box::new(TeacherService::new(teacher_repo)));
+    let subject_service: &'static SubjectService =
+        Box::leak(Box::new(SubjectService::new(subject_repo)));
+    let class_service: &'static ClassService = Box::leak(Box::new(ClassService::new(class_repo)));
+
+    // === Controller ===
+    TeacherController::new(
+        teacher_repo, // ✅ now a reference
+        school_service,
+        user_service,
+        teacher_service,
+        subject_service,
+        class_service,
+    )
+}
+
+// Single-database operations (keep using TeacherService)
 #[get("")]
 async fn get_all_teachers(
     req: actix_web::HttpRequest,
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    // Get school claims from extensions (set by SchoolTokenMiddleware)
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
         None => {
@@ -33,7 +77,6 @@ async fn get_all_teachers(
         }
     };
 
-    // Use school database from claims
     let school_db = state.db.get_db(&claims.database_name);
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
@@ -49,6 +92,7 @@ async fn get_all_teachers(
 
 #[get("/active")]
 async fn get_active_teachers(
+    query: web::Query<RequestQuery>,
     req: actix_web::HttpRequest,
     state: web::Data<AppState>,
 ) -> impl Responder {
@@ -149,6 +193,142 @@ async fn get_teacher_by_email(
     }
 }
 
+// Cross-database operations (use TeacherController)
+#[get("/with-relations")]
+async fn get_all_teachers_with_relations(
+    query: web::Query<RequestQuery>,
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_all_teachers_with_relations(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(teachers) => HttpResponse::Ok().json(teachers),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+#[get("/{id}/with-relations")]
+async fn get_teacher_by_id_with_relations(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let teacher_id = IdType::from_string(path.into_inner());
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_teacher_by_id_with_relations(&teacher_id)
+        .await
+    {
+        Ok(teacher) => HttpResponse::Ok().json(teacher),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
+    }
+}
+
+#[get("/user/{user_id}/with-relations")]
+async fn get_teacher_by_user_id_with_relations(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let user_id = IdType::from_string(path.into_inner());
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_teacher_by_user_id_with_relations(&user_id)
+        .await
+    {
+        Ok(teacher) => HttpResponse::Ok().json(teacher),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
+    }
+}
+
+#[get("/email/{email}/with-relations")]
+async fn get_teacher_by_email_with_relations(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let email = path.into_inner();
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_teacher_by_email_with_relations(&email)
+        .await
+    {
+        Ok(teacher) => HttpResponse::Ok().json(teacher),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
+    }
+}
+
+#[get("/creator/{creator_id}/with-relations")]
+async fn get_teachers_by_creator_id_with_relations(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let creator_id = IdType::from_string(path.into_inner());
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_teachers_by_creator_id_with_relations(&creator_id)
+        .await
+    {
+        Ok(teachers) => HttpResponse::Ok().json(teachers),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
+    }
+}
+
+// Single-database operations (keep using TeacherService)
 #[post("")]
 async fn create_teacher(
     req: actix_web::HttpRequest,
@@ -254,92 +434,7 @@ async fn delete_teacher(
     }
 }
 
-#[get("/stats/count")]
-async fn count_teachers(
-    query: web::Query<TeacherCountQuery>,
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .count_teachers_by_school_id(
-            &IdType::from_string(claims.id.clone()),
-            query.gender.clone(),
-            query.teacher_type,
-        )
-        .await
-    {
-        Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-#[get("/with-details")]
-async fn get_all_teachers_with_details(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-    query: web::Query<RequestQuery>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .get_all_teachers_with_relations(query.filter.clone(), query.limit, query.skip)
-        .await
-    {
-        Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-#[get("/{id}/with-details")]
-async fn get_teacher_by_id_with_details(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let teacher_id = IdType::from_string(path.into_inner());
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service.get_teacher_by_id_with_relations(&teacher_id).await {
-        Ok(teacher) => HttpResponse::Ok().json(teacher),
-        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
-    }
-}
-
+// Single-database operations (keep using TeacherService)
 #[get("/creator/{creator_id}")]
 async fn get_teachers_by_creator_id(
     req: actix_web::HttpRequest,
@@ -418,8 +513,9 @@ async fn get_teachers_by_subject_id(
     }
 }
 
-#[get("/type/{type}")]
-async fn get_teachers_by_type(
+// Cross-database operations (use TeacherController)
+#[get("/type/{type}/with-relations")]
+async fn get_teachers_by_type_with_relations(
     req: actix_web::HttpRequest,
     path: web::Path<String>,
     state: web::Data<AppState>,
@@ -446,18 +542,19 @@ async fn get_teachers_by_type(
         }
     };
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
-    match service.get_teachers_by_type(teacher_type).await {
+    match teacher_controller
+        .get_teachers_by_type_with_relations(teacher_type)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
     }
 }
 
-#[get("/school/{school_id}/type/{type}")]
-async fn get_teachers_by_school_and_type(
+#[get("/school/{school_id}/type/{type}/with-relations")]
+async fn get_teachers_by_school_and_type_with_relations(
     req: actix_web::HttpRequest,
     path: web::Path<(String, String)>,
     state: web::Data<AppState>,
@@ -485,19 +582,18 @@ async fn get_teachers_by_school_and_type(
         }
     };
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
-    match service
-        .get_teachers_by_school_and_type(&school_id, teacher_type)
+    match teacher_controller
+        .get_teachers_by_school_and_type_with_relations(&school_id, teacher_type)
         .await
     {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
     }
 }
 
+// Single-database operations (keep using TeacherService)
 #[put("/{id}/merged")]
 async fn update_teacher_merged(
     req: actix_web::HttpRequest,
@@ -546,10 +642,11 @@ async fn update_teacher_merged(
     }
 }
 
-#[get("/stats/count-by-creator/{creator_id}")]
-async fn count_teachers_by_creator_id(
+// Cross-database operations (use TeacherController)
+#[get("/stats/count")]
+async fn count_teachers(
+    query: web::Query<TeacherCountQuery>,
     req: actix_web::HttpRequest,
-    path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
@@ -561,14 +658,18 @@ async fn count_teachers_by_creator_id(
         }
     };
 
-    let creator_id = IdType::from_string(path.into_inner());
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
-    match service.count_teachers_by_creator_id(&creator_id).await {
+    match teacher_controller
+        .count_teachers_by_school_id(
+            &IdType::from_string(claims.id.clone()),
+            query.gender.clone(),
+            query.teacher_type,
+        )
+        .await
+    {
         Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
@@ -600,16 +701,45 @@ async fn count_teachers_by_type(
         }
     };
 
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .count_teachers_by_type(teacher_type)
+        .await
+    {
+        Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+// Single-database operations (keep using TeacherService)
+#[get("/stats/count-by-creator/{creator_id}")]
+async fn count_teachers_by_creator_id(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let creator_id = IdType::from_string(path.into_inner());
     let school_db = state.db.get_db(&claims.database_name);
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
 
-    match service.count_teachers_by_type(teacher_type).await {
+    match service.count_teachers_by_creator_id(&creator_id).await {
         Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }
 
+// Single-database operations (keep using TeacherService)
 #[get("/stats/count-by-class/{class_id}")]
 async fn count_teachers_by_class_id(
     req: actix_web::HttpRequest,
@@ -662,7 +792,7 @@ async fn count_teachers_by_subject_id(
     }
 }
 
-/// Create multiple teachers for school
+// Bulk operations using TeacherController
 #[post("/bulk")]
 async fn create_many_teachers(
     req: actix_web::HttpRequest,
@@ -678,9 +808,7 @@ async fn create_many_teachers(
         }
     };
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
     // Set school_id for all teachers
     let school_id = match ObjectId::from_str(&claims.id) {
@@ -697,17 +825,35 @@ async fn create_many_teachers(
         teacher.school_id = Some(school_id);
     }
 
-    // ✅ USE THE EVENT-BASED METHOD
-    match service
-        .create_many_teachers_with_events(teachers_with_school, &state)
+    match teacher_controller
+        .create_many_teachers(teachers_with_school)
         .await
     {
-        Ok(teachers) => HttpResponse::Created().json(teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Ok(teachers) => {
+            let state_clone = state.clone();
+            let teachers_for_spawn = teachers.clone();
+
+            actix_rt::spawn(async move {
+                for teacher in &teachers_for_spawn {
+                    if let Some(id) = teacher.id {
+                        EventService::broadcast_created(
+                            &state_clone,
+                            "teacher",
+                            &id.to_hex(),
+                            teacher,
+                        )
+                        .await;
+                    }
+                }
+            });
+
+            HttpResponse::Created().json(teachers)
+        }
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
-/// Create multiple teachers with validation for school
+// Single-database operations (keep using TeacherService)
 #[post("/bulk/validation")]
 async fn create_many_teachers_with_validation(
     req: actix_web::HttpRequest,
@@ -770,7 +916,7 @@ async fn create_many_teachers_with_validation(
     }
 }
 
-/// Bulk update active status for multiple teachers
+// Bulk operations using TeacherController
 #[put("/bulk/active")]
 async fn bulk_update_teacher_active(
     req: actix_web::HttpRequest,
@@ -786,11 +932,12 @@ async fn bulk_update_teacher_active(
         }
     };
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
-    match service.bulk_update_active(&data.into_inner()).await {
+    match teacher_controller
+        .bulk_update_active(&data.into_inner())
+        .await
+    {
         Ok(teachers) => {
             let state_clone = state.clone();
             let teachers_for_spawn = teachers.clone();
@@ -811,11 +958,10 @@ async fn bulk_update_teacher_active(
 
             HttpResponse::Ok().json(teachers)
         }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
-/// Bulk add tags to multiple teachers
 #[put("/bulk/add-tags")]
 async fn bulk_add_tags_to_teachers(
     req: actix_web::HttpRequest,
@@ -831,11 +977,9 @@ async fn bulk_add_tags_to_teachers(
         }
     };
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
-    match service.bulk_add_tags(&data.into_inner()).await {
+    match teacher_controller.bulk_add_tags(&data.into_inner()).await {
         Ok(teachers) => {
             let state_clone = state.clone();
             let teachers_for_spawn = teachers.clone();
@@ -856,11 +1000,10 @@ async fn bulk_add_tags_to_teachers(
 
             HttpResponse::Ok().json(teachers)
         }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
-/// Bulk remove tags from multiple teachers
 #[put("/bulk/remove-tags")]
 async fn bulk_remove_tags_from_teachers(
     req: actix_web::HttpRequest,
@@ -876,11 +1019,12 @@ async fn bulk_remove_tags_from_teachers(
         }
     };
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
-    match service.bulk_remove_tags(&data.into_inner()).await {
+    match teacher_controller
+        .bulk_remove_tags(&data.into_inner())
+        .await
+    {
         Ok(teachers) => {
             let state_clone = state.clone();
             let teachers_for_spawn = teachers.clone();
@@ -901,11 +1045,10 @@ async fn bulk_remove_tags_from_teachers(
 
             HttpResponse::Ok().json(teachers)
         }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
-/// Delete multiple teachers
 #[delete("/bulk")]
 async fn delete_many_teachers(
     req: actix_web::HttpRequest,
@@ -933,7 +1076,7 @@ async fn delete_many_teachers(
     }
 }
 
-/// Check if user is teacher of this school
+// Cross-database operations (use TeacherController)
 #[get("/check/{user_id}")]
 async fn is_user_teacher_of_school(
     req: actix_web::HttpRequest,
@@ -950,24 +1093,21 @@ async fn is_user_teacher_of_school(
     };
 
     let user_id = IdType::from_string(path.into_inner());
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
-    match service
+    match teacher_controller
         .is_user_teacher_of_school(&user_id, &IdType::from_string(claims.id.clone()))
         .await
     {
         Ok(is_teacher) => HttpResponse::Ok().json(serde_json::json!({ "is_teacher": is_teacher })),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
-/// Check if teacher is in a specific class
-#[get("/check/{teacher_id}/class/{class_id}")]
-async fn is_teacher_in_class(
+// Cross-database operations (use TeacherController)
+#[get("/stats/school-statistics")]
+async fn get_school_teacher_statistics(
     req: actix_web::HttpRequest,
-    path: web::Path<(String, String)>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
@@ -979,59 +1119,21 @@ async fn is_teacher_in_class(
         }
     };
 
-    let (teacher_id_str, class_id_str) = path.into_inner();
-    let teacher_id = IdType::from_string(teacher_id_str);
-    let class_id = IdType::from_string(class_id_str);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service.is_teacher_in_class(&teacher_id, &class_id).await {
-        Ok(in_class) => HttpResponse::Ok().json(serde_json::json!({ "in_class": in_class })),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Check if teacher teaches a specific subject
-#[get("/check/{teacher_id}/subject/{subject_id}")]
-async fn is_teacher_in_subject(
-    req: actix_web::HttpRequest,
-    path: web::Path<(String, String)>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let (teacher_id_str, subject_id_str) = path.into_inner();
-    let teacher_id = IdType::from_string(teacher_id_str);
-    let subject_id = IdType::from_string(subject_id_str);
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .is_teacher_in_subject(&teacher_id, &subject_id)
+    match teacher_controller
+        .get_school_teacher_statistics(&IdType::from_string(claims.id.clone()))
         .await
     {
-        Ok(in_subject) => HttpResponse::Ok().json(serde_json::json!({ "in_subject": in_subject })),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Ok(stats) => HttpResponse::Ok().json(stats),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
-/// Get class teachers with details
-#[get("/class/{class_id}/teachers")]
-async fn get_class_teachers(
-    query: web::Query<RequestQuery>,
+// Cross-database operations (use TeacherController)
+#[get("/head-teachers/with-relations")]
+async fn get_school_head_teachers_with_relations(
     req: actix_web::HttpRequest,
-    path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
@@ -1043,13 +1145,113 @@ async fn get_class_teachers(
         }
     };
 
-    let class_id = IdType::from_string(path.into_inner());
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_school_head_teachers_with_relations(&IdType::from_string(claims.id.clone()))
+        .await
+    {
+        Ok(teachers) => HttpResponse::Ok().json(teachers),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+#[get("/subject-teachers/with-relations")]
+async fn get_school_subject_teachers_with_relations(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_school_subject_teachers_with_relations(&IdType::from_string(claims.id.clone()))
+        .await
+    {
+        Ok(teachers) => HttpResponse::Ok().json(teachers),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+#[get("/deputy-teachers/with-relations")]
+async fn get_school_deputy_teachers_with_relations(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_school_deputy_teachers_with_relations(&IdType::from_string(claims.id.clone()))
+        .await
+    {
+        Ok(teachers) => HttpResponse::Ok().json(teachers),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+#[get("/regular-teachers/with-relations")]
+async fn get_school_regular_teachers_with_relations(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let teacher_controller = create_teacher_controller(&state, &claims);
+
+    match teacher_controller
+        .get_school_regular_teachers_with_relations(&IdType::from_string(claims.id.clone()))
+        .await
+    {
+        Ok(teachers) => HttpResponse::Ok().json(teachers),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+// Single-database operations (keep using TeacherService)
+#[get("/head-teachers")]
+async fn get_school_head_teachers(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
     let school_db = state.db.get_db(&claims.database_name);
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
 
     match service
-        .get_class_teachers(&class_id, query.filter.clone(), query.limit, query.skip)
+        .get_school_head_teachers(&IdType::from_string(claims.id.clone()))
         .await
     {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
@@ -1057,13 +1259,10 @@ async fn get_class_teachers(
     }
 }
 
-/// Get subject teachers with details
-#[get("/subject/{subject_id}/teachers")]
-async fn get_subject_teachers(
+#[get("/subject-teachers")]
+async fn get_school_subject_teachers(
     req: actix_web::HttpRequest,
-    path: web::Path<String>,
     state: web::Data<AppState>,
-    query: web::Query<RequestQuery>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
@@ -1074,13 +1273,12 @@ async fn get_subject_teachers(
         }
     };
 
-    let subject_id = IdType::from_string(path.into_inner());
     let school_db = state.db.get_db(&claims.database_name);
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
 
     match service
-        .get_subject_teachers(&subject_id, query.filter.clone(), query.limit, query.skip)
+        .get_school_subject_teachers(&IdType::from_string(claims.id.clone()))
         .await
     {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
@@ -1088,7 +1286,61 @@ async fn get_subject_teachers(
     }
 }
 
-/// Activate a teacher
+#[get("/deputy-teachers")]
+async fn get_school_deputy_teachers(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let school_db = state.db.get_db(&claims.database_name);
+    let repo = TeacherRepo::new(&school_db);
+    let service = TeacherService::new(&repo);
+
+    match service
+        .get_school_deputy_teachers(&IdType::from_string(claims.id.clone()))
+        .await
+    {
+        Ok(teachers) => HttpResponse::Ok().json(teachers),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+#[get("/regular-teachers")]
+async fn get_school_regular_teachers(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let school_db = state.db.get_db(&claims.database_name);
+    let repo = TeacherRepo::new(&school_db);
+    let service = TeacherService::new(&repo);
+
+    match service
+        .get_school_regular_teachers(&IdType::from_string(claims.id.clone()))
+        .await
+    {
+        Ok(teachers) => HttpResponse::Ok().json(teachers),
+        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+    }
+}
+
+// Single-database operations (keep using TeacherService)
 #[put("/{id}/activate")]
 async fn activate_teacher(
     req: actix_web::HttpRequest,
@@ -1133,7 +1385,6 @@ async fn activate_teacher(
     }
 }
 
-/// Deactivate a teacher
 #[put("/{id}/deactivate")]
 async fn deactivate_teacher(
     req: actix_web::HttpRequest,
@@ -1155,273 +1406,6 @@ async fn deactivate_teacher(
     let service = TeacherService::new(&repo);
 
     match service.deactivate_teacher(&teacher_id).await {
-        Ok(teacher) => {
-            // Broadcast teacher update event
-            let teacher_clone = teacher.clone();
-            let state_clone = state.clone();
-
-            actix_rt::spawn(async move {
-                if let Some(id) = teacher_clone.id {
-                    EventService::broadcast_updated(
-                        &state_clone,
-                        "teacher",
-                        &id.to_hex(),
-                        &teacher_clone,
-                    )
-                    .await;
-                }
-            });
-
-            HttpResponse::Ok().json(teacher)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Get teacher statistics for a school
-#[get("/stats/school-statistics")]
-async fn get_school_teacher_statistics(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .get_school_teacher_statistics(&IdType::from_string(claims.id.clone()))
-        .await
-    {
-        Ok(stats) => HttpResponse::Ok().json(stats),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Get head teachers for a school
-#[get("/head-teachers")]
-async fn get_school_head_teachers(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .get_school_head_teachers(&IdType::from_string(claims.id.clone()))
-        .await
-    {
-        Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Get subject teachers for a school
-#[get("/subject-teachers")]
-async fn get_school_subject_teachers(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .get_school_subject_teachers(&IdType::from_string(claims.id.clone()))
-        .await
-    {
-        Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Get deputy teachers for a school
-#[get("/deputy-teachers")]
-async fn get_school_deputy_teachers(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .get_school_deputy_teachers(&IdType::from_string(claims.id.clone()))
-        .await
-    {
-        Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Get regular teachers for a school
-#[get("/regular-teachers")]
-async fn get_school_regular_teachers(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .get_school_regular_teachers(&IdType::from_string(claims.id.clone()))
-        .await
-    {
-        Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Add classes to teacher
-#[put("/{id}/add-classes")]
-async fn add_classes_to_teacher(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    data: web::Json<Vec<String>>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let teacher_id = IdType::from_string(path.into_inner());
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    // Convert string IDs to ObjectIds
-    let class_ids: Result<Vec<ObjectId>, _> = data
-        .into_inner()
-        .into_iter()
-        .map(|id| ObjectId::from_str(&id))
-        .collect();
-
-    let class_ids = match class_ids {
-        Ok(ids) => ids,
-        Err(e) => {
-            return HttpResponse::BadRequest().json(ReqErrModel {
-                message: format!("Invalid class ID format: {}", e),
-            });
-        }
-    };
-
-    match service.add_classes_to_teacher(&teacher_id, class_ids).await {
-        Ok(teacher) => {
-            // Broadcast teacher update event
-            let teacher_clone = teacher.clone();
-            let state_clone = state.clone();
-
-            actix_rt::spawn(async move {
-                if let Some(id) = teacher_clone.id {
-                    EventService::broadcast_updated(
-                        &state_clone,
-                        "teacher",
-                        &id.to_hex(),
-                        &teacher_clone,
-                    )
-                    .await;
-                }
-            });
-
-            HttpResponse::Ok().json(teacher)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Add subjects to teacher
-#[put("/{id}/add-subjects")]
-async fn add_subjects_to_teacher(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    data: web::Json<Vec<String>>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let teacher_id = IdType::from_string(path.into_inner());
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    // Convert string IDs to ObjectIds
-    let subject_ids: Result<Vec<ObjectId>, _> = data
-        .into_inner()
-        .into_iter()
-        .map(|id| ObjectId::from_str(&id))
-        .collect();
-
-    let subject_ids = match subject_ids {
-        Ok(ids) => ids,
-        Err(e) => {
-            return HttpResponse::BadRequest().json(ReqErrModel {
-                message: format!("Invalid subject ID format: {}", e),
-            });
-        }
-    };
-
-    match service
-        .add_subjects_to_teacher(&teacher_id, subject_ids)
-        .await
-    {
         Ok(teacher) => {
             // Broadcast teacher update event
             let teacher_clone = teacher.clone();
@@ -1631,7 +1615,7 @@ async fn prepare_teachers_for_bulk_creation(
     }
 }
 
-/// Bulk update multiple teachers
+// Bulk operations using TeacherController
 #[put("/bulk-update")]
 async fn update_many_teachers(
     req: actix_web::HttpRequest,
@@ -1647,9 +1631,7 @@ async fn update_many_teachers(
         }
     };
 
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
+    let teacher_controller = create_teacher_controller(&state, &claims);
 
     // Convert the request data to the format expected by the service
     let updates: Vec<(IdType, UpdateTeacher)> = data
@@ -1658,7 +1640,7 @@ async fn update_many_teachers(
         .map(|(id_str, update)| (IdType::from_string(id_str), update))
         .collect();
 
-    match service.update_many_teachers(updates).await {
+    match teacher_controller.update_many_teachers(updates).await {
         Ok(updated_teachers) => {
             let state_clone = state.clone();
             let teachers_for_spawn = updated_teachers.clone();
@@ -1679,114 +1661,11 @@ async fn update_many_teachers(
 
             HttpResponse::Ok().json(updated_teachers)
         }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
     }
 }
 
-/// Prepare teachers for bulk creation with custom parameters
-#[post("/bulk/prepare-custom")]
-async fn prepare_teachers_for_bulk_creation_custom(
-    req: actix_web::HttpRequest,
-    data: web::Json<PrepareTeacherRequest>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    // Use provided school_id or fall back to token's school_id
-    let school_id = if let Some(school_id_str) = &data.school_id {
-        match ObjectId::from_str(school_id_str) {
-            Ok(id) => Some(id),
-            Err(e) => {
-                return HttpResponse::BadRequest().json(ReqErrModel {
-                    message: format!("Invalid school_id: {}", e),
-                });
-            }
-        }
-    } else {
-        // Use school_id from token
-        match ObjectId::from_str(&claims.id) {
-            Ok(id) => Some(id),
-            Err(e) => {
-                return HttpResponse::BadRequest().json(ReqErrModel {
-                    message: format!("Failed to parse school id from token: {}", e),
-                });
-            }
-        }
-    };
-
-    // Parse optional creator_id
-    let creator_id = if let Some(creator_id_str) = &data.creator_id {
-        match ObjectId::from_str(creator_id_str) {
-            Ok(id) => Some(id),
-            Err(e) => {
-                return HttpResponse::BadRequest().json(ReqErrModel {
-                    message: format!("Invalid creator_id: {}", e),
-                });
-            }
-        }
-    } else {
-        None
-    };
-
-    match service.prepare_teachers_for_bulk_creation(data.teachers.clone(), school_id, creator_id) {
-        Ok(prepared_teachers) => HttpResponse::Ok().json(prepared_teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Get teachers by type for current school
-#[get("/type/{type}/school")]
-async fn get_school_teachers_by_type(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let type_str = path.into_inner();
-    let teacher_type = match type_str.as_str() {
-        "regular" => TeacherType::Regular,
-        "headteacher" => TeacherType::HeadTeacher,
-        "subjectteacher" => TeacherType::SubjectTeacher,
-        "deputy" => TeacherType::Deputy,
-        _ => {
-            return HttpResponse::BadRequest().json(ReqErrModel {
-                message: "Invalid teacher type. Must be 'regular', 'headteacher', 'subjectteacher', or 'deputy'".to_string(),
-            })
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .get_school_teachers_by_type(&IdType::from_string(claims.id.clone()), teacher_type)
-        .await
-    {
-        Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
+// Single-database operations (keep using TeacherService)
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/school/teachers")
@@ -1794,69 +1673,65 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             // =============================================
             // PUBLIC ROUTES (READ-ONLY)
             // =============================================
-            // Teacher Listing & Retrieval
-            .service(get_all_teachers) // GET    /school/teachers - Get all teachers with optional filtering and pagination
-            .service(get_all_teachers_with_details) // GET    /school/teachers/with-details - Get all teachers with user, school, classes, and subjects relations
+            // Teacher Listing & Retrieval (Single Database)
+            .service(get_all_teachers) // GET    /school/teachers - Get all teachers with optional filtering
             .service(get_active_teachers) // GET    /school/teachers/active - Get only active teachers
+            .service(get_teacher_by_user_id) // GET    /school/teachers/user/{user_id} - Get teacher by user ID
+            .service(get_teacher_by_email) // GET    /school/teachers/email/{email} - Get teacher by email
+            .service(get_teachers_by_creator_id) // GET    /school/teachers/creator/{creator_id} - Get teachers by creator ID
+            .service(get_teachers_by_class_id) // GET    /school/teachers/class/{class_id} - Get teachers by class ID
+            .service(get_teachers_by_subject_id) // GET    /school/teachers/subject/{subject_id} - Get teachers by subject ID
+            // Teacher Listing & Retrieval (Cross Database - with relations)
+            .service(get_all_teachers_with_relations) // GET    /school/teachers/with-relations - Get all teachers with user/school relations
+            .service(get_teacher_by_id_with_relations) // GET    /school/teachers/{id}/with-relations - Get teacher by ID with full relations
+            .service(get_teacher_by_user_id_with_relations) // GET    /school/teachers/user/{user_id}/with-relations - Get teacher by user ID with relations
+            .service(get_teacher_by_email_with_relations) // GET    /school/teachers/email/{email}/with-relations - Get teacher by email with relations
+            .service(get_teachers_by_creator_id_with_relations) // GET    /school/teachers/creator/{creator_id}/with-relations - Get teachers by creator ID with relations
+            .service(get_teachers_by_type_with_relations) // GET    /school/teachers/type/{type}/with-relations - Get teachers by type with relations
+            .service(get_teachers_by_school_and_type_with_relations) // GET    /school/teachers/school/{school_id}/type/{type}/with-relations - Get teachers by school and type with relations
+            // Specialized Teacher Types (Single Database)
+            .service(get_school_head_teachers) // GET    /school/teachers/head-teachers - Get head teachers for current school
+            .service(get_school_subject_teachers) // GET    /school/teachers/subject-teachers - Get subject teachers for current school
+            .service(get_school_deputy_teachers) // GET    /school/teachers/deputy-teachers - Get deputy teachers for current school
+            .service(get_school_regular_teachers) // GET    /school/teachers/regular-teachers - Get regular teachers for current school
+            // Specialized Teacher Types (Cross Database - with relations)
+            .service(get_school_head_teachers_with_relations) // GET    /school/teachers/head-teachers/with-relations - Get head teachers with relations
+            .service(get_school_subject_teachers_with_relations) // GET    /school/teachers/subject-teachers/with-relations - Get subject teachers with relations
+            .service(get_school_deputy_teachers_with_relations) // GET    /school/teachers/deputy-teachers/with-relations - Get deputy teachers with relations
+            .service(get_school_regular_teachers_with_relations) // GET    /school/teachers/regular-teachers/with-relations - Get regular teachers with relations
+            // Permission Checking (Cross Database)
+            .service(is_user_teacher_of_school) // GET    /school/teachers/check/{user_id} - Check if user is teacher of school
+            // Statistics & Analytics (Mixed)
+            .service(count_teachers) // GET    /school/teachers/stats/count - Count teachers with optional filters
+            .service(count_teachers_by_creator_id) // GET    /school/teachers/stats/count-by-creator/{creator_id} - Count teachers by creator ID
+            .service(count_teachers_by_type) // GET    /school/teachers/stats/count-by-type/{type} - Count teachers by type
+            .service(count_teachers_by_class_id) // GET    /school/teachers/stats/count-by-class/{class_id} - Count teachers by class ID
+            .service(count_teachers_by_subject_id) // GET    /school/teachers/stats/count-by-subject/{subject_id} - Count teachers by subject ID
+            .service(get_school_teacher_statistics) // GET    /school/teachers/stats/school-statistics - Get comprehensive teacher statistics
             .service(get_teacher_by_id) // GET    /school/teachers/{id} - Get teacher by ID
-            .service(get_teacher_by_id_with_details) // GET    /school/teachers/{id}/with-details - Get teacher by ID with relations
-            .service(get_teacher_by_user_id) // GET    /school/teachers/user/{user_id} - Get teacher by associated user ID
-            .service(get_teacher_by_email) // GET    /school/teachers/email/{email} - Get teacher by email address
-            .service(get_teachers_by_creator_id) // GET    /school/teachers/creator/{creator_id} - Get teachers created by specific user
-            .service(get_teachers_by_class_id) // GET    /school/teachers/class/{class_id} - Get teachers by class id
-            .service(get_teachers_by_subject_id) // GET    /school/teachers/subject/{subject_id} - Get teachers by subject id
-            .service(get_teachers_by_type) // GET    /school/teachers/type/{type} - Get teachers by type (regular/headteacher/subjectteacher/deputy)
-            .service(get_teachers_by_school_and_type) // GET    /school/teachers/school/{school_id}/type/{type} - Get teachers by school and type combination
-            .service(get_class_teachers) // GET    /school/teachers/class/{class_id}/teachers - Get class teachers with details
-            .service(get_subject_teachers) // GET    /school/teachers/subject/{subject_id}/teachers - Get subject teachers with details
-            .service(find_teachers_by_name_pattern) // GET    /school/teachers/search/{name_pattern} - Find teachers by name pattern
-            .service(get_school_teachers_by_type) // GET /school/teachers/type/{type}/school
-            // Specialized Teacher Types
-            .service(get_school_head_teachers) // GET    /school/teachers/head-teachers - Get head teachers for school
-            .service(get_school_subject_teachers) // GET    /school/teachers/subject-teachers - Get subject teachers for school
-            .service(get_school_deputy_teachers) // GET    /school/teachers/deputy-teachers - Get deputy teachers for school
-            .service(get_school_regular_teachers) // GET    /school/teachers/regular-teachers - Get regular teachers for school
-            // Permission Checking
-            .service(is_user_teacher_of_school) // GET    /school/teachers/check/{user_id} - Check if user is teacher of current school
-            .service(is_teacher_in_class) // GET    /school/teachers/check/{teacher_id}/class/{class_id} - Check if teacher is in specific class
-            .service(is_teacher_in_subject) // GET    /school/teachers/check/{teacher_id}/subject/{subject_id} - Check if teacher teaches specific subject
-            // Statistics & Analytics
-            .service(count_teachers) // GET    /school/teachers/stats/count - Get total count of teachers in school
-            .service(count_teachers_by_creator_id) // GET    /school/teachers/stats/count-by-creator/{creator_id} - Count teachers created by specific user
-            .service(count_teachers_by_type) // GET    /school/teachers/stats/count-by-type/{type} - Count teachers by type in school
-            .service(count_teachers_by_class_id) // GET    /school/teachers/stats/count-by-class/{class_id} - Count teachers in specific class
-            .service(count_teachers_by_subject_id) // GET    /school/teachers/stats/count-by-subject/{subject_id} - Count teachers for specific subject
-            .service(get_school_teacher_statistics) // GET    /school/teachers/stats/school-statistics - Get detailed teacher statistics for school
             // =============================================
             // PROTECTED ROUTES (WRITE OPERATIONS)
             // =============================================
-            // Single Teacher Operations
+            // Single Teacher Operations (Single Database)
             .service(create_teacher) // POST   /school/teachers - Create new teacher
             .service(update_teacher) // PUT    /school/teachers/{id} - Update teacher by ID
-            .service(update_teacher_merged) // PUT    /school/teachers/{id}/merged - Update teacher with full data merge
+            .service(update_teacher_merged) // PUT    /school/teachers/{id}/merged - Update teacher with merged data
             .service(delete_teacher) // DELETE /school/teachers/{id} - Delete teacher by ID
-            // Teacher Status Management
-            .service(activate_teacher) // PUT    /school/teachers/{id}/activate - Activate a teacher
-            .service(deactivate_teacher) // PUT    /school/teachers/{id}/deactivate - Deactivate a teacher
-            // Teacher-Class-Subject Relationships
-            .service(add_classes_to_teacher) // PUT    /school/teachers/{id}/add-classes - Add classes to teacher
-            .service(add_subjects_to_teacher) // PUT    /school/teachers/{id}/add-subjects - Add subjects to teacher
-            .service(remove_classes_from_teacher) // PUT    /school/teachers/{id}/remove-classes - Remove classes from teacher
-            .service(remove_subjects_from_teacher) // PUT    /school/teachers/{id}/remove-subjects - Remove subjects from teacher
+            // Teacher Status Management (Single Database)
+            .service(activate_teacher) // PUT    /school/teachers/{id}/activate - Activate teacher
+            .service(deactivate_teacher) // PUT    /school/teachers/{id}/deactivate - Deactivate teacher
             // =============================================
             // BULK OPERATIONS
             // =============================================
-            // Bulk Creation
-            .service(create_many_teachers) // POST   /school/teachers/bulk - Create multiple teachers
-            .service(create_many_teachers_with_validation) // POST   /school/teachers/bulk/validation - Create multiple teachers with comprehensive validation
-            .service(prepare_teachers_for_bulk_creation) // POST   /school/teachers/bulk/prepare - Prepare teacher data for bulk creation
-            .service(prepare_teachers_for_bulk_creation_custom) // POST /school/teachers/bulk/prepare-custom
-            // Bulk Updates
-            .service(update_many_teachers) // PUT    /school/teachers/bulk-update - Update multiple teachers in single request
-            .service(bulk_update_teacher_active) // PUT    /school/teachers/bulk/active - Bulk update active status for multiple teachers
-            .service(bulk_add_tags_to_teachers) // PUT    /school/teachers/bulk/add-tags - Bulk add tags to multiple teachers
-            .service(bulk_remove_tags_from_teachers) // PUT    /school/teachers/bulk/remove-tags - Bulk remove tags from multiple teachers
-            // Bulk Deletion
-            .service(delete_many_teachers), // DELETE /school/teachers/bulk - Delete multiple teachers by IDs
+            // Bulk Creation (Mixed)
+            .service(create_many_teachers) // POST   /school/teachers/bulk - Create multiple teachers (cross-database)
+            .service(create_many_teachers_with_validation) // POST   /school/teachers/bulk/validation - Create multiple teachers with validation
+            // Bulk Updates (Cross Database)
+            .service(update_many_teachers) // PUT    /school/teachers/bulk-update - Update multiple teachers
+            .service(bulk_update_teacher_active) // PUT    /school/teachers/bulk/active - Bulk update teacher active status
+            .service(bulk_add_tags_to_teachers) // PUT    /school/teachers/bulk/add-tags - Bulk add tags to teachers
+            .service(bulk_remove_tags_from_teachers) // PUT    /school/teachers/bulk/remove-tags - Bulk remove tags from teachers
+            // Bulk Deletion (Single Database)
+            .service(delete_many_teachers), // DELETE /school/teachers/bulk - Delete multiple teachers
     );
 }

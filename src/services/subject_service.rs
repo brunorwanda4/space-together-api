@@ -213,6 +213,18 @@ impl<'a> SubjectService<'a> {
         Ok(sanitize_subjects(subjects))
     }
 
+    pub async fn get_subjects_by_class_teacher_id_with_relations(
+        &self,
+        teacher_id: &IdType,
+    ) -> Result<Vec<SubjectWithRelations>, String> {
+        let subjects = self
+            .repo
+            .find_by_class_teacher_id_with_relations(teacher_id)
+            .await
+            .map_err(|e| e.message)?;
+        Ok(subjects)
+    }
+
     /// Get subjects by class teacher ID
     pub async fn get_subjects_by_class_teacher_id(
         &self,

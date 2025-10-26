@@ -206,6 +206,21 @@ impl SubjectRepo {
         Ok(subjects)
     }
 
+    pub async fn find_by_class_teacher_id_with_relations(
+        &self,
+        teacher_id: &IdType,
+    ) -> Result<Vec<SubjectWithRelations>, AppError> {
+        let obj_id = parse_object_id(teacher_id)?;
+
+        aggregate_many(
+            &self.collection.clone().clone_with_type::<Document>(),
+            subject_with_relations_pipeline(doc! {
+                "class_teacher_id": obj_id
+            }),
+        )
+        .await
+    }
+
     pub async fn find_by_main_subject_id(
         &self,
         main_subject_id: &IdType,
@@ -861,8 +876,7 @@ impl SubjectRepo {
         &self,
         ids: Vec<IdType>,
     ) -> Result<Vec<SubjectWithRelations>, AppError> {
-        let object_ids: Result<Vec<ObjectId>, AppError> =
-            ids.iter().map(|id| parse_object_id(id)).collect();
+        let object_ids: Result<Vec<ObjectId>, AppError> = ids.iter().map(parse_object_id).collect();
 
         let object_ids = object_ids?;
 
@@ -992,5 +1006,3 @@ impl SubjectRepo {
         Ok(result.modified_count)
     }
 }
-
-// Pipeline functions for subject aggregations

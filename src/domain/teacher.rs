@@ -105,6 +105,7 @@ pub struct TeacherWithRelations {
     pub teacher: Teacher,
 
     pub user: Option<User>,
+    pub creator: Option<User>,
     pub school: Option<School>,
     pub classes: Option<Vec<Class>>,
     pub subjects: Option<Vec<Subject>>,

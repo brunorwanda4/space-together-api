@@ -633,4 +633,14 @@ impl<'a> ClassService<'a> {
 
         Ok(prepared_classes)
     }
+
+    pub async fn get_many_classes_by_ids(&self, ids: Vec<ObjectId>) -> Result<Vec<Class>, String> {
+        let classes = self
+            .repo
+            .find_many_by_ids(ids)
+            .await
+            .map_err(|e| e.message.clone())?;
+
+        Ok(sanitize_classes(classes))
+    }
 }

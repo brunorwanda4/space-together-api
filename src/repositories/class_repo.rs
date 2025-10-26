@@ -829,4 +829,27 @@ impl ClassRepo {
 
         Ok(updated_classes)
     }
+
+    pub async fn find_many_by_ids(&self, ids: Vec<ObjectId>) -> Result<Vec<Class>, AppError> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let filter = doc! {
+            "_id": { "$in": ids }
+        };
+
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to query classes by IDs: {}", e),
+        })?;
+
+        let mut classes = Vec::new();
+        while let Some(class) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Error reading class: {}", e),
+        })? {
+            classes.push(class);
+        }
+
+        Ok(classes)
+    }
 }

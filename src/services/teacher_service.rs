@@ -39,7 +39,7 @@ impl<'a> TeacherService<'a> {
     ) -> Result<Vec<Teacher>, String> {
         let teachers = self
             .repo
-            .get_all_teachers(filter, limit, skip)
+            .get_all_teachers(filter, limit, skip, None)
             .await
             .map_err(|e| e.message)?;
         Ok(teachers)
