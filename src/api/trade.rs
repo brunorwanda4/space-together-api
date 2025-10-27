@@ -4,12 +4,15 @@ use serde::Deserialize;
 
 use crate::{
     config::state::AppState,
+    controller::trade_controller::TradeController,
     domain::{
         auth_user::AuthUserDto,
         trade::{Trade, UpdateTrade},
     },
     models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
-    repositories::{sector_repo::SectorRepo, trade_repo::TradeRepo},
+    repositories::{
+        main_class_repo::MainClassRepo, sector_repo::SectorRepo, trade_repo::TradeRepo,
+    },
     services::{
         event_service::EventService, sector_service::SectorService, trade_service::TradeService,
     },
@@ -200,11 +203,12 @@ async fn get_trades_by_sector_ids(
     }
 }
 
+/// Create a trade and automatically create main classes for its levels
 #[post("")]
-async fn create_trade(
-    user: web::ReqData<AuthUserDto>,
-    data: web::Json<Trade>,
+pub async fn create_trade(
     state: web::Data<AppState>,
+    user: web::ReqData<AuthUserDto>,
+    body: web::Json<Trade>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
 
@@ -214,17 +218,23 @@ async fn create_trade(
         }));
     }
 
+    // 1️⃣ initialize repositories
     let trade_repo = TradeRepo::new(&state.db.main_db());
-    let trade_service = TradeService::new(&trade_repo);
+    let main_class_repo = MainClassRepo::new(&state.db.main_db());
 
+    // 2️⃣ initialize controller
+    let controller = TradeController::new(&trade_repo, &main_class_repo);
+
+    // 3️⃣ initialize SectorService (needed for validation)
     let sector_repo = SectorRepo::new(&state.db.main_db());
     let sector_service = SectorService::new(&sector_repo);
 
-    match trade_service
-        .create_trade(data.into_inner(), &sector_service)
+    // 4️⃣ create trade & main classes (controller handles business logic)
+    match controller
+        .create_trade_and_main_classes(body.into_inner(), &sector_service)
         .await
     {
-        Ok(trade) => {
+        Ok((trade, main_classes)) => {
             // 🔔 Broadcast real-time event
             let trade_clone = trade.clone();
             let state_clone = state.clone();
@@ -240,9 +250,12 @@ async fn create_trade(
                 }
             });
 
-            HttpResponse::Created().json(trade)
+            HttpResponse::Ok().json(serde_json::json!({
+                "trade": trade,
+                "main_classes": main_classes
+            }))
         }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(message) => HttpResponse::InternalServerError().json(ReqErrModel { message }),
     }
 }
 

@@ -1,5 +1,8 @@
 use crate::{
-    domain::user::{UpdateUserDto, User, UserStats},
+    domain::{
+        common_details::Image,
+        user::{UpdateUserDto, User, UserStats},
+    },
     errors::AppError,
     models::id_model::IdType,
     repositories::user_repo::UserRepo,
@@ -41,14 +44,14 @@ impl<'a> UserService<'a> {
         self.repo.get_user_stats().await.map_err(|e| e.message)
     }
 
-    /// Create a new user
+    /// ✅ Create a new user
     pub async fn create_user(&self, mut new_user: User) -> Result<User, String> {
         is_valid_name(&new_user.name)?;
         if let Some(ref username) = new_user.username {
             is_valid_username(username)?;
         }
 
-        // 🔒 Email and username uniqueness checks
+        // 🔒 Uniqueness checks
         if let Ok(Some(_)) = self.repo.find_by_email(&new_user.email).await {
             return Err("Email already exists".to_string());
         }
@@ -66,11 +69,24 @@ impl<'a> UserService<'a> {
             return Err("Password is required".to_string());
         }
 
-        // ☁️ Handle image upload
+        // ☁️ Upload profile image
         if let Some(image_data) = new_user.image.clone() {
             let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data).await?;
             new_user.image_id = Some(cloud_res.public_id);
             new_user.image = Some(cloud_res.secure_url);
+        }
+
+        // ☁️ Upload multiple background images
+        if let Some(background_images_data) = new_user.background_images.clone() {
+            let mut uploaded_images = Vec::new();
+            for bg in background_images_data {
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url).await?;
+                uploaded_images.push(Image {
+                    id: cloud_res.public_id,
+                    url: cloud_res.secure_url,
+                });
+            }
+            new_user.background_images = Some(uploaded_images);
         }
 
         let now = Some(Utc::now());
@@ -79,14 +95,14 @@ impl<'a> UserService<'a> {
 
         let inserted_user = self
             .repo
-            .insert_user(&new_user)
+            .insert_user(&mut new_user)
             .await
             .map_err(|e| e.message)?;
 
         Ok(sanitize_user(inserted_user))
     }
 
-    /// Get user by ID
+    /// ✅ Get user by ID
     pub async fn get_user_by_id(&self, id: &IdType) -> Result<User, String> {
         let user = self
             .repo
@@ -94,7 +110,6 @@ impl<'a> UserService<'a> {
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "User not found".to_string())?;
-
         Ok(sanitize_user(user))
     }
 
@@ -105,7 +120,6 @@ impl<'a> UserService<'a> {
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "User not found".to_string())?;
-
         Ok(sanitize_user(user))
     }
 
@@ -116,17 +130,15 @@ impl<'a> UserService<'a> {
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "User not found".to_string())?;
-
         Ok(sanitize_user(user))
     }
 
-    /// ✅ Update user (using partial DTO)
+    /// ✅ Update user (handles multiple background images)
     pub async fn update_user(
         &self,
         id: &IdType,
         mut updated_data: UpdateUserDto,
     ) -> Result<User, String> {
-        // 🧩 Find existing user
         let existing_user = self
             .repo
             .find_by_id(id)
@@ -134,12 +146,11 @@ impl<'a> UserService<'a> {
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "User not found".to_string())?;
 
-        // 🧠 Validate username if provided
         if let Some(ref username) = updated_data.username {
             is_valid_username(username)?;
         }
 
-        // 🔒 Email uniqueness check
+        // 🔒 Email uniqueness
         if let Some(ref email) = updated_data.email {
             if email != &existing_user.email {
                 if let Ok(Some(_)) = self.repo.find_by_email(email).await {
@@ -148,7 +159,7 @@ impl<'a> UserService<'a> {
             }
         }
 
-        // 🔒 Username uniqueness check
+        // 🔒 Username uniqueness
         if let Some(ref username) = updated_data.username {
             if existing_user.username.as_deref() != Some(username.as_str()) {
                 if let Ok(Some(_)) = self.repo.find_by_username(username).await {
@@ -157,25 +168,42 @@ impl<'a> UserService<'a> {
             }
         }
 
-        // ☁️ Image handling logic (replace old one if new image provided)
+        // ☁️ Replace profile image
         if let Some(new_image_data) = updated_data.image.clone() {
-            // delete old image if exists
             if let Some(old_image_id) = existing_user.image_id.clone() {
                 CloudinaryService::delete_from_cloudinary(&old_image_id)
                     .await
                     .ok();
             }
 
-            // upload new one
             let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data).await?;
             updated_data.image_id = Some(cloud_res.public_id);
             updated_data.image = Some(cloud_res.secure_url);
         }
 
-        // 🕒 Update timestamp
+        // ☁️ Replace or append background images
+        if let Some(new_backgrounds) = updated_data.background_images.clone() {
+            // Delete old backgrounds if any
+            if let Some(old_bgs) = existing_user.background_images.clone() {
+                for bg in old_bgs {
+                    CloudinaryService::delete_from_cloudinary(&bg.id).await.ok();
+                }
+            }
+
+            // Upload new ones
+            let mut uploaded_bgs = Vec::new();
+            for bg in new_backgrounds {
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url).await?;
+                uploaded_bgs.push(Image {
+                    id: cloud_res.public_id,
+                    url: cloud_res.secure_url,
+                });
+            }
+            updated_data.background_images = Some(uploaded_bgs);
+        }
+
         updated_data.updated_at = Some(Utc::now());
 
-        // 🔄 Apply partial update (only provided fields)
         let updated_user = self
             .repo
             .update_user_fields(&id.as_string(), &updated_data)
@@ -185,13 +213,19 @@ impl<'a> UserService<'a> {
         Ok(sanitize_user(updated_user))
     }
 
-    /// Delete a user by ID
+    /// ✅ Delete user (deletes all images)
     pub async fn delete_user(&self, id: &IdType) -> Result<(), String> {
         if let Ok(Some(user)) = self.repo.find_by_id(id).await {
             if let Some(image_public_id) = user.image_id {
                 CloudinaryService::delete_from_cloudinary(&image_public_id)
                     .await
                     .ok();
+            }
+
+            if let Some(backgrounds) = user.background_images {
+                for bg in backgrounds {
+                    CloudinaryService::delete_from_cloudinary(&bg.id).await.ok();
+                }
             }
         }
 
@@ -226,6 +260,8 @@ impl<'a> UserService<'a> {
         Ok(sanitize_user(updated_user))
     }
 }
+
+// 🧩 Helper for ID normalization
 fn extract_id_from_json_like(_user: &User) -> Option<String> {
     None
 }

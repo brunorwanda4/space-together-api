@@ -318,4 +318,60 @@ impl MainClassRepo {
             })?;
         Ok(result)
     }
+
+    pub async fn create_many_trades(
+        &self,
+        main_classes: &[MainClass],
+    ) -> Result<Vec<MainClass>, AppError> {
+        self.ensure_indexes().await?;
+
+        if main_classes.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Prepare the data
+        let mut to_insert_many = Vec::with_capacity(main_classes.len());
+        for mc in main_classes {
+            let mut to_insert = mc.clone();
+            to_insert.id = None;
+            to_insert.created_at = Some(Utc::now());
+            to_insert.updated_at = Some(Utc::now());
+            to_insert_many.push(to_insert);
+        }
+
+        // ✅ Insert structs directly, not Documents
+        let insert_result = self
+            .collection
+            .insert_many(to_insert_many)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to insert many main_classes: {}", e),
+            })?;
+
+        // Collect inserted IDs
+        let ids: Vec<ObjectId> = insert_result
+            .inserted_ids
+            .into_iter()
+            .filter_map(|(_, v)| v.as_object_id().map(|o| o.to_owned()))
+            .collect();
+
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Fetch the inserted documents
+        let filter = doc! { "_id": { "$in": ids } };
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to fetch inserted main_classes: {}", e),
+        })?;
+
+        let mut inserted = Vec::new();
+        while let Some(mc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate inserted main_classes: {}", e),
+        })? {
+            inserted.push(mc);
+        }
+
+        Ok(inserted)
+    }
 }

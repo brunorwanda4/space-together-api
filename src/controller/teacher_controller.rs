@@ -15,7 +15,6 @@ use crate::{
         subject_service::SubjectService, teacher_service::TeacherService,
         user_service::UserService,
     },
-    utils::{email::is_valid_email, names::is_valid_name},
 };
 
 pub struct TeacherController<'a> {

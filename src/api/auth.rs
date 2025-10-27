@@ -22,8 +22,8 @@ async fn register_user(
 ) -> impl Responder {
     let repo = UserRepo::new(&state.db.main_db());
     let service = AuthService::new(&repo);
-
-    match service.register(data.into_inner()).await {
+    let user_service = UserService::new(&repo);
+    match service.register(&user_service, data.into_inner()).await {
         Ok((token, user)) => HttpResponse::Created().json(serde_json::json!({
           "id": user.id.map(|i| i.to_string()),
             "email": user.email,

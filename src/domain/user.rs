@@ -124,6 +124,7 @@ pub struct User {
     pub availability_schedule: Option<Vec<DailyAvailability>>, //GPT when you are creating make Default Availability schedule (e.g., "Mon–Fri 9am–5pm", "Weekends only") for all days of week monday to friday
     pub department: Option<Department>,
     pub job_title: Option<JobTitle>,
+    pub teaching_style: Option<Vec<StudyStyle>>,
 
     // =========================================================
     // 🔹 Timestamps
@@ -186,7 +187,7 @@ pub struct UpdateUserDto {
     pub learning_challenges: Option<Vec<LearningChallenge>>,
 
     // 🔹 Teaching-related info
-    pub teaching_level: Option<Vec<ObjectId>>,
+    pub teaching_level: Option<Vec<ObjectId>>, // relationship with trades collection
     pub employment_type: Option<EmploymentType>,
     pub teaching_start_date: Option<DateTime<Utc>>,
     pub years_of_experience: Option<DateTime<Utc>>,
@@ -197,6 +198,7 @@ pub struct UpdateUserDto {
     pub availability_schedule: Option<Vec<DailyAvailability>>,
     pub department: Option<Department>,
     pub job_title: Option<JobTitle>,
+    pub teaching_style: Option<Vec<StudyStyle>>,
 
     // 🔹 Timestamp
     pub updated_at: Option<DateTime<Utc>>,
@@ -216,15 +218,3 @@ pub struct UserStats {
     pub no_school: i64,
     pub recent_30_days: i64,
 }
-
-//     #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct TimeRange {
-//     pub start: NaiveTime,
-//     pub end: NaiveTime,
-// }
-
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct DailyAvailability {
-//     pub day: Weekday,
-//     pub time_range: TimeRange,
-// }

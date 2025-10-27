@@ -1,15 +1,54 @@
+use crate::{domain::sector::Sector, helpers::object_id_helpers};
 use chrono::{DateTime, Utc};
 use mongodb::bson::{self, oid::ObjectId};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
-use crate::{domain::sector::Sector, helpers::object_id_helpers};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(from = "String", into = "String")]
 pub enum TradeType {
     Senior,
     Primary,
     Level,
     Nursing,
+    Other(String),
+}
+
+impl From<TradeType> for String {
+    fn from(t: TradeType) -> String {
+        match t {
+            TradeType::Senior => "SENIOR".to_string(),
+            TradeType::Primary => "PRIMARY".to_string(),
+            TradeType::Level => "LEVEL".to_string(),
+            TradeType::Nursing => "NURSING".to_string(),
+            TradeType::Other(s) => s,
+        }
+    }
+}
+
+impl From<String> for TradeType {
+    fn from(s: String) -> TradeType {
+        match s.to_uppercase().as_str() {
+            "SENIOR" => TradeType::Senior,
+            "PRIMARY" => TradeType::Primary,
+            "LEVEL" => TradeType::Level,
+            "NURSING" => TradeType::Nursing,
+            _ => TradeType::Other(s),
+        }
+    }
+}
+
+// ✅ Implement Display (this is what enables `.to_string()`)
+impl fmt::Display for TradeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TradeType::Senior => write!(f, "Senior"),
+            TradeType::Primary => write!(f, "Primary"),
+            TradeType::Level => write!(f, "Level"),
+            TradeType::Nursing => write!(f, "Nursing"),
+            TradeType::Other(s) => write!(f, "{s}"),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

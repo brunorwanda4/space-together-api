@@ -2,3 +2,4 @@ pub mod class_controller;
 pub mod join_school_request_controller;
 pub mod school_controller;
 pub mod teacher_controller;
+pub mod trade_controller;

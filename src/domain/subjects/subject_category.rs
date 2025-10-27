@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
 pub enum SubjectCategory {
     Science,
     Technology,
@@ -12,6 +13,46 @@ pub enum SubjectCategory {
     Arts,
     TVET,
     Other(String),
+}
+
+impl From<SubjectCategory> for String {
+    fn from(s: SubjectCategory) -> String {
+        match s {
+            SubjectCategory::Science => "Science".to_string(),
+            SubjectCategory::Technology => "Technology".to_string(),
+            SubjectCategory::Engineering => "Engineering".to_string(),
+            SubjectCategory::Mathematics => "Mathematics".to_string(),
+            SubjectCategory::Language => "Language".to_string(),
+            SubjectCategory::SocialScience => "SocialScience".to_string(),
+            SubjectCategory::Arts => "Arts".to_string(),
+            SubjectCategory::TVET => "TVET".to_string(),
+            SubjectCategory::Other(x) => x,
+        }
+    }
+}
+
+impl From<String> for SubjectCategory {
+    fn from(s: String) -> Self {
+        // keep original for Other(...) but match on a normalized form
+        let raw = s.clone();
+        let normalized: String = s
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect();
+
+        match normalized.as_str() {
+            "science" => SubjectCategory::Science,
+            "technology" => SubjectCategory::Technology,
+            "engineering" => SubjectCategory::Engineering,
+            "mathematics" | "math" => SubjectCategory::Mathematics,
+            "language" => SubjectCategory::Language,
+            "socialscience" | "socialsci" | "socialscience" => SubjectCategory::SocialScience,
+            "arts" => SubjectCategory::Arts,
+            "tvet" => SubjectCategory::TVET,
+            _ => SubjectCategory::Other(raw),
+        }
+    }
 }
 
 impl fmt::Display for SubjectCategory {

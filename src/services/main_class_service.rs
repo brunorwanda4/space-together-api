@@ -20,34 +20,6 @@ impl<'a> MainClassService<'a> {
         }
     }
 
-    pub async fn get_all_with_trade(&self) -> Result<Vec<MainClassWithTrade>, String> {
-        self.repo.get_all_with_trade().await.map_err(|e| e.message)
-    }
-
-    pub async fn get_with_trade_id(
-        &self,
-        trade_id: &IdType,
-    ) -> Result<Vec<MainClassWithTrade>, String> {
-        self.repo
-            .find_by_trade_id(trade_id)
-            .await
-            .map_err(|e| e.message)
-    }
-
-    /// Get all main classes
-    pub async fn get_all(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-        trade_id: Option<String>,
-    ) -> Result<Vec<MainClass>, String> {
-        self.repo
-            .get_all(filter, limit, skip, trade_id)
-            .await
-            .map_err(|e| e.message)
-    }
-
     /// Create a new main class
     pub async fn create_main_class(&self, mut new_class: MainClass) -> Result<MainClass, String> {
         // 1️⃣ Check username uniqueness
@@ -100,6 +72,34 @@ impl<'a> MainClassService<'a> {
             .map_err(|e| e.message)?;
 
         Ok(inserted)
+    }
+
+    pub async fn get_all_with_trade(&self) -> Result<Vec<MainClassWithTrade>, String> {
+        self.repo.get_all_with_trade().await.map_err(|e| e.message)
+    }
+
+    pub async fn get_with_trade_id(
+        &self,
+        trade_id: &IdType,
+    ) -> Result<Vec<MainClassWithTrade>, String> {
+        self.repo
+            .find_by_trade_id(trade_id)
+            .await
+            .map_err(|e| e.message)
+    }
+
+    /// Get all main classes
+    pub async fn get_all(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        trade_id: Option<String>,
+    ) -> Result<Vec<MainClass>, String> {
+        self.repo
+            .get_all(filter, limit, skip, trade_id)
+            .await
+            .map_err(|e| e.message)
     }
 
     /// Get main class by ID
@@ -230,5 +230,22 @@ impl<'a> MainClassService<'a> {
     /// Delete main class
     pub async fn delete(&self, id: &IdType) -> Result<(), String> {
         self.repo.delete_main_class(id).await.map_err(|e| e.message)
+    }
+
+    pub async fn create_many_main_classes(
+        &self,
+        new_classes: Vec<MainClass>,
+    ) -> Result<Vec<MainClass>, String> {
+        if new_classes.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let inserted = self
+            .repo
+            .create_many_trades(&new_classes)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(inserted)
     }
 }

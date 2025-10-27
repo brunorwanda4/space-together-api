@@ -28,7 +28,11 @@ impl<'a> AuthService<'a> {
     }
 
     /// ✅ Register a new user
-    pub async fn register(&self, data: RegisterUser) -> Result<(String, User), String> {
+    pub async fn register(
+        &self,
+        user_service: &UserService<'a>,
+        data: RegisterUser,
+    ) -> Result<(String, User), String> {
         is_valid_email(&data.email)?;
 
         // 🔒 Ensure email not already taken
@@ -43,6 +47,7 @@ impl<'a> AuthService<'a> {
 
         // 🧱 Create new user record (fill all fields)
         let user = User {
+            // 🔹 Identification & Authentication
             id: None,
             name: valid_name,
             email: data.email,
@@ -50,60 +55,61 @@ impl<'a> AuthService<'a> {
             password_hash: Some(hash_password(&data.password)),
             role: Some(UserRole::STUDENT),
 
-            // 🔹 Cloudinary (image)
+            // 🔹 Profile & Media
             image_id: None,
             image: None,
-
-            // 🔹 Contact
-            phone: None,
-
-            // 🔹 Personal details
-            gender: None,
-            age: None,
-
-            // 🔹 Location
-            address: None,
-
-            // 🔹 Social media
-            social_media: None,
-
-            // 🔹 School relationships
-            current_school_id: None,
-            schools: Some(vec![]),
-            accessible_classes: Some(vec![]),
-
-            // 🔹 Profile & accessibility
+            background_images: Some(vec![]),
             bio: None,
             disable: Some(false),
 
-            // 🔹 Academic interests
-            favorite_subjects_category: None,
-            preferred_study_styles: None,
+            // 🔹 Contact & Social
+            phone: None,
+            address: None,
+            social_media: None,
+            preferred_communication_method: None,
+
+            // 🔹 Personal Info
+            gender: None,
+            age: None,
             languages_spoken: None,
             hobbies_interests: None,
             dream_career: None,
             special_skills: None,
             health_or_learning_notes: None,
 
-            // 🔹 Communications
-            preferred_communication_method: None,
+            // 🔹 Academic & School
+            current_school_id: None,
+            schools: Some(vec![]),
+            accessible_classes: Some(vec![]),
+            favorite_subjects_category: None,
+            preferred_study_styles: None,
 
-            // 🔹 Guardian information
+            // 🔹 Guardian, Support, Learning
             guardian_info: None,
-
-            // 🔹 Support & challenges
             special_support_needed: None,
             learning_challenges: None,
+
+            // 🔹 Teaching & Employment
+            teaching_level: Some(vec![]),
+            employment_type: None,
+            teaching_start_date: None,
+            years_of_experience: None,
+            education_level: None,
+            certifications_trainings: Some(vec![]),
+            preferred_age_group: None,
+            professional_goals: Some(vec![]),
+            availability_schedule: Some(vec![]),
+            department: None,
+            job_title: None,
+            teaching_style: None,
 
             // 🔹 Timestamps
             created_at: now,
             updated_at: now,
         };
-
         // 💾 Save user
-        let res = self
-            .repo
-            .insert_user(&user)
+        let res = user_service
+            .create_user(user)
             .await
             .map_err(|e| e.to_string())?;
 
