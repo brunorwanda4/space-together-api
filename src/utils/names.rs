@@ -3,11 +3,19 @@ use rand::{rng, seq::SliceRandom};
 use regex::Regex;
 
 pub fn is_valid_name(name: &str) -> Result<String, String> {
-    let re = Regex::new(r"^[a-zA-Z\s\-'\.,]*$").unwrap();
-    if re.is_match(name) {
-        let word_count = name.split_whitespace().count();
+    let re = Regex::new(r"^[a-zA-Z\s\-'\.,]+$").unwrap();
+
+    // Trim and collapse multiple spaces
+    let cleaned_name = name
+        .split_whitespace()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if re.is_match(&cleaned_name) {
+        let word_count = cleaned_name.split_whitespace().count();
         if word_count >= 2 {
-            Ok(name.to_string())
+            Ok(cleaned_name)
         } else {
             Err(
                 "Name is valid but not a full name. Please provide both first and last names."
