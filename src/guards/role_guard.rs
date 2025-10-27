@@ -1,5 +1,4 @@
-use crate::domain::auth_user::AuthUserDto;
-use crate::domain::user_role::UserRole;
+use crate::domain::{auth_user::AuthUserDto, common_details::UserRole};
 use actix_web::{error, Error};
 
 /// Check if user is admin

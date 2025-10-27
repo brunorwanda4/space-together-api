@@ -53,6 +53,11 @@ pub struct SchoolStaff {
     #[serde(default)]
     pub tags: Vec<String>,
 
+    // Department or office where the user works (e.g., "Administration", "Finance", "Library", "IT", "HR")
+    // pub department: Option<String>,
+
+    // Job title or position (e.g., "Accountant", "Secretary", "Clerk", "Librarian", "Security")
+    // pub job_title: Option<String>,
     #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
 

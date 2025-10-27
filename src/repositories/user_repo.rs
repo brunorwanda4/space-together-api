@@ -1,14 +1,14 @@
-use crate::domain::user::UserStats;
+use crate::domain::user::{UpdateUserDto, User, UserStats};
 use crate::errors::AppError;
+use crate::models::id_model::IdType;
 use crate::services::user_service::normalize_user_ids;
-use crate::{domain::user::User, models::id_model::IdType};
 use chrono::{Duration, Utc};
 use futures::TryStreamExt;
-use mongodb::{bson, IndexModel};
+use mongodb::bson::Document;
 use mongodb::{
-    bson::{doc, oid::ObjectId, DateTime as BsonDateTime},
+    bson::{self, doc, oid::ObjectId, DateTime as BsonDateTime},
     options::IndexOptions,
-    Collection, Database,
+    Collection, Database, IndexModel,
 };
 use std::time::SystemTime;
 
@@ -47,7 +47,6 @@ impl UserRepo {
         let user_obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
             message: format!("Failed to format id: {}", e),
         })?;
-
         let filter = doc! { "_id": user_obj_id };
         self.collection
             .find_one(filter)
@@ -58,6 +57,7 @@ impl UserRepo {
     }
 
     pub async fn insert_user(&self, user: &User) -> Result<User, AppError> {
+        // Ensure unique email & username
         let index = IndexModel::builder()
             .keys(doc! {
                 "email": 1,
@@ -73,9 +73,8 @@ impl UserRepo {
                 message: format!("Failed to create index: {}", e),
             })?;
 
-        // Normalize IDs before inserting
         let mut user_to_insert = normalize_user_ids(user.clone())?;
-        user_to_insert.id = None; // let MongoDB generate _id
+        user_to_insert.id = None;
 
         let res = self
             .collection
@@ -85,26 +84,18 @@ impl UserRepo {
                 message: format!("Failed to insert user: {}", e),
             })?;
 
-        let inserted_object_id: ObjectId = res
-            .inserted_id
-            .as_object_id()
-            .ok_or_else(|| AppError {
-                message: format!(
-                    "Failed to convert inserted_id ({:?}) to ObjectId",
-                    res.inserted_id
-                ),
-            })?
-            .to_owned();
+        let inserted_object_id = res.inserted_id.as_object_id().ok_or_else(|| AppError {
+            message: "Failed to convert inserted_id to ObjectId".to_string(),
+        })?;
 
         match self
             .find_by_id(&IdType::from_object_id(inserted_object_id))
             .await
         {
             Ok(Some(u)) => Ok(u),
-            Ok(None) => Err(AppError {
-                message: "User not found".to_string(),
+            _ => Err(AppError {
+                message: "User not found after insert".to_string(),
             }),
-            Err(e) => Err(e),
         }
     }
 
@@ -130,9 +121,14 @@ impl UserRepo {
                         { "username": &regex },
                         { "phone": &regex },
                         { "gender": &regex },
-                        { "age": &regex },
-                        { "address": &regex },
                         { "bio": &regex },
+                        { "dream_career": &regex },
+                        { "hobbies_interests": &regex },
+                        { "special_skills": &regex },
+                        { "languages_spoken": &regex },
+                        { "preferred_communication_method": &regex },
+                        { "learning_challenges": &regex },
+                        { "special_support_needed": &regex },
                     ]
                 }
             });
@@ -171,16 +167,34 @@ impl UserRepo {
         Ok(users)
     }
 
-    pub async fn update_user(&self, id: &IdType, updated_user: &User) -> Result<User, AppError> {
-        let user_obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse id: {}", e),
+    /// ✅ Updated version — partial update with `UpdateUserDto`
+    pub async fn update_user_fields(
+        &self,
+        id: &str,
+        update_dto: &UpdateUserDto,
+    ) -> Result<User, AppError> {
+        let user_obj_id = ObjectId::parse_str(id).map_err(|e| AppError {
+            message: format!("Invalid id: {}", e),
         })?;
 
-        let mut update_doc = bson::to_document(updated_user).map_err(|e| AppError {
-            message: format!("Failed to convert user to document: {}", e),
+        // Convert UpdateUserDto to BSON Document
+        let update_doc_full = bson::to_document(update_dto).map_err(|e| AppError {
+            message: format!("Failed to convert update dto to document: {}", e),
         })?;
-        update_doc.remove("_id");
 
+        // Filter out null or None fields
+        let update_doc: Document = update_doc_full
+            .into_iter()
+            .filter(|(_, v)| !matches!(v, bson::Bson::Null))
+            .collect();
+
+        if update_doc.is_empty() {
+            return Err(AppError {
+                message: "No valid fields to update".to_string(),
+            });
+        }
+
+        // Perform the update
         self.collection
             .update_one(doc! { "_id": user_obj_id }, doc! { "$set": update_doc })
             .await
@@ -188,9 +202,19 @@ impl UserRepo {
                 message: format!("Failed to update user: {}", e),
             })?;
 
-        self.find_by_id(id).await?.ok_or(AppError {
-            message: "User not found after update".to_string(),
-        })
+        // Return updated document
+        let updated_user = self
+            .collection
+            .find_one(doc! { "_id": user_obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Error fetching updated user: {}", e),
+            })?
+            .ok_or(AppError {
+                message: "User not found after update".to_string(),
+            })?;
+
+        Ok(updated_user)
     }
 
     pub async fn delete_user(&self, id: &IdType) -> Result<(), AppError> {
@@ -254,14 +278,12 @@ impl UserRepo {
             .count_documents(doc! { "current_school_id": { "$exists": false } })
             .await?;
 
-        // 🔹 Fix for recent 30 days
-        let thirty_days_ago_chrono = Utc::now() - Duration::days(30);
-        let thirty_days_ago_system: SystemTime = thirty_days_ago_chrono.into();
-        let thirty_days_ago_bson = BsonDateTime::from_system_time(thirty_days_ago_system);
+        let thirty_days_ago = Utc::now() - Duration::days(30);
+        let thirty_days_bson = BsonDateTime::from_system_time(SystemTime::from(thirty_days_ago));
 
-        let recent_30_days_count = self
+        let recent_30_days = self
             .collection
-            .count_documents(doc! { "created_at": { "$gte": thirty_days_ago_bson } })
+            .count_documents(doc! { "created_at": { "$gte": thirty_days_bson } })
             .await?;
 
         Ok(UserStats {
@@ -275,7 +297,7 @@ impl UserRepo {
             teachers: teachers as i64,
             assigned_school: assigned_school as i64,
             no_school: no_school as i64,
-            recent_30_days: recent_30_days_count as i64,
+            recent_30_days: recent_30_days as i64,
         })
     }
 
@@ -284,20 +306,17 @@ impl UserRepo {
         user_id: &IdType,
         school_id: &IdType,
     ) -> Result<User, AppError> {
-        use chrono::Utc;
-        use mongodb::bson::{doc, oid::ObjectId};
+        use mongodb::bson::oid::ObjectId;
 
         let user_obj_id = ObjectId::parse_str(user_id.as_string()).map_err(|e| AppError {
             message: format!("Invalid user id: {}", e),
         })?;
-
         let school_obj_id = ObjectId::parse_str(school_id.as_string()).map_err(|e| AppError {
             message: format!("Invalid school id: {}", e),
         })?;
 
         let filter = doc! { "_id": &user_obj_id };
 
-        // ✅ Step 1: Fetch user document directly from MongoDB
         let user_doc = self
             .collection
             .find_one(filter.clone())
@@ -307,24 +326,21 @@ impl UserRepo {
             })?;
 
         if let Some(user_doc) = user_doc {
-            // ✅ Convert to BSON Document manually
             let raw_doc = mongodb::bson::to_document(&user_doc).unwrap_or_default();
             let needs_init = match raw_doc.get("schools") {
                 Some(mongodb::bson::Bson::Array(_)) => false,
-                _ => true, // field missing or not array
+                _ => true,
             };
-
             if needs_init {
-                // ✅ Initialize `schools` field as an empty array
                 self.collection
-                .update_one(
-                    doc! { "_id": &user_obj_id },
-                    doc! { "$set": { "schools": bson::to_bson(&Vec::<ObjectId>::new()).unwrap() } },
-                )
-                .await
-                .map_err(|e| AppError {
-                    message: format!("Failed to initialize schools field: {}", e),
-                })?;
+                    .update_one(
+                        doc! { "_id": &user_obj_id },
+                        doc! { "$set": { "schools": bson::to_bson(&Vec::<ObjectId>::new()).unwrap() } },
+                    )
+                    .await
+                    .map_err(|e| AppError {
+                        message: format!("Failed to init schools: {}", e),
+                    })?;
             }
         } else {
             return Err(AppError {
@@ -332,7 +348,6 @@ impl UserRepo {
             });
         }
 
-        // ✅ Step 2: Now safely update user with $addToSet
         let update = doc! {
             "$addToSet": { "schools": &school_obj_id },
             "$set": {
@@ -345,10 +360,9 @@ impl UserRepo {
             .update_one(filter.clone(), update)
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to add school to user: {}", e),
+                message: format!("Failed to add school: {}", e),
             })?;
 
-        // ✅ Step 3: Return updated user document
         self.collection
             .find_one(filter)
             .await
@@ -360,7 +374,6 @@ impl UserRepo {
             })
     }
 
-    /// Remove a school ID from a user's schools array
     pub async fn remove_school_from_user(
         &self,
         user_id: &IdType,
@@ -374,7 +387,6 @@ impl UserRepo {
         })?;
 
         let filter = doc! { "_id": user_obj_id };
-
         let update = doc! {
             "$pull": { "schools": school_obj_id },
            "$set": { "updated_at": Utc::now().to_rfc3339() }
@@ -384,7 +396,7 @@ impl UserRepo {
             .update_one(filter.clone(), update)
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to remove school from user: {}", e),
+                message: format!("Failed to remove school: {}", e),
             })?;
 
         self.collection

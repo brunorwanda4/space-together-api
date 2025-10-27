@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{common_details::Gender, user_role::UserRole};
+use crate::domain::common_details::{Gender, UserRole};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthUserDto {
