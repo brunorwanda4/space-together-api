@@ -58,7 +58,7 @@ impl<'a> AuthService<'a> {
             // 🔹 Profile & Media
             image_id: None,
             image: None,
-            background_images: Some(vec![]),
+            background_images: None,
             bio: None,
             disable: Some(false),
 
@@ -79,8 +79,8 @@ impl<'a> AuthService<'a> {
 
             // 🔹 Academic & School
             current_school_id: None,
-            schools: Some(vec![]),
-            accessible_classes: Some(vec![]),
+            schools: None,
+            accessible_classes: None,
             favorite_subjects_category: None,
             preferred_study_styles: None,
 
@@ -90,15 +90,15 @@ impl<'a> AuthService<'a> {
             learning_challenges: None,
 
             // 🔹 Teaching & Employment
-            teaching_level: Some(vec![]),
+            teaching_level: None,
             employment_type: None,
             teaching_start_date: None,
             years_of_experience: None,
             education_level: None,
-            certifications_trainings: Some(vec![]),
+            certifications_trainings: None,
             preferred_age_group: None,
-            professional_goals: Some(vec![]),
-            availability_schedule: Some(vec![]),
+            professional_goals: None,
+            availability_schedule: None,
             department: None,
             job_title: None,
             teaching_style: None,

@@ -7,7 +7,8 @@ use crate::{
         common_details::{
             Age, AgeGroup, CertificationOrTraining, CommunicationMethod, DailyAvailability,
             Department, EducationLevel, EmploymentType, Gender, Image, JobTitle, Language,
-            LearningChallenge, ProfessionalGoal, SocialMedia, SpecialSupport, StudyStyle, UserRole,
+            LearningChallenge, ProfessionalGoal, SocialMedia, SpecialSupport, StudyStyle,
+            TeachingStyle, UserRole,
         },
         guardian::GuardianInfo,
         subjects::subject_category::SubjectCategory,
@@ -198,7 +199,7 @@ pub struct UpdateUserDto {
     pub availability_schedule: Option<Vec<DailyAvailability>>,
     pub department: Option<Department>,
     pub job_title: Option<JobTitle>,
-    pub teaching_style: Option<Vec<StudyStyle>>,
+    pub teaching_style: Option<Vec<TeachingStyle>>,
 
     // 🔹 Timestamp
     pub updated_at: Option<DateTime<Utc>>,

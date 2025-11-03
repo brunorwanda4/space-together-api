@@ -130,6 +130,13 @@ async fn onboarding_user(
         }
     };
 
+    if let Err(err) = crate::guards::role_guard::check_owner_or_admin(&logged_user, &logged_user.id)
+    {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err.to_string()
+        }));
+    }
+
     let repo = UserRepo::new(&state.db.main_db());
     let user_service = UserService::new(&repo);
     let auth_service = AuthService::new(&repo);
