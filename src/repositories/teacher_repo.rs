@@ -488,11 +488,16 @@ impl TeacherRepo {
         Ok(teachers)
     }
 
-    pub async fn get_active_teachers(&self) -> Result<Vec<Teacher>, AppError> {
+    pub async fn get_active_teachers(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Teacher>, AppError> {
         self.get_all_teachers(
-            None,                             // no search text
-            None,                             // no limit
-            None,                             // no skip
+            filter,                           // no search text
+            limit,                            // no limit
+            skip,                             // no skip
             Some(doc! { "is_active": true }), // extra filter
         )
         .await

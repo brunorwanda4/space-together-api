@@ -58,6 +58,7 @@ fn create_class_controller(
         user_service,
         teacher_service,
         main_class_service,
+        trade_service,
     )
 }
 
@@ -268,7 +269,10 @@ async fn update_school_class(
     let repo = ClassRepo::new(&school_db);
     let service = ClassService::new(&repo);
 
-    match service.update_class(&class_id, data.into_inner()).await {
+    match service
+        .update_class_merged(&class_id, data.into_inner())
+        .await
+    {
         Ok(class) => {
             // Broadcast updated class event
             let class_clone = class.clone();

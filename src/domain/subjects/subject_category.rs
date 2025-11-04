@@ -47,7 +47,7 @@ impl From<String> for SubjectCategory {
             "engineering" => SubjectCategory::Engineering,
             "mathematics" | "math" => SubjectCategory::Mathematics,
             "language" => SubjectCategory::Language,
-            "socialscience" | "socialsci" | "socialscience" => SubjectCategory::SocialScience,
+            "socialscience" | "socialsci" => SubjectCategory::SocialScience,
             "arts" => SubjectCategory::Arts,
             "tvet" => SubjectCategory::TVET,
             _ => SubjectCategory::Other(raw),

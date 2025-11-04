@@ -1,5 +1,8 @@
 use crate::{
-    domain::{main_class::MainClass, school::School, teacher::Teacher, user::User},
+    domain::{
+        common_details::Image, main_class::MainClass, school::School, teacher::Teacher,
+        trade::Trade, user::User,
+    },
     helpers::object_id_helpers,
 };
 use chrono::{DateTime, Utc};
@@ -65,8 +68,19 @@ pub struct Class {
     )]
     pub main_class_id: Option<ObjectId>,
 
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub trade_id: Option<ObjectId>,
+
     pub is_active: bool,
 
+    pub image_id: Option<String>,
+    pub image: Option<String>,
+    pub background_images: Option<Vec<Image>>,
     pub description: Option<String>,
     pub capacity: Option<u32>,
     pub subject: Option<String>,
@@ -81,11 +95,15 @@ pub struct Class {
     #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
 }
+
 #[derive(Debug, Deserialize, Default, Serialize, Clone)]
 pub struct UpdateClass {
     pub name: Option<String>,
     pub username: Option<String>,
     pub code: Option<Option<String>>, // Allows setting to None
+    pub image_id: Option<String>,
+    pub image: Option<String>,
+    pub background_images: Option<Vec<Image>>,
     pub school_id: Option<Option<ObjectId>>,
     pub class_teacher_id: Option<Option<ObjectId>>,
     pub r#type: Option<ClassType>,
@@ -114,6 +132,7 @@ pub struct ClassWithOthers {
     pub creator: Option<User>, // You'll need to define User struct
     pub class_teacher: Option<Teacher>,
     pub main_class: Option<MainClass>,
+    pub trade: Option<Trade>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -1,7 +1,11 @@
 use crate::{
-    domain::class::{Class, ClassWithOthers, ClassWithSchool, UpdateClass},
+    domain::{
+        class::{Class, ClassWithOthers, ClassWithSchool, UpdateClass},
+        common_details::Image,
+    },
     models::id_model::IdType,
     repositories::class_repo::ClassRepo,
+    services::cloudinary_service::CloudinaryService,
     utils::{
         class_utils::{sanitize_class, sanitize_classes},
         code::generate_code,
@@ -69,6 +73,25 @@ impl<'a> ClassService<'a> {
             }
         }
 
+        if let Some(image_data) = new_class.image.clone() {
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data).await?;
+            new_class.image_id = Some(cloud_res.public_id);
+            new_class.image = Some(cloud_res.secure_url);
+        }
+
+        // ☁️ Upload multiple background images
+        if let Some(background_images_data) = new_class.background_images.clone() {
+            let mut uploaded_images = Vec::new();
+            for bg in background_images_data {
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url).await?;
+                uploaded_images.push(Image {
+                    id: cloud_res.public_id,
+                    url: cloud_res.secure_url,
+                });
+            }
+            new_class.background_images = Some(uploaded_images);
+        }
+
         // Check if username already exists
         if let Ok(Some(_)) = self.repo.find_by_username(&new_class.username).await {
             return Err("Class username already exists".to_string());
@@ -112,21 +135,6 @@ impl<'a> ClassService<'a> {
             .ok_or_else(|| "Class not found".to_string())?;
 
         Ok(sanitize_class(class))
-    }
-
-    pub async fn get_all_school_classes_with_others(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-    ) -> Result<Vec<ClassWithOthers>, String> {
-        let class = self
-            .repo
-            .find_class_with_others(None, filter, limit, skip)
-            .await
-            .map_err(|e| e.message.clone())?;
-
-        Ok(class)
     }
 
     /// Get class by ID with related information
@@ -247,83 +255,33 @@ impl<'a> ClassService<'a> {
         Ok(sanitize_classes(classes))
     }
 
-    /// Update a class
-    pub async fn update_class(
-        &self,
-        id: &IdType,
-        updated_data: UpdateClass,
-    ) -> Result<Class, String> {
-        // Validate username if provided
-        if let Some(ref username) = updated_data.username {
-            is_valid_username(username)?;
-        }
-        let existing_class = self
-            .repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        // Check username uniqueness if provided and changed
-        if let Some(ref username) = updated_data.username {
-            if existing_class.username != *username {
-                if let Ok(Some(_)) = self.repo.find_by_username(username).await {
-                    return Err("Class username already exists".to_string());
-                }
-            }
-        }
-
-        // Check code uniqueness if provided and changed
-        if let Some(ref code) = updated_data.code {
-            if existing_class.code.as_ref() != code.as_ref() {
-                if let Ok(Some(_)) = self
-                    .repo
-                    .find_by_code(code.as_ref().unwrap_or(&"".to_string()))
-                    .await
-                {
-                    return Err("Class code already exists".to_string());
-                }
-            }
-        }
-
-        // Update class using repository method
-        let updated_class = self
-            .repo
-            .update_class(id, &updated_data)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_class(updated_class))
-    }
-
-    /// Alternative approach: update class by merging with existing data
     pub async fn update_class_merged(
         &self,
         id: &IdType,
         updated_data: UpdateClass,
     ) -> Result<Class, String> {
-        // Validate username if provided
+        // ✅ Validate username
         if let Some(ref username) = updated_data.username {
             is_valid_username(username)?;
         }
 
-        let existing_class = self
+        let mut existing_class = self
             .repo
             .find_by_id(id)
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "Class not found".to_string())?;
 
-        // Check username uniqueness if provided and changed
+        // ✅ Unique username check
         if let Some(ref username) = updated_data.username {
             if existing_class.username != *username {
                 if let Ok(Some(_)) = self.repo.find_by_username(username).await {
-                    return Err("Class username already exists".to_string());
+                    return Err("Class username already exists".into());
                 }
             }
         }
 
-        // Check code uniqueness if provided and changed
+        // ✅ Unique code check
         if let Some(ref code) = updated_data.code {
             if existing_class.code.as_ref() != code.as_ref() {
                 if let Ok(Some(_)) = self
@@ -331,69 +289,104 @@ impl<'a> ClassService<'a> {
                     .find_by_code(code.as_ref().unwrap_or(&"".to_string()))
                     .await
                 {
-                    return Err("Class code already exists".to_string());
+                    return Err("Class code already exists".into());
                 }
             }
         }
 
-        // Create a complete Class object by merging existing data with updates
-        let mut merged_class = existing_class.clone();
-
-        // Update only the fields that are provided in updated_data
-        if let Some(username) = updated_data.username {
-            merged_class.username = username;
+        // ✅ Merge fields
+        if let Some(v) = updated_data.name {
+            existing_class.name = v;
         }
-        if let Some(name) = updated_data.name {
-            merged_class.name = name;
+        if let Some(v) = updated_data.username {
+            existing_class.username = v;
         }
-        if let Some(code) = updated_data.code {
-            merged_class.code = code;
+        if let Some(v) = updated_data.code {
+            existing_class.code = v;
         }
-        if let Some(school_id) = updated_data.school_id {
-            merged_class.school_id = school_id;
+        if let Some(v) = updated_data.school_id {
+            existing_class.school_id = v;
         }
-        if let Some(class_teacher_id) = updated_data.class_teacher_id {
-            merged_class.class_teacher_id = class_teacher_id;
+        if let Some(v) = updated_data.class_teacher_id {
+            existing_class.class_teacher_id = v;
         }
-        if let Some(r#type) = updated_data.r#type {
-            merged_class.r#type = r#type;
+        if let Some(v) = updated_data.r#type {
+            existing_class.r#type = v;
         }
-        if let Some(is_active) = updated_data.is_active {
-            merged_class.is_active = is_active;
+        if let Some(v) = updated_data.is_active {
+            existing_class.is_active = v;
         }
-        if let Some(description) = updated_data.description {
-            merged_class.description = description;
+        if let Some(v) = updated_data.description {
+            existing_class.description = v;
         }
-        if let Some(capacity) = updated_data.capacity {
-            merged_class.capacity = Some(capacity);
+        if let Some(v) = updated_data.capacity {
+            existing_class.capacity = Some(v);
         }
-        if let Some(subject) = updated_data.subject {
-            merged_class.subject = subject;
+        if let Some(v) = updated_data.subject {
+            existing_class.subject = v;
         }
-        if let Some(grade_level) = updated_data.grade_level {
-            merged_class.grade_level = grade_level;
+        if let Some(v) = updated_data.grade_level {
+            existing_class.grade_level = v;
         }
-        if let Some(tags) = updated_data.tags {
-            merged_class.tags = tags;
+        if let Some(v) = updated_data.tags {
+            existing_class.tags = v;
         }
 
-        merged_class.updated_at = Utc::now();
+        // ✅ Handle image replacement
+        if let Some(new_image_data) = updated_data.image.clone() {
+            if existing_class.image != Some(new_image_data.clone()) {
+                if let Some(old_image_id) = existing_class.image_id.clone() {
+                    let _ = CloudinaryService::delete_from_cloudinary(&old_image_id).await;
+                }
 
-        // For merged update, we need to use the repository's update method
-        // Since we don't have a method that takes a full Class object, we'll convert to UpdateClass
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data)
+                    .await
+                    .map_err(|e| format!("Cloud upload failed: {}", e))?;
+                existing_class.image_id = Some(cloud_res.public_id);
+                existing_class.image = Some(cloud_res.secure_url);
+            }
+        }
+
+        // ✅ Handle background images
+        if let Some(new_backgrounds) = updated_data.background_images.clone() {
+            if let Some(old_bgs) = existing_class.background_images.clone() {
+                for bg in old_bgs {
+                    let _ = CloudinaryService::delete_from_cloudinary(&bg.id).await;
+                }
+            }
+
+            let mut uploaded_bgs = Vec::new();
+            for bg in new_backgrounds {
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url)
+                    .await
+                    .map_err(|e| format!("Failed to upload background image: {}", e))?;
+                uploaded_bgs.push(Image {
+                    id: cloud_res.public_id,
+                    url: cloud_res.secure_url,
+                });
+            }
+            existing_class.background_images = Some(uploaded_bgs);
+        }
+
+        existing_class.updated_at = Utc::now();
+
+        // ✅ Build final UpdateClass
         let update_data = UpdateClass {
-            name: Some(merged_class.name),
-            username: Some(merged_class.username),
-            code: Some(merged_class.code),
-            school_id: Some(merged_class.school_id),
-            class_teacher_id: Some(merged_class.class_teacher_id),
-            r#type: Some(merged_class.r#type),
-            is_active: Some(merged_class.is_active),
-            description: Some(merged_class.description),
-            capacity: merged_class.capacity,
-            subject: Some(merged_class.subject),
-            grade_level: Some(merged_class.grade_level),
-            tags: Some(merged_class.tags),
+            name: Some(existing_class.name),
+            username: Some(existing_class.username),
+            code: Some(existing_class.code),
+            school_id: Some(existing_class.school_id),
+            class_teacher_id: Some(existing_class.class_teacher_id),
+            r#type: Some(existing_class.r#type),
+            is_active: Some(existing_class.is_active),
+            description: Some(existing_class.description),
+            capacity: existing_class.capacity,
+            subject: Some(existing_class.subject),
+            grade_level: Some(existing_class.grade_level),
+            tags: Some(existing_class.tags),
+            image: existing_class.image,
+            image_id: existing_class.image_id,
+            background_images: existing_class.background_images,
         };
 
         let updated_class = self

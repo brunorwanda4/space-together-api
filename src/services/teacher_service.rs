@@ -59,10 +59,15 @@ impl<'a> TeacherService<'a> {
     }
 
     /// Get active teachers
-    pub async fn get_active_teachers(&self) -> Result<Vec<Teacher>, String> {
+    pub async fn get_active_teachers(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Teacher>, String> {
         let teachers = self
             .repo
-            .get_active_teachers()
+            .get_active_teachers(filter, limit, skip)
             .await
             .map_err(|e| e.message)?;
         Ok(teachers)
@@ -802,29 +807,6 @@ impl<'a> TeacherService<'a> {
     // 🔧 UTILITY METHODS
     // ------------------------------------------------------------------
 
-    /// Prepare teachers for bulk creation
-    pub fn prepare_teachers_for_bulk_creation(
-        &self,
-        teachers: Vec<Teacher>,
-        school_id: Option<ObjectId>,
-        creator_id: Option<ObjectId>,
-    ) -> Result<Vec<Teacher>, String> {
-        let prepared_teachers: Vec<Teacher> = teachers
-            .into_iter()
-            .map(|mut teacher| {
-                if let Some(sid) = school_id {
-                    teacher.school_id = Some(sid);
-                }
-                if let Some(cid) = creator_id {
-                    teacher.creator_id = Some(cid);
-                }
-                teacher
-            })
-            .collect();
-
-        Ok(prepared_teachers)
-    }
-
     /// Check if a user is a teacher of a specific school
     pub async fn is_user_teacher_of_school(
         &self,
@@ -846,66 +828,6 @@ impl<'a> TeacherService<'a> {
         }
 
         Ok(false)
-    }
-
-    /// Check if a teacher teaches a specific class
-    pub async fn is_teacher_in_class(
-        &self,
-        teacher_id: &IdType,
-        class_id: &IdType,
-    ) -> Result<bool, String> {
-        let teacher = self
-            .repo
-            .find_by_id(teacher_id)
-            .await
-            .map_err(|e| e.message)?;
-
-        if let Some(teacher) = teacher {
-            if let Some(class_ids) = &teacher.class_ids {
-                let target_class_id = parse_object_id(class_id)?;
-                return Ok(class_ids.contains(&target_class_id));
-            }
-        }
-
-        Ok(false)
-    }
-
-    /// Check if a teacher teaches a specific subject
-    pub async fn is_teacher_in_subject(
-        &self,
-        teacher_id: &IdType,
-        subject_id: &IdType,
-    ) -> Result<bool, String> {
-        let teacher = self
-            .repo
-            .find_by_id(teacher_id)
-            .await
-            .map_err(|e| e.message)?;
-
-        if let Some(teacher) = teacher {
-            if let Some(subject_ids) = &teacher.subject_ids {
-                let target_subject_id = parse_object_id(subject_id)?;
-                return Ok(subject_ids.contains(&target_subject_id));
-            }
-        }
-
-        Ok(false)
-    }
-
-    /// Get teachers with specific type in a school
-    pub async fn get_school_teachers_by_type(
-        &self,
-        school_id: &IdType,
-        teacher_type: TeacherType,
-    ) -> Result<Vec<Teacher>, String> {
-        let school_teachers = self.get_teachers_by_school_id(school_id).await?;
-
-        let filtered_teachers: Vec<Teacher> = school_teachers
-            .into_iter()
-            .filter(|teacher| teacher.r#type == teacher_type)
-            .collect();
-
-        Ok(filtered_teachers)
     }
 
     /// Get class teachers with details

@@ -1,13 +1,15 @@
 use crate::{
-    domain::class::{Class, ClassWithOthers, ClassWithSchool, UpdateClass},
+    domain::class::{Class, ClassWithOthers, ClassWithSchool},
     errors::AppError,
     models::id_model::IdType,
     repositories::class_repo::ClassRepo,
     services::{
         main_class_service::MainClassService, school_service::SchoolService,
-        teacher_service::TeacherService, user_service::UserService,
+        teacher_service::TeacherService, trade_service::TradeService, user_service::UserService,
     },
-    utils::class_utils::{sanitize_class, sanitize_classes},
+    utils::{
+        class_utils::sanitize_class, school_utils::sanitize_school, user_utils::sanitize_user,
+    },
 };
 
 pub struct ClassController<'a> {
@@ -16,6 +18,7 @@ pub struct ClassController<'a> {
     pub user_service: &'a UserService<'a>,
     pub teacher_service: &'a TeacherService<'a>,
     pub main_class_service: &'a MainClassService<'a>,
+    pub trade_service: &'a TradeService<'a>,
 }
 
 impl<'a> ClassController<'a> {
@@ -25,6 +28,7 @@ impl<'a> ClassController<'a> {
         user_service: &'a UserService<'a>,
         teacher_service: &'a TeacherService<'a>,
         main_class_service: &'a MainClassService<'a>,
+        trade_service: &'a TradeService<'a>,
     ) -> Self {
         Self {
             class_repo,
@@ -32,6 +36,7 @@ impl<'a> ClassController<'a> {
             user_service,
             teacher_service,
             main_class_service,
+            trade_service,
         }
     }
 
@@ -126,6 +131,7 @@ impl<'a> ClassController<'a> {
         let mut creator = None;
         let mut class_teacher = None;
         let mut main_class = None;
+        let mut trade = None;
 
         // Get school from main database
         if let Some(school_id) = class.school_id {
@@ -134,6 +140,16 @@ impl<'a> ClassController<'a> {
                 Ok(s) => school = Some(s),
                 Err(e) => {
                     // Log error but don't fail the whole request
+                    eprintln!("Failed to fetch school: {}", e);
+                }
+            }
+        }
+
+        if let Some(trade_id) = class.trade_id {
+            let trade_id_type = IdType::ObjectId(trade_id);
+            match self.trade_service.get_trade_by_id(&trade_id_type).await {
+                Ok(s) => trade = Some(s),
+                Err(e) => {
                     eprintln!("Failed to fetch school: {}", e);
                 }
             }
@@ -178,10 +194,11 @@ impl<'a> ClassController<'a> {
 
         Ok(ClassWithOthers {
             class: sanitize_class(class),
-            school,
-            creator,
+            school: school.map(sanitize_school),
+            creator: creator.map(sanitize_user),
             class_teacher,
             main_class,
+            trade,
         })
     }
 
@@ -220,82 +237,6 @@ impl<'a> ClassController<'a> {
         }
 
         Ok(classes_with_school)
-    }
-
-    // ----------------------------------------------------------------------
-    // Basic class operations (delegate to repo)
-    // ----------------------------------------------------------------------
-    pub async fn get_all_classes(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-    ) -> Result<Vec<Class>, AppError> {
-        let classes = self
-            .class_repo
-            .get_all_classes(filter, limit, skip)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
-        Ok(sanitize_classes(classes))
-    }
-
-    pub async fn get_class_by_id(&self, id: &IdType) -> Result<Class, AppError> {
-        let class = self
-            .class_repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| AppError { message: e.message })?
-            .ok_or_else(|| AppError {
-                message: "Class not found".into(),
-            })?;
-        Ok(sanitize_class(class))
-    }
-
-    pub async fn create_class(&self, class: Class) -> Result<Class, AppError> {
-        let created_class = self
-            .class_repo
-            .insert_class(&class)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
-        Ok(sanitize_class(created_class))
-    }
-
-    pub async fn update_class(
-        &self,
-        id: &IdType,
-        updated_data: &UpdateClass,
-    ) -> Result<Class, AppError> {
-        let updated_class = self
-            .class_repo
-            .update_class(id, updated_data)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
-        Ok(sanitize_class(updated_class))
-    }
-
-    pub async fn delete_class(&self, id: &IdType) -> Result<(), AppError> {
-        self.class_repo
-            .delete_class(id)
-            .await
-            .map_err(|e| AppError { message: e.message })
-    }
-
-    // ----------------------------------------------------------------------
-    // Batch operations for better performance
-    // ----------------------------------------------------------------------
-    pub async fn get_classes_with_others_batch(
-        &self,
-        class_ids: Vec<IdType>,
-    ) -> Result<Vec<ClassWithOthers>, AppError> {
-        let mut classes = Vec::new();
-
-        for id in class_ids {
-            if let Ok(class) = self.get_class_by_id_with_others(&id).await {
-                classes.push(class);
-            }
-        }
-
-        Ok(classes)
     }
 
     // ----------------------------------------------------------------------

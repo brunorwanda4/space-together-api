@@ -2,6 +2,7 @@ use crate::domain::class::{Class, ClassWithOthers, ClassWithSchool, UpdateClass}
 use crate::domain::main_class::MainClass;
 use crate::domain::school::School;
 use crate::domain::teacher::Teacher;
+use crate::domain::trade::Trade;
 use crate::domain::user::User;
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::aggregate_many;
@@ -188,6 +189,11 @@ impl ClassRepo {
                 creator = Some(sanitize_user(c));
             }
 
+            let trade = doc
+                .get_document("trade")
+                .ok()
+                .and_then(|d| mongodb::bson::from_document::<Trade>(d.clone()).ok());
+
             let class_teacher = doc
                 .get_document("class_teacher")
                 .ok()
@@ -204,6 +210,7 @@ impl ClassRepo {
                 creator,
                 class_teacher,
                 main_class,
+                trade,
             });
         }
 
@@ -562,79 +569,40 @@ impl ClassRepo {
     pub async fn update_class(&self, id: &IdType, update: &UpdateClass) -> Result<Class, AppError> {
         let obj_id = parse_object_id(id)?;
 
-        // Create update document manually to handle Option<Option<T>> fields
         let mut update_doc = Document::new();
 
-        if let Some(name) = &update.name {
-            update_doc.insert("name", name);
+        macro_rules! insert_if_some {
+            ($field:expr, $name:expr) => {
+                if let Some(value) = &$field {
+                    update_doc.insert(
+                        $name,
+                        bson::to_bson(value).map_err(|e| AppError {
+                            message: format!("Failed to serialize {}: {}", $name, e),
+                        })?,
+                    );
+                }
+            };
         }
-        if let Some(username) = &update.username {
-            update_doc.insert("username", username);
-        }
-        if let Some(code) = &update.code {
-            update_doc.insert(
-                "code",
-                bson::to_bson(code).map_err(|e| AppError {
-                    message: format!("Failed to serialize code: {}", e),
-                })?,
-            );
-        }
-        if let Some(school_id) = &update.school_id {
-            update_doc.insert(
-                "school_id",
-                bson::to_bson(school_id).map_err(|e| AppError {
-                    message: format!("Failed to serialize school_id: {}", e),
-                })?,
-            );
-        }
-        if let Some(class_teacher_id) = &update.class_teacher_id {
-            update_doc.insert(
-                "class_teacher_id",
-                bson::to_bson(class_teacher_id).map_err(|e| AppError {
-                    message: format!("Failed to serialize class_teacher_id: {}", e),
-                })?,
-            );
-        }
-        if let Some(r#type) = &update.r#type {
-            update_doc.insert(
-                "type",
-                bson::to_bson(r#type).map_err(|e| AppError {
-                    message: format!("Failed to serialize type: {}", e),
-                })?,
-            );
-        }
+
+        insert_if_some!(update.name, "name");
+        insert_if_some!(update.username, "username");
+        insert_if_some!(update.code, "code");
+        insert_if_some!(update.school_id, "school_id");
+        insert_if_some!(update.class_teacher_id, "class_teacher_id");
+        insert_if_some!(update.r#type, "type");
+        insert_if_some!(update.description, "description");
+        insert_if_some!(update.subject, "subject");
+        insert_if_some!(update.grade_level, "grade_level");
+        insert_if_some!(update.tags, "tags");
+        insert_if_some!(update.image_id, "image_id");
+        insert_if_some!(update.image, "image");
+        insert_if_some!(update.background_images, "background_images");
+
         if let Some(is_active) = update.is_active {
             update_doc.insert("is_active", is_active);
         }
-        if let Some(description) = &update.description {
-            update_doc.insert(
-                "description",
-                bson::to_bson(description).map_err(|e| AppError {
-                    message: format!("Failed to serialize description: {}", e),
-                })?,
-            );
-        }
         if let Some(capacity) = update.capacity {
             update_doc.insert("capacity", capacity);
-        }
-        if let Some(subject) = &update.subject {
-            update_doc.insert(
-                "subject",
-                bson::to_bson(subject).map_err(|e| AppError {
-                    message: format!("Failed to serialize subject: {}", e),
-                })?,
-            );
-        }
-        if let Some(grade_level) = &update.grade_level {
-            update_doc.insert(
-                "grade_level",
-                bson::to_bson(grade_level).map_err(|e| AppError {
-                    message: format!("Failed to serialize grade_level: {}", e),
-                })?,
-            );
-        }
-        if let Some(tags) = &update.tags {
-            update_doc.insert("tags", tags);
         }
 
         update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
@@ -649,7 +617,7 @@ impl ClassRepo {
             })?;
 
         self.find_by_id(id).await?.ok_or(AppError {
-            message: "Class not found after update".to_string(),
+            message: "Class not found after update".into(),
         })
     }
 

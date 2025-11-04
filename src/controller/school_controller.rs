@@ -9,6 +9,7 @@ use crate::{
     domain::{
         auth_user::AuthUserDto,
         class::{Class, ClassType},
+        common_details::Image,
         school::{SchoolAcademicRequest, SchoolAcademicResponse},
         subject::Subject,
     },
@@ -136,25 +137,32 @@ impl<'a> SchoolController<'a> {
                 )
                 .to_lowercase();
 
-                let class = Class {
-                    id: None,
-                    name: class_name,
-                    username: class_username,
-                    code: None,
-                    description: Some(format!("Class for {} - {}", trade.name, academic_year)),
-                    school_id: school.id,
-                    class_teacher_id: None,
-                    r#type: ClassType::School,
-                    subject: None,
-                    grade_level: Some(level.to_string()),
-                    tags: vec!["academic".into(), trade.name.clone()],
-                    is_active: true,
-                    capacity: Some(30),
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                    creator_id,
-                    main_class_id: main_class.id,
-                };
+                let class =
+                    Class {
+                        id: None,
+                        name: class_name,
+                        username: class_username,
+                        code: None,
+                        description: Some(format!("Class for {} - {}", trade.name, academic_year)),
+                        school_id: school.id,
+                        class_teacher_id: None,
+                        r#type: ClassType::School,
+                        subject: None,
+                        grade_level: Some(level.to_string()),
+                        tags: vec!["academic".into(), trade.name.clone()],
+                        is_active: true,
+                        capacity: Some(30),
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                        creator_id,
+                        main_class_id: main_class.id,
+                        trade_id: Some(trade.id.ok_or_else(|| {
+                            format!("Trade id not found for trade '{}'", trade.name)
+                        })?),
+                        image: None,
+                        image_id: None,
+                        background_images: None,
+                    };
 
                 class_trade_pairs.push((class, trade.r#type.clone()));
             }

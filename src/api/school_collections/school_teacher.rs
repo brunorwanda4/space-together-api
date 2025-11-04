@@ -109,7 +109,10 @@ async fn get_active_teachers(
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
 
-    match service.get_active_teachers().await {
+    match service
+        .get_active_teachers(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }

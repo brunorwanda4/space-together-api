@@ -304,7 +304,7 @@ async fn update_class(
     let service = ClassService::new(&repo);
 
     match service
-        .update_class(&target_class_id, data.into_inner())
+        .update_class_merged(&target_class_id, data.into_inner())
         .await
     {
         Ok(class) => {

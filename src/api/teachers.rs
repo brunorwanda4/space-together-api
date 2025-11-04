@@ -68,11 +68,17 @@ async fn get_all_teachers_with_details(
 }
 
 #[get("/active")]
-async fn get_active_teachers(state: web::Data<AppState>) -> impl Responder {
+async fn get_active_teachers(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
     let repo = TeacherRepo::new(&state.db.main_db());
     let service = TeacherService::new(&repo);
 
-    match service.get_active_teachers().await {
+    match service
+        .get_active_teachers(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
