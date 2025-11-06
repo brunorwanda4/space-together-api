@@ -318,63 +318,6 @@ async fn update_teacher(
     }
 }
 
-#[put("/{id}/merged")]
-async fn update_teacher_merged(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    data: web::Json<UpdateTeacher>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let logged_user = match req.extensions().get::<AuthUserDto>() {
-        Some(u) => u.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "Unauthorized"
-            }))
-        }
-    };
-
-    let target_teacher_id_str = path.into_inner();
-
-    // Check if user has permission to update teacher
-    if let Err(err) =
-        crate::guards::role_guard::check_teacher_access(&logged_user, &target_teacher_id_str)
-    {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err.to_string()
-        }));
-    }
-
-    let target_teacher_id = IdType::from_string(target_teacher_id_str);
-    let repo = TeacherRepo::new(&state.db.main_db());
-    let service = TeacherService::new(&repo);
-
-    match service
-        .update_teacher_merged(&target_teacher_id, data.into_inner())
-        .await
-    {
-        Ok(teacher) => {
-            // Broadcast updated teacher event
-            let teacher_clone = teacher.clone();
-            let state_clone = state.clone();
-            actix_rt::spawn(async move {
-                if let Some(id) = teacher_clone.id {
-                    EventService::broadcast_updated(
-                        &state_clone,
-                        "teacher",
-                        &id.to_hex(),
-                        &teacher_clone,
-                    )
-                    .await;
-                }
-            });
-
-            HttpResponse::Ok().json(teacher)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 #[delete("/{id}")]
 async fn delete_teacher(
     user: web::ReqData<AuthUserDto>,
@@ -532,50 +475,6 @@ async fn create_many_teachers(
     let service = TeacherService::new(&repo);
 
     match service.create_many_teachers(data.teachers.clone()).await {
-        Ok(teachers) => {
-            let state_clone = state.clone();
-            let teachers_for_spawn = teachers.clone();
-
-            actix_rt::spawn(async move {
-                for teacher in &teachers_for_spawn {
-                    if let Some(id) = teacher.id {
-                        EventService::broadcast_created(
-                            &state_clone,
-                            "teacher",
-                            &id.to_hex(),
-                            teacher,
-                        )
-                        .await;
-                    }
-                }
-            });
-
-            HttpResponse::Created().json(teachers)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Create multiple teachers with validation
-#[post("/bulk/validation")]
-async fn create_many_teachers_with_validation(
-    user: web::ReqData<AuthUserDto>,
-    data: web::Json<BulkTeachersRequest>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let logged_user = user.into_inner();
-
-    if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
-        return HttpResponse::Forbidden().json(serde_json::json!({ "message": err.to_string() }));
-    }
-
-    let repo = TeacherRepo::new(&state.db.main_db());
-    let service = TeacherService::new(&repo);
-
-    match service
-        .create_many_teachers_with_validation(data.teachers.clone())
-        .await
-    {
         Ok(teachers) => {
             let state_clone = state.clone();
             let teachers_for_spawn = teachers.clone();
@@ -1417,7 +1316,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_teacher) // POST /teachers - Create new teacher (Admin/Staff/Teacher only)
             .service(update_teacher) // PUT /teachers/{id} - Update teacher (Admin/Teacher access only)
-            .service(update_teacher_merged) // PUT /teachers/{id}/merged - Update teacher with merge (Admin/Teacher access only)
             .service(delete_teacher) // DELETE /teachers/{id} - Delete teacher (Admin/Teacher creator only)
             // Teacher Status Management
             .service(activate_teacher) // PUT /teachers/{id}/activate - Activate a teacher
@@ -1429,7 +1327,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(remove_subjects_from_teacher) // PUT /teachers/{id}/remove-subjects - Remove subjects from teacher
             // Bulk operations (protected)
             .service(create_many_teachers) // POST /teachers/bulk - Create multiple teachers
-            .service(create_many_teachers_with_validation) // POST /teachers/bulk/validation - Create multiple teachers with validation
             .service(update_many_teachers) // PUT /teachers/bulk - Update multiple teachers
             .service(bulk_update_teacher_active) // PUT /teachers/bulk/active - Bulk update active status for multiple teachers
             .service(bulk_add_tags_to_teachers) // PUT /teachers/bulk/add-tags - Bulk add tags to multiple teachers

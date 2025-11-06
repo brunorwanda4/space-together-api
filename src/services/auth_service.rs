@@ -10,7 +10,7 @@ use crate::{
     services::user_service::UserService,
     utils::{
         email::is_valid_email,
-        hash::{hash_password, verify_password},
+        hash::verify_password,
         jwt::{create_jwt, verify_jwt},
         names::{generate_username, is_valid_name},
         user_utils::sanitize_user,
@@ -52,7 +52,7 @@ impl<'a> AuthService<'a> {
             name: valid_name,
             email: data.email,
             username,
-            password_hash: Some(hash_password(&data.password)),
+            password_hash: Some(data.password),
             role: Some(UserRole::STUDENT),
 
             // 🔹 Profile & Media
@@ -79,7 +79,7 @@ impl<'a> AuthService<'a> {
 
             // 🔹 Academic & School
             current_school_id: None,
-            schools: None,
+            schools: Some(vec![]), // default user have empty schools
             accessible_classes: None,
             favorite_subjects_category: None,
             preferred_study_styles: None,
@@ -126,7 +126,7 @@ impl<'a> AuthService<'a> {
             .repo
             .find_by_email(&data.email)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|_| "Failed to connect to database, please try again".to_string())?;
 
         if let Some(user) = user {
             if let Some(ref hash) = user.password_hash {
@@ -134,12 +134,15 @@ impl<'a> AuthService<'a> {
                     let dto = to_auth_dto(&user);
                     let token = create_jwt(&dto);
                     return Ok((token, sanitize_user(user)));
+                } else {
+                    return Err("Incorrect password, please try again".to_string());
                 }
+            } else {
+                return Err("This account does not have a password set".to_string());
             }
-            Err("Invalid credentials".to_string())
-        } else {
-            Err("User not found".to_string())
         }
+
+        Err("No user found with this email address".to_string())
     }
 
     /// ✅ Get user info from JWT

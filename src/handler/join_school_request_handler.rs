@@ -171,29 +171,3 @@ pub async fn get_join_requests_by_class_handler(
     let requests = controller.get_join_requests_by_class(&class_id).await?;
     Ok(HttpResponse::Ok().json(requests))
 }
-
-/// Get pending join requests by class ID
-pub async fn get_pending_join_requests_by_class_handler(
-    controller: web::Data<JoinSchoolRequestController<'_>>,
-    class_id: web::Path<String>,
-) -> Result<HttpResponse, AppError> {
-    let class_id = IdType::String(class_id.into_inner());
-    let requests = controller
-        .get_pending_join_requests_by_class(&class_id)
-        .await?;
-    Ok(HttpResponse::Ok().json(requests))
-}
-
-/// Get join requests by school and class
-pub async fn get_join_requests_by_school_and_class_handler(
-    controller: web::Data<JoinSchoolRequestController<'_>>,
-    path: web::Path<(String, String)>, // (school_id, class_id)
-) -> Result<HttpResponse, AppError> {
-    let (school_id, class_id) = path.into_inner();
-    let school_id = IdType::String(school_id);
-    let class_id = IdType::String(class_id);
-    let requests = controller
-        .get_join_requests_by_school_and_class(&school_id, &class_id)
-        .await?;
-    Ok(HttpResponse::Ok().json(requests))
-}

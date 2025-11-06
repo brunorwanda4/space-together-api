@@ -374,6 +374,27 @@ impl UserRepo {
 
         let filter = doc! { "_id": &user_obj_id };
 
+        // ✅ Step 1: Ensure `schools` is an array (fix invalid data)
+        self.collection
+            .update_one(
+                doc! {
+                    "_id": &user_obj_id,
+                    // match only if `schools` is null or missing
+                    "$or": [
+                        { "schools": { "$exists": false } },
+                        { "schools": bson::Bson::Null }
+                    ]
+                },
+                doc! {
+                    "$set": { "schools": bson::to_bson(&Vec::<ObjectId>::new()).unwrap() }
+                },
+            )
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to initialize schools field: {}", e),
+            })?;
+
+        // ✅ Step 2: Now safely update (guaranteed that `schools` is an array)
         self.collection
             .update_one(
                 filter.clone(),
@@ -390,6 +411,7 @@ impl UserRepo {
                 message: format!("Failed to add school: {}", e),
             })?;
 
+        // ✅ Step 3: Return updated user
         self.collection
             .find_one(filter)
             .await

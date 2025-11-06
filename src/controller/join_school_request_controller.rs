@@ -13,7 +13,7 @@ use crate::{
         school::School,
         school_staff::{parse_staff_type, SchoolStaff, SchoolStaffType},
         student::{Student, StudentStatus},
-        teacher::{parse_teacher_type, Teacher},
+        teacher::{parse_teacher_type, Teacher, TeacherType, UpdateTeacher},
         user::User,
     },
     errors::AppError,
@@ -78,7 +78,7 @@ impl<'a> JoinSchoolRequestController<'a> {
             Some(i) => i,
             None => {
                 return Err(AppError {
-                    message: format!("Failed to changes ObjectId into string"),
+                    message: "Failed to changes ObjectId into string".to_string(),
                 });
             }
         };
@@ -181,10 +181,7 @@ impl<'a> JoinSchoolRequestController<'a> {
 
             // Parse class_id if provided
             let class_id = if let Some(class_id_str) = &create_request.class_id {
-                match parse_object_id(&IdType::String(class_id_str.clone())) {
-                    Ok(id) => Some(id),
-                    Err(_) => None,
-                }
+                parse_object_id(&IdType::String(class_id_str.clone())).ok()
             } else {
                 None
             };
@@ -390,14 +387,13 @@ impl<'a> JoinSchoolRequestController<'a> {
                     //     .map_err(|e| AppError { message: e })?;
                 }
             }
+
             JoinRole::Teacher => {
                 let teacher_repo = TeacherRepo::new(school_db);
                 let teacher_service = TeacherService::new(&teacher_repo);
-
-                // Validate teacher type
                 let teacher_type = parse_teacher_type(&request.r#type);
 
-                let teacher = Teacher {
+                let new_teacher = Teacher {
                     id: None,
                     user_id: Some(user_id),
                     school_id: Some(school_id),
@@ -407,19 +403,90 @@ impl<'a> JoinSchoolRequestController<'a> {
                     phone: user.phone.clone(),
                     gender: user.gender.clone(),
                     r#type: teacher_type,
-                    class_ids: None, // Teachers can be assigned to classes later
+                    class_ids: None,
                     subject_ids: None,
                     is_active: false,
+                    image: user.image.clone(),
+                    image_id: user.image_id.clone(),
                     tags: vec!["join-request".to_string()],
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
                 };
 
-                teacher_service
-                    .create_teacher(teacher)
-                    .await
-                    .map_err(|e| AppError { message: e })?;
+                let _existing_teacher =
+                    match teacher_service.get_teacher_by_email(&user.email).await {
+                        Ok(existing_teacher) => {
+                            let update_data = UpdateTeacher {
+                                name: if existing_teacher.name.trim().is_empty() {
+                                    Some(user.name.clone())
+                                } else {
+                                    None
+                                },
+                                email: None,
+                                phone: if existing_teacher.phone.is_none() {
+                                    user.phone.clone()
+                                } else {
+                                    None
+                                },
+                                image: if existing_teacher.image.is_none() {
+                                    user.image.clone()
+                                } else {
+                                    None
+                                },
+                                image_id: if existing_teacher.image_id.is_none() {
+                                    user.image_id.clone()
+                                } else {
+                                    None
+                                },
+                                user_id: user.id.clone(),
+                                gender: if existing_teacher.gender.is_none() {
+                                    user.gender.clone()
+                                } else {
+                                    None
+                                },
+                                r#type: if existing_teacher.r#type == TeacherType::Regular {
+                                    Some(teacher_type)
+                                } else {
+                                    None
+                                },
+                                class_ids: None,
+                                subject_ids: None,
+                                is_active: None,
+                                tags: if existing_teacher.tags.is_empty() {
+                                    Some(vec!["join-request".to_string()])
+                                } else {
+                                    None
+                                },
+                            };
+
+                            if serde_json::to_value(&update_data)
+                                .map_err(|e| AppError {
+                                    message: e.to_string(),
+                                })?
+                                .as_object()
+                                .unwrap()
+                                .values()
+                                .any(|v| !v.is_null())
+                            {
+                                let teacher_id = IdType::ObjectId(existing_teacher.id.unwrap());
+                                teacher_repo
+                                    .update_teacher(&teacher_id, &update_data)
+                                    .await
+                                    .map_err(|e| AppError {
+                                        message: e.to_string(),
+                                    })?;
+                            }
+
+                            existing_teacher
+                        }
+
+                        Err(_) => teacher_service
+                            .create_teacher(new_teacher)
+                            .await
+                            .map_err(|e| AppError { message: e })?,
+                    };
             }
+
             JoinRole::Staff => {
                 let staff_repo = SchoolStaffRepo::new(school_db);
                 let staff_service = SchoolStaffService::new(&staff_repo);

@@ -1,6 +1,7 @@
 use crate::{
     domain::class::{Class, ClassWithOthers, ClassWithSchool},
     errors::AppError,
+    helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
     repositories::class_repo::ClassRepo,
     services::{
@@ -239,25 +240,35 @@ impl<'a> ClassController<'a> {
         Ok(classes_with_school)
     }
 
-    // ----------------------------------------------------------------------
-    // Filter classes with relations
-    // ----------------------------------------------------------------------
-    pub async fn get_classes_by_school_with_relations(
+    pub async fn add_or_update_class_teacher(
         &self,
-        school_id: &IdType,
-    ) -> Result<Vec<ClassWithOthers>, AppError> {
-        let classes = self
-            .class_repo
-            .find_by_school_id(school_id)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
+        class_id: &IdType,
+        teacher_id: &IdType,
+    ) -> Result<Class, String> {
+        // Step 1: get teacher
+        let teacher = self.teacher_service.get_teacher_by_id(teacher_id).await?;
 
-        let mut classes_with_others = Vec::new();
-        for class in classes {
-            let class_with_others = self.enrich_class_with_relations(class).await?;
-            classes_with_others.push(class_with_others);
+        // Step 2: ensure teacher has this class_id
+        let class_obj_id = parse_object_id(class_id)?;
+        let mut class_ids = teacher.class_ids.unwrap_or_default();
+
+        // Add class if missing
+        if !class_ids.contains(&class_obj_id) {
+            class_ids.push(class_obj_id);
+
+            // ✅ use your existing service to add class to teacher
+            self.teacher_service
+                .add_classes_to_teacher(teacher_id, class_ids)
+                .await?;
         }
 
-        Ok(classes_with_others)
+        // Step 3: add or update teacher in class
+        let updated_class = self
+            .class_repo
+            .add_or_update_class_teacher(class_id, teacher_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(updated_class)
     }
 }

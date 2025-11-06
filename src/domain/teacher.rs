@@ -32,14 +32,18 @@ pub struct Teacher {
     // Connected user (account)
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
     )]
     pub user_id: Option<ObjectId>,
 
     // Connected school
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
     )]
     pub school_id: Option<ObjectId>,
 
@@ -56,7 +60,8 @@ pub struct Teacher {
     pub email: String,
     pub phone: Option<String>,
     pub gender: Option<Gender>,
-
+    pub image: Option<String>,
+    pub image_id: Option<String>,
     pub r#type: TeacherType, // Regular, HeadTeacher, etc.
 
     #[serde(
@@ -89,8 +94,11 @@ pub struct Teacher {
 #[derive(Debug, Deserialize, Default, Serialize, Clone)]
 pub struct UpdateTeacher {
     pub name: Option<String>,
+    pub user_id: Option<ObjectId>,
     pub email: Option<String>,
     pub phone: Option<String>,
+    pub image: Option<String>,
+    pub image_id: Option<String>,
     pub gender: Option<Gender>,
     pub r#type: Option<TeacherType>,
     pub class_ids: Option<Vec<ObjectId>>,

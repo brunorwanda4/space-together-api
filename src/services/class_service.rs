@@ -307,9 +307,6 @@ impl<'a> ClassService<'a> {
         if let Some(v) = updated_data.school_id {
             existing_class.school_id = v;
         }
-        if let Some(v) = updated_data.class_teacher_id {
-            existing_class.class_teacher_id = v;
-        }
         if let Some(v) = updated_data.r#type {
             existing_class.r#type = v;
         }
@@ -376,7 +373,6 @@ impl<'a> ClassService<'a> {
             username: Some(existing_class.username),
             code: Some(existing_class.code),
             school_id: Some(existing_class.school_id),
-            class_teacher_id: Some(existing_class.class_teacher_id),
             r#type: Some(existing_class.r#type),
             is_active: Some(existing_class.is_active),
             description: Some(existing_class.description),
@@ -444,6 +440,11 @@ impl<'a> ClassService<'a> {
                 class.is_active = true;
             }
 
+            if class.image.is_some() {
+                class.image = None;
+                class.image_id = None;
+            }
+
             // Generate ID
             class.id = Some(ObjectId::new());
 
@@ -454,97 +455,6 @@ impl<'a> ClassService<'a> {
         let created_classes = self
             .repo
             .create_many_classes(processed_classes)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_classes(created_classes))
-    }
-
-    /// Create multiple classes with comprehensive validation
-    pub async fn create_many_classes_with_validation(
-        &self,
-        classes: Vec<Class>,
-    ) -> Result<Vec<Class>, String> {
-        // Validate all classes first
-        for class in &classes {
-            is_valid_username(&class.username)?;
-        }
-
-        // Process classes: generate codes, set timestamps, etc.
-        let mut processed_classes = Vec::with_capacity(classes.len());
-        let now = Utc::now();
-
-        for mut class in classes {
-            // Generate class code if not provided
-            if class.code.is_none() {
-                class.code = Some(generate_code());
-            }
-
-            // Set timestamps
-            class.created_at = now;
-            class.updated_at = now;
-
-            // Set default values for optional fields
-            if !class.is_active {
-                class.is_active = true;
-            }
-
-            // Generate ID
-            class.id = Some(ObjectId::new());
-
-            processed_classes.push(class);
-        }
-
-        // Create classes using repository with validation
-        let created_classes = self
-            .repo
-            .create_many_classes_with_validation(processed_classes)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_classes(created_classes))
-    }
-
-    /// Create multiple classes for a specific school
-    pub async fn create_many_classes_for_school(
-        &self,
-        school_id: &IdType,
-        classes: Vec<Class>,
-    ) -> Result<Vec<Class>, String> {
-        // Validate all classes first
-        for class in &classes {
-            is_valid_username(&class.username)?;
-        }
-
-        // Process classes: generate codes, set timestamps, etc.
-        let mut processed_classes = Vec::with_capacity(classes.len());
-        let now = Utc::now();
-
-        for mut class in classes {
-            // Generate class code if not provided
-            if class.code.is_none() {
-                class.code = Some(generate_code());
-            }
-
-            // Set timestamps
-            class.created_at = now;
-            class.updated_at = now;
-
-            // Set default values for optional fields
-            if !class.is_active {
-                class.is_active = true;
-            }
-
-            // Generate ID
-            class.id = Some(ObjectId::new());
-
-            processed_classes.push(class);
-        }
-
-        // Create classes for specific school
-        let created_classes = self
-            .repo
-            .create_many_classes_for_school(school_id, processed_classes)
             .await
             .map_err(|e| e.message)?;
 
@@ -603,28 +513,6 @@ impl<'a> ClassService<'a> {
             .map_err(|e| e.message)?;
 
         Ok(sanitize_classes(updated_classes))
-    }
-
-    pub fn prepare_classes_for_bulk_creation(
-        &self,
-        classes: Vec<Class>,
-        school_id: Option<ObjectId>,
-        creator_id: Option<ObjectId>,
-    ) -> Result<Vec<Class>, String> {
-        let prepared_classes: Vec<Class> = classes
-            .into_iter()
-            .map(|mut class| {
-                if let Some(sid) = school_id {
-                    class.school_id = Some(sid);
-                }
-                if let Some(cid) = creator_id {
-                    class.creator_id = Some(cid);
-                }
-                class
-            })
-            .collect();
-
-        Ok(prepared_classes)
     }
 
     pub async fn get_many_classes_by_ids(&self, ids: Vec<ObjectId>) -> Result<Vec<Class>, String> {

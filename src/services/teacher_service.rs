@@ -10,7 +10,7 @@ use crate::{
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
     repositories::teacher_repo::TeacherRepo,
-    services::event_service::EventService,
+    services::{cloudinary_service::CloudinaryService, event_service::EventService},
     utils::{email::is_valid_email, names::is_valid_name},
 };
 use actix_web::web;
@@ -101,6 +101,12 @@ impl<'a> TeacherService<'a> {
             }
         }
 
+        if let Some(image_data) = new_teacher.image.clone() {
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data).await?;
+            new_teacher.image_id = Some(cloud_res.public_id);
+            new_teacher.image = Some(cloud_res.secure_url);
+        }
+
         // Set timestamps
         let now = Utc::now();
         new_teacher.created_at = now;
@@ -114,6 +120,18 @@ impl<'a> TeacherService<'a> {
         // Ensure tags is initialized
         if new_teacher.tags.is_empty() {
             new_teacher.tags = Vec::new();
+        }
+
+        if new_teacher
+            .subject_ids
+            .as_ref()
+            .is_none_or(|v| v.is_empty())
+        {
+            new_teacher.subject_ids = None
+        }
+
+        if new_teacher.class_ids.as_ref().is_none_or(|v| v.is_empty()) {
+            new_teacher.class_ids = None
         }
 
         // Set default type if not provided
@@ -138,21 +156,6 @@ impl<'a> TeacherService<'a> {
     // ------------------------------------------------------------------
     // ✅ CREATE WITH EVENTS
     // ------------------------------------------------------------------
-
-    pub async fn create_teacher_with_events(
-        &self,
-        new_teacher: Teacher,
-        state: &web::Data<AppState>,
-    ) -> Result<Teacher, String> {
-        let teacher = self.create_teacher(new_teacher).await?;
-
-        // 🔔 Broadcast teacher creation event
-        if let Some(id) = &teacher.id {
-            Self::broadcast_teacher_update(state, id).await;
-        }
-
-        Ok(teacher)
-    }
 
     /// Get teacher by ID
     pub async fn get_teacher_by_id(&self, id: &IdType) -> Result<Teacher, String> {
@@ -270,25 +273,11 @@ impl<'a> TeacherService<'a> {
         Ok(teachers)
     }
 
-    /// Get teachers by school ID and type
-    pub async fn get_teachers_by_school_and_type(
-        &self,
-        school_id: &IdType,
-        teacher_type: TeacherType,
-    ) -> Result<Vec<Teacher>, String> {
-        let teachers = self
-            .repo
-            .find_by_school_and_type(school_id, teacher_type)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(teachers)
-    }
-
     /// Update a teacher
     pub async fn update_teacher(
         &self,
         id: &IdType,
-        updated_data: UpdateTeacher,
+        mut updated_data: UpdateTeacher,
     ) -> Result<Teacher, String> {
         // Validate name if provided
         if let Some(ref name) = updated_data.name {
@@ -310,6 +299,21 @@ impl<'a> TeacherService<'a> {
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "Teacher not found".to_string())?;
+
+        // ☁️ Replace profile image
+        if let Some(new_image_data) = updated_data.image.clone() {
+            if Some(new_image_data.clone()) != existing_teacher.image {
+                if let Some(old_image_id) = existing_teacher.image_id.clone() {
+                    CloudinaryService::delete_from_cloudinary(&old_image_id)
+                        .await
+                        .ok();
+                }
+
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data).await?;
+                updated_data.image_id = Some(cloud_res.public_id);
+                updated_data.image = Some(cloud_res.secure_url);
+            }
+        }
 
         // Check email uniqueness if provided and changed
         if let Some(ref email) = updated_data.email {
@@ -324,118 +328,6 @@ impl<'a> TeacherService<'a> {
         let updated_teacher = self
             .repo
             .update_teacher(id, &updated_data)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(updated_teacher)
-    }
-
-    // ------------------------------------------------------------------
-    // ✅ UPDATE WITH EVENTS
-    // ------------------------------------------------------------------
-
-    pub async fn update_teacher_with_events(
-        &self,
-        id: &IdType,
-        updated_data: UpdateTeacher,
-        state: &web::Data<AppState>,
-    ) -> Result<Teacher, String> {
-        let updated_teacher = self.update_teacher(id, updated_data).await?;
-
-        // 🔔 Broadcast teacher update event
-        if let Some(teacher_id) = &updated_teacher.id {
-            Self::broadcast_teacher_update(state, teacher_id).await;
-        }
-
-        Ok(updated_teacher)
-    }
-
-    /// Alternative approach: update teacher by merging with existing data
-    pub async fn update_teacher_merged(
-        &self,
-        id: &IdType,
-        updated_data: UpdateTeacher,
-    ) -> Result<Teacher, String> {
-        // Validate name if provided
-        if let Some(ref name) = updated_data.name {
-            if let Err(e) = is_valid_name(name) {
-                return Err(format!("Invalid teacher name: {}", e));
-            }
-        }
-
-        // Validate email if provided
-        if let Some(ref email) = updated_data.email {
-            if let Err(e) = is_valid_email(email) {
-                return Err(format!("Invalid email: {}", e));
-            }
-        }
-
-        let existing_teacher = self
-            .repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Teacher not found".to_string())?;
-
-        // Check email uniqueness if provided and changed
-        if let Some(ref email) = updated_data.email {
-            if existing_teacher.email != *email {
-                if let Ok(Some(_)) = self.repo.find_by_email(email).await {
-                    return Err("Teacher email already exists".to_string());
-                }
-            }
-        }
-
-        // Create a complete Teacher object by merging existing data with updates
-        let mut merged_teacher = existing_teacher.clone();
-
-        // Update only the fields that are provided in updated_data
-        if let Some(name) = updated_data.name {
-            merged_teacher.name = name;
-        }
-        if let Some(email) = updated_data.email {
-            merged_teacher.email = email;
-        }
-        if let Some(phone) = updated_data.phone {
-            merged_teacher.phone = Some(phone);
-        }
-        if let Some(gender) = updated_data.gender {
-            merged_teacher.gender = Some(gender);
-        }
-        if let Some(teacher_type) = updated_data.r#type {
-            merged_teacher.r#type = teacher_type;
-        }
-        if let Some(class_ids) = updated_data.class_ids {
-            merged_teacher.class_ids = Some(class_ids);
-        }
-        if let Some(subject_ids) = updated_data.subject_ids {
-            merged_teacher.subject_ids = Some(subject_ids);
-        }
-        if let Some(is_active) = updated_data.is_active {
-            merged_teacher.is_active = is_active;
-        }
-        if let Some(tags) = updated_data.tags {
-            merged_teacher.tags = tags;
-        }
-
-        merged_teacher.updated_at = Utc::now();
-
-        // Convert to UpdateTeacher for repository
-        let update_data = UpdateTeacher {
-            name: Some(merged_teacher.name),
-            email: Some(merged_teacher.email),
-            phone: merged_teacher.phone,
-            gender: merged_teacher.gender,
-            r#type: Some(merged_teacher.r#type),
-            class_ids: merged_teacher.class_ids,
-            subject_ids: merged_teacher.subject_ids,
-            is_active: Some(merged_teacher.is_active),
-            tags: Some(merged_teacher.tags),
-        };
-
-        let updated_teacher = self
-            .repo
-            .update_teacher(id, &update_data)
             .await
             .map_err(|e| e.message)?;
 
@@ -579,80 +471,6 @@ impl<'a> TeacherService<'a> {
         Ok(created_teachers)
     }
 
-    /// Create multiple teachers with events
-    pub async fn create_many_teachers_with_events(
-        &self,
-        teachers: Vec<Teacher>,
-        state: &web::Data<AppState>,
-    ) -> Result<Vec<Teacher>, String> {
-        let created_teachers = self.create_many_teachers(teachers).await?;
-
-        // 🔔 Broadcast creation events for all created teachers
-        for teacher in &created_teachers {
-            if let Some(id) = &teacher.id {
-                Self::broadcast_teacher_update(state, id).await;
-            }
-        }
-
-        Ok(created_teachers)
-    }
-
-    /// Create multiple teachers with comprehensive validation
-    pub async fn create_many_teachers_with_validation(
-        &self,
-        teachers: Vec<Teacher>,
-    ) -> Result<Vec<Teacher>, String> {
-        // Validate all teachers first
-        for teacher in &teachers {
-            if let Err(e) = is_valid_name(&teacher.name) {
-                return Err(format!("Invalid teacher name '{}': {}", teacher.name, e));
-            }
-
-            if let Err(e) = is_valid_email(&teacher.email) {
-                return Err(format!("Invalid email '{}': {}", teacher.email, e));
-            }
-        }
-
-        // Process teachers: set timestamps, etc.
-        let mut processed_teachers = Vec::with_capacity(teachers.len());
-        let now = Utc::now();
-
-        for mut teacher in teachers {
-            // Set timestamps
-            teacher.created_at = now;
-            teacher.updated_at = now;
-
-            // Set default values for optional fields
-            if !teacher.is_active {
-                teacher.is_active = true;
-            }
-
-            // Ensure tags is initialized
-            if teacher.tags.is_empty() {
-                teacher.tags = Vec::new();
-            }
-
-            // Set default type if not provided
-            if matches!(teacher.r#type, TeacherType::Regular) {
-                teacher.r#type = TeacherType::Regular;
-            }
-
-            // Generate ID
-            teacher.id = Some(ObjectId::new());
-
-            processed_teachers.push(teacher);
-        }
-
-        // Create teachers using repository with validation
-        let created_teachers = self
-            .repo
-            .create_many_teachers_with_validation(processed_teachers)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(created_teachers)
-    }
-
     /// Prepare teachers for bulk creation
     pub async fn prepare_teachers(
         &self,
@@ -753,33 +571,6 @@ impl<'a> TeacherService<'a> {
             .delete_many_teachers(request)
             .await
             .map_err(|e| e.message)
-    }
-
-    // ------------------------------------------------------------------
-    // 🔔 EVENT BROADCASTING METHODS
-    // ------------------------------------------------------------------
-
-    /// Broadcast teacher update event
-    async fn broadcast_teacher_update(state: &web::Data<AppState>, teacher_id: &ObjectId) {
-        let state_clone = state.clone();
-        let teacher_id_clone = *teacher_id;
-
-        actix_rt::spawn(async move {
-            // Fetch the updated teacher with relations for broadcasting
-            let repo = TeacherRepo::new(&state_clone.db.main_db());
-            if let Ok(Some(updated_teacher)) = repo
-                .find_by_id_with_relations(&IdType::from_object_id(teacher_id_clone))
-                .await
-            {
-                EventService::broadcast_updated(
-                    &state_clone,
-                    "teacher",
-                    &teacher_id_clone.to_hex(),
-                    &updated_teacher,
-                )
-                .await;
-            }
-        });
     }
 
     /// Broadcast teacher deletion event
@@ -987,42 +778,6 @@ impl<'a> TeacherService<'a> {
         }
 
         Ok(stats)
-    }
-
-    /// Get head teachers for a school
-    pub async fn get_school_head_teachers(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Vec<Teacher>, String> {
-        self.get_teachers_by_school_and_type(school_id, TeacherType::HeadTeacher)
-            .await
-    }
-
-    /// Get subject teachers for a school
-    pub async fn get_school_subject_teachers(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Vec<Teacher>, String> {
-        self.get_teachers_by_school_and_type(school_id, TeacherType::SubjectTeacher)
-            .await
-    }
-
-    /// Get deputy teachers for a school
-    pub async fn get_school_deputy_teachers(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Vec<Teacher>, String> {
-        self.get_teachers_by_school_and_type(school_id, TeacherType::Deputy)
-            .await
-    }
-
-    /// Get regular teachers for a school
-    pub async fn get_school_regular_teachers(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Vec<Teacher>, String> {
-        self.get_teachers_by_school_and_type(school_id, TeacherType::Regular)
-            .await
     }
 
     /// Find teachers by name pattern

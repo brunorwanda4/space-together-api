@@ -588,7 +588,6 @@ impl ClassRepo {
         insert_if_some!(update.username, "username");
         insert_if_some!(update.code, "code");
         insert_if_some!(update.school_id, "school_id");
-        insert_if_some!(update.class_teacher_id, "class_teacher_id");
         insert_if_some!(update.r#type, "type");
         insert_if_some!(update.description, "description");
         insert_if_some!(update.subject, "subject");
@@ -706,72 +705,6 @@ impl ClassRepo {
         Ok(inserted_classes)
     }
 
-    /// Create multiple classes with validation and conflict checking
-    pub async fn create_many_classes_with_validation(
-        &self,
-        classes: Vec<Class>,
-    ) -> Result<Vec<Class>, AppError> {
-        self.ensure_indexes().await?;
-
-        // Check for duplicate usernames and codes in the input
-        let mut usernames = std::collections::HashSet::new();
-        let mut codes = std::collections::HashSet::new();
-
-        for class in &classes {
-            if !usernames.insert(&class.username) {
-                return Err(AppError {
-                    message: format!("Duplicate username found: {}", class.username),
-                });
-            }
-
-            if let Some(code) = &class.code {
-                if !codes.insert(code) {
-                    return Err(AppError {
-                        message: format!("Duplicate code found: {}", code),
-                    });
-                }
-            }
-        }
-
-        // Check for existing usernames in database
-        for class in &classes {
-            if let Some(existing) = self.find_by_username(&class.username).await? {
-                return Err(AppError {
-                    message: format!("Username already exists: {}", existing.username),
-                });
-            }
-
-            if let Some(code) = &class.code {
-                if let Some(existing) = self.find_by_code(code).await? {
-                    return Err(AppError {
-                        message: format!("Code already exists: {:?}", existing.code),
-                    });
-                }
-            }
-        }
-
-        // If all checks pass, create the classes
-        self.create_many_classes(classes).await
-    }
-
-    /// Create multiple classes for a specific school
-    pub async fn create_many_classes_for_school(
-        &self,
-        school_id: &IdType,
-        classes: Vec<Class>,
-    ) -> Result<Vec<Class>, AppError> {
-        let obj_id = parse_object_id(school_id)?;
-
-        let mut classes_with_school = Vec::with_capacity(classes.len());
-        for mut class in classes {
-            class.school_id = Some(obj_id);
-            classes_with_school.push(class);
-        }
-
-        self.create_many_classes_with_validation(classes_with_school)
-            .await
-    }
-
     /// Bulk update multiple classes
     pub async fn update_many_classes(
         &self,
@@ -819,5 +752,52 @@ impl ClassRepo {
         }
 
         Ok(classes)
+    }
+
+    pub async fn add_or_update_class_teacher(
+        &self,
+        class_id: &IdType,
+        teacher_id: &IdType,
+    ) -> Result<Class, AppError> {
+        // Try to find the class first
+        if let Some(mut existing_class) = self.find_by_id(class_id).await? {
+            let cls_id = parse_object_id(class_id)?;
+            let tea_id = parse_object_id(teacher_id)?;
+
+            // Update local struct
+            existing_class.class_teacher_id = Some(tea_id);
+            existing_class.updated_at = Utc::now();
+
+            // Build update document
+            let mut update_doc = Document::new();
+            update_doc.insert(
+                "class_teacher_id",
+                bson::to_bson(&existing_class.class_teacher_id).map_err(|e| AppError {
+                    message: format!("Failed to serialize class_teacher_id: {}", e),
+                })?,
+            );
+
+            update_doc.insert(
+                "updated_at",
+                bson::to_bson(&existing_class.updated_at).map_err(|e| AppError {
+                    message: format!("Failed to serialize updated_at: {}", e),
+                })?,
+            );
+
+            let update_doc = doc! { "$set": update_doc };
+
+            self.collection
+                .update_one(doc! { "_id": cls_id }, update_doc)
+                .await
+                .map_err(|e| AppError {
+                    message: format!("Failed to update class teacher: {}", e),
+                })?;
+
+            Ok(existing_class)
+        } else {
+            Err(AppError {
+                message: "Class not found to assign class teacher".to_string(),
+            })
+        }
     }
 }

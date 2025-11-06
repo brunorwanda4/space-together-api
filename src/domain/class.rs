@@ -105,7 +105,6 @@ pub struct UpdateClass {
     pub image: Option<String>,
     pub background_images: Option<Vec<Image>>,
     pub school_id: Option<Option<ObjectId>>,
-    pub class_teacher_id: Option<Option<ObjectId>>,
     pub r#type: Option<ClassType>,
     pub is_active: Option<bool>,
     pub description: Option<Option<String>>,
@@ -138,12 +137,6 @@ pub struct ClassWithOthers {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BulkClassesRequest {
     pub classes: Vec<Class>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BulkClassesForSchoolRequest {
-    pub classes: Vec<Class>,
-    pub school_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

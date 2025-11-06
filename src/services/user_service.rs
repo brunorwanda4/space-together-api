@@ -170,15 +170,17 @@ impl<'a> UserService<'a> {
 
         // ☁️ Replace profile image
         if let Some(new_image_data) = updated_data.image.clone() {
-            if let Some(old_image_id) = existing_user.image_id.clone() {
-                CloudinaryService::delete_from_cloudinary(&old_image_id)
-                    .await
-                    .ok();
-            }
+            if Some(new_image_data.clone()) != existing_user.image {
+                if let Some(old_image_id) = existing_user.image_id.clone() {
+                    CloudinaryService::delete_from_cloudinary(&old_image_id)
+                        .await
+                        .ok();
+                }
 
-            let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data).await?;
-            updated_data.image_id = Some(cloud_res.public_id);
-            updated_data.image = Some(cloud_res.secure_url);
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data).await?;
+                updated_data.image_id = Some(cloud_res.public_id);
+                updated_data.image = Some(cloud_res.secure_url);
+            }
         }
 
         // ☁️ Replace or append background images

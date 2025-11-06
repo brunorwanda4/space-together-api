@@ -281,7 +281,30 @@ impl TeacherRepo {
             })
     }
 
-    async fn ensure_indexes(&self) -> Result<(), AppError> {
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        // Helper function to safely create an index
+        async fn safe_create(
+            collection: &Collection<Document>,
+            model: IndexModel,
+            name: &str,
+        ) -> Result<(), AppError> {
+            if let Err(e) = collection.create_index(model).await {
+                let msg = e.to_string();
+                if msg.contains("already exists") || msg.contains("IndexKeySpecsConflict") {
+                    println!("⚠️ Skipping existing/conflicting index: {}", name);
+                    Ok(())
+                } else {
+                    Err(AppError {
+                        message: format!("Failed to create {} index: {}", name, msg),
+                    })
+                }
+            } else {
+                // println!("✅ Created index: {}", name);
+                Ok(())
+            }
+        }
+
+        // Define all indexes
         let email_index = IndexModel::builder()
             .keys(doc! { "email": 1 })
             .options(IndexOptions::builder().unique(true).build())
@@ -289,7 +312,13 @@ impl TeacherRepo {
 
         let user_id_index = IndexModel::builder()
             .keys(doc! { "user_id": 1 })
-            .options(IndexOptions::builder().unique(true).build())
+            .options(
+                IndexOptions::builder()
+                    .unique(true)
+                    // ✅ FIX: remove unsupported $ne:null
+                    .partial_filter_expression(doc! { "user_id": { "$type": "objectId" } })
+                    .build(),
+            )
             .build();
 
         let school_index = IndexModel::builder()
@@ -322,7 +351,6 @@ impl TeacherRepo {
             .options(IndexOptions::builder().unique(false).build())
             .build();
 
-        // Compound indexes for common query patterns
         let school_type_index = IndexModel::builder()
             .keys(doc! { "school_id": 1, "type": 1 })
             .options(IndexOptions::builder().unique(false).build())
@@ -338,82 +366,26 @@ impl TeacherRepo {
             .options(IndexOptions::builder().unique(false).build())
             .build();
 
-        self.collection
-            .create_index(email_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create email index: {}", e),
-            })?;
+        // Create a collection handle with type Document
+        let doc_collection = self.collection.clone_with_type::<Document>();
 
-        self.collection
-            .create_index(user_id_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create user_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(class_ids_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create class_ids index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(subject_ids_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create subject_ids index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(creator_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create creator_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(type_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create type index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(is_active_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create is_active index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_type_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id+type index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_active_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id+is_active index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(class_subject_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create class_ids+subject_ids index: {}", e),
-            })?;
+        // Create all indexes safely
+        safe_create(&doc_collection, email_index, "email").await?;
+        safe_create(&doc_collection, user_id_index, "user_id").await?;
+        safe_create(&doc_collection, school_index, "school_id").await?;
+        safe_create(&doc_collection, class_ids_index, "class_ids").await?;
+        safe_create(&doc_collection, subject_ids_index, "subject_ids").await?;
+        safe_create(&doc_collection, creator_index, "creator_id").await?;
+        safe_create(&doc_collection, type_index, "type").await?;
+        safe_create(&doc_collection, is_active_index, "is_active").await?;
+        safe_create(&doc_collection, school_type_index, "school_id+type").await?;
+        safe_create(&doc_collection, school_active_index, "school_id+is_active").await?;
+        safe_create(
+            &doc_collection,
+            class_subject_index,
+            "class_ids+subject_ids",
+        )
+        .await?;
 
         Ok(())
     }
@@ -525,6 +497,12 @@ impl TeacherRepo {
         if let Some(gender) = &update.gender {
             update_doc.insert("gender", gender.to_string());
         }
+        if let Some(image) = &update.image {
+            update_doc.insert("image", image.to_string());
+        }
+        if let Some(image_id) = &update.image_id {
+            update_doc.insert("image_id", image_id.to_string());
+        }
         if let Some(teacher_type) = &update.r#type {
             update_doc.insert(
                 "type",
@@ -544,6 +522,9 @@ impl TeacherRepo {
         }
         if let Some(tags) = &update.tags {
             update_doc.insert("tags", tags);
+        }
+        if let Some(user_id) = &update.user_id {
+            update_doc.insert("user_id", user_id);
         }
 
         update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
@@ -697,53 +678,6 @@ impl TeacherRepo {
         }
 
         Ok(inserted_teachers)
-    }
-
-    pub async fn create_many_teachers_with_validation(
-        &self,
-        teachers: Vec<Teacher>,
-    ) -> Result<Vec<Teacher>, AppError> {
-        self.ensure_indexes().await?;
-
-        let mut emails = std::collections::HashSet::new();
-        let mut user_ids = std::collections::HashSet::new();
-
-        for teacher in &teachers {
-            if !emails.insert(&teacher.email) {
-                return Err(AppError {
-                    message: format!("Duplicate email found: {}", teacher.email),
-                });
-            }
-
-            if let Some(user_id) = &teacher.user_id {
-                if !user_ids.insert(user_id) {
-                    return Err(AppError {
-                        message: format!("Duplicate user_id found: {}", user_id),
-                    });
-                }
-            }
-        }
-
-        for teacher in &teachers {
-            if let Some(existing) = self.find_by_email(&teacher.email).await? {
-                return Err(AppError {
-                    message: format!("Email already exists: {}", existing.email),
-                });
-            }
-
-            if let Some(user_id) = &teacher.user_id {
-                if let Some(_existing) = self
-                    .find_by_user_id(&IdType::from_object_id(*user_id))
-                    .await?
-                {
-                    return Err(AppError {
-                        message: format!("User ID already exists: {}", user_id),
-                    });
-                }
-            }
-        }
-
-        self.create_many_teachers(teachers).await
     }
 
     pub async fn prepare_teachers(
@@ -952,27 +886,59 @@ impl TeacherRepo {
         teacher_id: &IdType,
         class_ids: Vec<ObjectId>,
     ) -> Result<Teacher, AppError> {
-        let obj_id = parse_object_id(teacher_id)?;
+        let teacher_obj_id = ObjectId::parse_str(teacher_id.as_string()).map_err(|e| AppError {
+            message: format!("Invalid teacher id: {}", e),
+        })?;
 
-        let update_doc = doc! {
-            "$addToSet": {
-                "class_ids": { "$each": &class_ids }
-            },
-            "$set": {
-                "updated_at": bson::to_bson(&Utc::now()).unwrap()
-            }
-        };
+        let filter = doc! { "_id": &teacher_obj_id };
 
+        // ✅ Step 1: Ensure `class_ids` is an array (initialize if missing or null)
         self.collection
-            .update_one(doc! { "_id": obj_id }, update_doc)
+            .update_one(
+                doc! {
+                    "_id": &teacher_obj_id,
+                    "$or": [
+                        { "class_ids": { "$exists": false } },
+                        { "class_ids": bson::Bson::Null }
+                    ]
+                },
+                doc! {
+                    "$set": { "class_ids": bson::to_bson(&Vec::<ObjectId>::new()).unwrap() }
+                },
+            )
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to initialize class_ids field: {}", e),
+            })?;
+
+        // ✅ Step 2: Add new class IDs safely
+        self.collection
+            .update_one(
+                filter.clone(),
+                doc! {
+                    "$addToSet": {
+                        "class_ids": { "$each": &class_ids }
+                    },
+                    "$set": {
+                        "updated_at": bson::to_bson(&Utc::now()).unwrap()
+                    }
+                },
+            )
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to add classes to teacher: {}", e),
             })?;
 
-        self.find_by_id(teacher_id).await?.ok_or(AppError {
-            message: "Teacher not found after adding classes".to_string(),
-        })
+        // ✅ Step 3: Return the updated teacher
+        self.collection
+            .find_one(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch updated teacher: {}", e),
+            })?
+            .ok_or(AppError {
+                message: "Teacher not found after adding classes".to_string(),
+            })
     }
 
     pub async fn add_subjects_to_teacher(

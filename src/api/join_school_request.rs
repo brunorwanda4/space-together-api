@@ -35,7 +35,7 @@ async fn get_all_join_requests(
     query: web::Query<JoinRequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match get_join_requests_handler(web::Data::new(controller), query).await {
         Ok(response) => response,
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
@@ -48,7 +48,7 @@ async fn get_all_join_requests_with_relations(
     query: web::Query<JoinRequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match get_join_requests_with_relations_handler(web::Data::new(controller), query).await {
         Ok(response) => response,
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
@@ -61,7 +61,7 @@ async fn get_join_request_by_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let request_id = IdType::String(path.into_inner());
 
     match controller.join_request_repo.find_by_id(&request_id).await {
@@ -79,7 +79,7 @@ async fn get_join_request_by_id_with_relations(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let request_id = IdType::String(path.into_inner());
 
     match controller
@@ -101,7 +101,7 @@ async fn get_join_requests_by_email(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let email = path.into_inner();
 
     match controller
@@ -120,7 +120,7 @@ async fn get_join_requests_by_school_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let school_id = IdType::String(path.into_inner());
 
     match controller
@@ -139,7 +139,7 @@ async fn get_pending_join_requests_by_school_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match get_pending_requests_for_school_handler(web::Data::new(controller), path).await {
         Ok(response) => response,
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
@@ -152,7 +152,7 @@ async fn get_join_requests_by_user_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let user_id = IdType::String(path.into_inner());
 
     match controller
@@ -171,7 +171,7 @@ async fn get_join_requests_by_status(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let status_str = path.into_inner();
 
     let status = match status_str.to_lowercase().as_str() {
@@ -209,7 +209,7 @@ async fn create_join_request(
         }));
     }
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match create_join_request_handler(web::Data::new(controller), data, user).await {
         Ok(response) => {
             // 🔔 Broadcast real-time event for created join request
@@ -246,7 +246,7 @@ async fn create_bulk_join_requests(
         }));
     }
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match bulk_create_join_requests_handler(web::Data::new(controller), data).await {
         Ok(response) => {
             // 🔔 Broadcast real-time event for bulk creation
@@ -277,7 +277,7 @@ async fn accept_join_request(
 
     // Check permissions - user can accept their own requests or admin/staff can accept any
     let request_id = path.into_inner();
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     // Get the request first to check ownership
     let request = match controller
@@ -318,7 +318,7 @@ async fn accept_join_request(
         message: None,
     };
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match accept_join_request_handler(
         web::Data::new(controller),
         web::Json(respond_request),
@@ -331,7 +331,7 @@ async fn accept_join_request(
             let state_clone = state.clone();
             let request_id_clone = request_id.clone();
             actix_rt::spawn(async move {
-                let controller = create_controller(&state_clone);
+                let controller = create_join_school_request_controller(&state_clone);
                 if let Ok(Some(updated_request)) = controller
                     .join_request_repo
                     .find_by_id(&IdType::String(request_id_clone))
@@ -365,7 +365,7 @@ async fn reject_join_request(
 
     // Check permissions - user can reject their own requests or admin/staff can reject any
     let request_id = path.into_inner();
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     // Get the request first to check ownership
     let request = match controller
@@ -406,7 +406,7 @@ async fn reject_join_request(
         message: None,
     };
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match reject_join_request_handler(web::Data::new(controller), web::Json(respond_request)).await
     {
         Ok(response) => {
@@ -414,7 +414,7 @@ async fn reject_join_request(
             let state_clone = state.clone();
             let request_id_clone = request_id.clone();
             actix_rt::spawn(async move {
-                let controller = create_controller(&state_clone);
+                let controller = create_join_school_request_controller(&state_clone);
                 if let Ok(Some(updated_request)) = controller
                     .join_request_repo
                     .find_by_id(&IdType::String(request_id_clone))
@@ -448,7 +448,7 @@ async fn cancel_join_request(
 
     // Check permissions - sender can cancel their own requests or admin/staff can cancel any
     let request_id = path.into_inner();
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     // Get the request first to check ownership
     let request = match controller
@@ -484,7 +484,7 @@ async fn cancel_join_request(
         message: None,
     };
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match cancel_join_request_handler(web::Data::new(controller), web::Json(respond_request)).await
     {
         Ok(response) => {
@@ -492,7 +492,7 @@ async fn cancel_join_request(
             let state_clone = state.clone();
             let request_id_clone = request_id.clone();
             actix_rt::spawn(async move {
-                let controller = create_controller(&state_clone);
+                let controller = create_join_school_request_controller(&state_clone);
                 if let Ok(Some(updated_request)) = controller
                     .join_request_repo
                     .find_by_id(&IdType::String(request_id_clone))
@@ -531,7 +531,7 @@ async fn update_join_request_expiration(
         }));
     }
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let mut update_data = data.into_inner();
     let request_id = path.into_inner();
     update_data.request_id = request_id.clone();
@@ -544,7 +544,7 @@ async fn update_join_request_expiration(
             let state_clone = state.clone();
             let request_id_clone = request_id.clone();
             actix_rt::spawn(async move {
-                let controller = create_controller(&state_clone);
+                let controller = create_join_school_request_controller(&state_clone);
                 if let Ok(Some(updated_request)) = controller
                     .join_request_repo
                     .find_by_id(&IdType::String(request_id_clone))
@@ -582,7 +582,7 @@ async fn bulk_respond_to_join_requests(
         }));
     }
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match bulk_respond_to_requests_handler(web::Data::new(controller), data).await {
         Ok(response) => {
             // 🔔 Broadcast real-time events for bulk update
@@ -617,7 +617,7 @@ async fn delete_join_request(
         }));
     }
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let request_id = IdType::String(path.into_inner());
 
     // Get request before deletion for broadcasting
@@ -668,7 +668,7 @@ async fn expire_old_join_requests(
         }));
     }
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match expire_old_requests_handler(web::Data::new(controller)).await {
         Ok(response) => response,
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
@@ -690,7 +690,7 @@ async fn cleanup_expired_join_requests(
         }));
     }
 
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     match cleanup_expired_requests_handler(web::Data::new(controller), path).await {
         Ok(response) => response,
         Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
@@ -703,7 +703,7 @@ async fn count_join_requests_by_status(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let status_str = path.into_inner();
 
     let status = match status_str.to_lowercase().as_str() {
@@ -731,7 +731,7 @@ async fn count_pending_join_requests_by_school(
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let school_id = IdType::String(path.into_inner());
 
     match controller
@@ -751,7 +751,7 @@ async fn check_pending_join_request(
     state: web::Data<AppState>,
 ) -> impl Responder {
     let (school_id, email) = path.into_inner();
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
     let school_id = IdType::String(school_id);
 
     match controller
@@ -771,7 +771,7 @@ async fn check_pending_join_request(
 /// Get join request statistics
 #[get("/stats/summary")]
 async fn get_join_request_statistics(state: web::Data<AppState>) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     // Get counts for all statuses
     let pending_count = controller
@@ -820,7 +820,7 @@ async fn get_my_pending_join_requests(
     state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     match controller
         .join_request_repo
@@ -839,7 +839,7 @@ async fn get_my_join_requests(
     state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     match controller
         .join_request_repo
@@ -857,7 +857,7 @@ async fn get_join_requests_by_class(
     class_id: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     match controller
         .get_join_requests_by_class(&IdType::String(class_id.into_inner()))
@@ -874,7 +874,7 @@ async fn get_pending_join_requests_by_class(
     class_id: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     match controller
         .get_pending_join_requests_by_class(&IdType::String(class_id.into_inner()))
@@ -892,7 +892,7 @@ async fn get_join_requests_by_school_and_class(
     state: web::Data<AppState>,
 ) -> impl Responder {
     let (school_id, class_id) = path.into_inner();
-    let controller = create_controller(&state);
+    let controller = create_join_school_request_controller(&state);
 
     match controller
         .get_join_requests_by_school_and_class(
@@ -907,7 +907,9 @@ async fn get_join_requests_by_school_and_class(
 }
 
 /// Helper function to create controller instance
-fn create_controller(state: &AppState) -> JoinSchoolRequestController<'static> {
+pub fn create_join_school_request_controller(
+    state: &AppState,
+) -> JoinSchoolRequestController<'static> {
     let db = state.db.main_db();
 
     // Leak repos so they live for the program lifetime ('static)

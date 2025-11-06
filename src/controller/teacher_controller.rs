@@ -1,6 +1,10 @@
+use mongodb::bson::oid::ObjectId;
+
 use crate::{
+    controller::join_school_request_controller::JoinSchoolRequestController,
     domain::{
         common_details::Gender,
+        join_school_request::{CreateJoinSchoolRequest, JoinRole},
         teacher::{
             BulkTeacherTags, BulkUpdateTeacherActive, Teacher, TeacherType, TeacherWithRelations,
             UpdateTeacher,
@@ -24,6 +28,7 @@ pub struct TeacherController<'a> {
     pub teacher_service: &'a TeacherService<'a>,
     pub subject_service: &'a SubjectService<'a>,
     pub class_service: &'a ClassService<'a>,
+    pub join_school_request: &'a JoinSchoolRequestController<'a>,
 }
 
 impl<'a> TeacherController<'a> {
@@ -34,6 +39,7 @@ impl<'a> TeacherController<'a> {
         teacher_service: &'a TeacherService<'a>,
         subject_service: &'a SubjectService<'a>,
         class_service: &'a ClassService<'a>,
+        join_school_request: &'a JoinSchoolRequestController<'a>,
     ) -> Self {
         Self {
             teacher_repo,
@@ -42,6 +48,36 @@ impl<'a> TeacherController<'a> {
             teacher_service,
             subject_service,
             class_service,
+            join_school_request,
+        }
+    }
+
+    pub async fn create_teacher(
+        &self,
+        new_teacher: Teacher,
+        sent_by: ObjectId,
+    ) -> Result<Teacher, String> {
+        let school_id = match new_teacher.school_id {
+            Some(id) => id,
+            None => return Err("Missing school_id".to_string()),
+        };
+        let create_request = CreateJoinSchoolRequest {
+            school_id: school_id.to_string(),
+            class_id: None,
+            message: Some("Join School request".to_string()),
+            r#type: "Teacher".to_string(),
+            role: JoinRole::Teacher,
+            email: new_teacher.email.clone(),
+            sent_by: sent_by.to_hex(),
+        };
+
+        match self
+            .join_school_request
+            .create_join_request(create_request, sent_by)
+            .await
+        {
+            Ok(_) => self.teacher_service.create_teacher(new_teacher).await,
+            Err(_) => self.teacher_service.create_teacher(new_teacher).await,
         }
     }
 
@@ -126,28 +162,6 @@ impl<'a> TeacherController<'a> {
             })?;
 
         self.enrich_teacher_with_relations(teacher).await
-    }
-
-    // ----------------------------------------------------------------------
-    // Get teachers by school ID with relations
-    // ----------------------------------------------------------------------
-    pub async fn get_teachers_by_school_id_with_relations(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Vec<TeacherWithRelations>, AppError> {
-        let teachers = self
-            .teacher_repo
-            .find_by_school_id(school_id)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
-
-        let mut teachers_with_relations = Vec::new();
-        for teacher in teachers {
-            let teacher_with_relations = self.enrich_teacher_with_relations(teacher).await?;
-            teachers_with_relations.push(teacher_with_relations);
-        }
-
-        Ok(teachers_with_relations)
     }
 
     // ----------------------------------------------------------------------

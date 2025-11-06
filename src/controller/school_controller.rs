@@ -9,7 +9,6 @@ use crate::{
     domain::{
         auth_user::AuthUserDto,
         class::{Class, ClassType},
-        common_details::Image,
         school::{SchoolAcademicRequest, SchoolAcademicResponse},
         subject::Subject,
     },
@@ -123,16 +122,15 @@ impl<'a> SchoolController<'a> {
                 let level = main_class.level.unwrap_or(0);
 
                 let class_name = format!(
-                    "{:?} {} {} {} {}",
-                    trade.r#type, level, trade.name, school.name, academic_year
+                    "{:?} {} {} {}",
+                    trade.r#type, level, trade.name, academic_year
                 );
 
                 let class_username = format!(
-                    "{:?}_{}_{}_{}_{}",
+                    "{:?}_{}_{}_{}",
                     trade.r#type,
                     level,
                     trade.name.replace(' ', "_"),
-                    school.name.replace(' ', "_"),
                     academic_year.replace('-', "_")
                 )
                 .to_lowercase();
@@ -217,16 +215,15 @@ impl<'a> SchoolController<'a> {
                 let level = class.name.split_whitespace().nth(1).unwrap_or("0");
 
                 let subject_name = format!(
-                    "{} {:?} {} {} {}",
-                    main_subject.name, trade_type, level, school.name, academic_year
+                    "{} {:?} {} {}",
+                    main_subject.name, trade_type, level, academic_year
                 );
 
                 let subject_username = format!(
-                    "{}_{:?}_{}_{}_{}",
+                    "{}_{:?}_{}_{}",
                     main_subject.name.replace(' ', "_"),
                     trade_type,
                     level,
-                    school.name.replace(' ', "_"),
                     academic_year.replace('-', "_")
                 )
                 .to_lowercase();
