@@ -32,28 +32,32 @@ pub struct Student {
     // Connected user
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        default
     )]
     pub user_id: Option<ObjectId>,
 
     // Connected school
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        default
     )]
     pub school_id: Option<ObjectId>,
 
     // Connected class
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        default
     )]
     pub class_id: Option<ObjectId>,
 
     // Creator (school admin or system)
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        default
     )]
     pub creator_id: Option<ObjectId>,
 
@@ -61,6 +65,8 @@ pub struct Student {
     pub email: String,
     pub phone: Option<String>,
     pub gender: Option<Gender>,
+    pub image: Option<String>,
+    pub image_id: Option<String>,
     pub date_of_birth: Option<Age>, // You can change to DateTime<Utc> if you prefer
 
     pub registration_number: Option<String>,
@@ -85,8 +91,11 @@ pub struct Student {
 #[derive(Debug, Deserialize, Default, Serialize, Clone)]
 pub struct UpdateStudent {
     pub name: Option<String>,
+    pub user_id: Option<ObjectId>,
     pub email: Option<String>,
     pub phone: Option<String>,
+    pub image: Option<String>,
+    pub image_id: Option<String>,
     pub gender: Option<Gender>,
     pub date_of_birth: Option<Age>, // You can change to DateTime<Utc> if you prefer
     pub registration_number: Option<String>,
@@ -102,6 +111,7 @@ pub struct StudentWithRelations {
     pub student: Student,
 
     pub user: Option<crate::domain::user::User>,
+    pub creator: Option<crate::domain::user::User>,
     pub school: Option<crate::domain::school::School>,
     pub class: Option<crate::domain::class::Class>,
 }
@@ -121,21 +131,6 @@ pub struct BulkUpdateStudentStatus {
 pub struct BulkStudentTags {
     pub ids: Vec<String>,
     pub tags: Vec<String>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct PrepareStudentRequest {
-    pub students: Vec<Student>,
-    pub school_id: Option<String>,
-    pub creator_id: Option<String>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct PrepareStudentsBulkRequest {
-    pub students: Vec<Student>,
-    pub school_id: Option<String>, // Optional: override school_id from token
-    pub class_id: Option<String>,
-    pub creator_id: Option<String>,
 }
 
 #[derive(Deserialize)]

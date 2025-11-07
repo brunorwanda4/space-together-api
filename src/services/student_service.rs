@@ -3,14 +3,14 @@ use crate::{
     domain::{
         common_details::Gender,
         student::{
-            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest,
-            Student, StudentStatus, StudentWithRelations, UpdateStudent,
+            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, Student, StudentStatus,
+            StudentWithRelations, UpdateStudent,
         },
     },
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
     repositories::student_repo::StudentRepo,
-    services::event_service::EventService,
+    services::{cloudinary_service::CloudinaryService, event_service::EventService},
     utils::{email::is_valid_email, names::is_valid_name},
 };
 use actix_web::web;
@@ -101,6 +101,12 @@ impl<'a> StudentService<'a> {
             if let Ok(Some(_)) = self.repo.find_by_registration_number(reg_number).await {
                 return Err("Registration number already exists".to_string());
             }
+        }
+
+        if let Some(image_data) = new_student.image.clone() {
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data).await?;
+            new_student.image_id = Some(cloud_res.public_id);
+            new_student.image = Some(cloud_res.secure_url);
         }
 
         // Set timestamps
@@ -274,25 +280,11 @@ impl<'a> StudentService<'a> {
         Ok(students)
     }
 
-    /// Get students by school ID and class ID
-    pub async fn get_students_by_school_and_class(
-        &self,
-        school_id: &IdType,
-        class_id: &IdType,
-    ) -> Result<Vec<Student>, String> {
-        let students = self
-            .repo
-            .find_by_school_and_class(school_id, class_id)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(students)
-    }
-
     /// Update a student
     pub async fn update_student(
         &self,
         id: &IdType,
-        updated_data: UpdateStudent,
+        mut updated_data: UpdateStudent,
     ) -> Result<Student, String> {
         // Validate name if provided
         if let Some(ref name) = updated_data.name {
@@ -330,6 +322,21 @@ impl<'a> StudentService<'a> {
                 if let Ok(Some(_)) = self.repo.find_by_registration_number(reg_number).await {
                     return Err("Registration number already exists".to_string());
                 }
+            }
+        }
+
+        // ☁️ Replace profile image
+        if let Some(new_image_data) = updated_data.image.clone() {
+            if Some(new_image_data.clone()) != existing_student.image {
+                if let Some(old_image_id) = existing_student.image_id.clone() {
+                    CloudinaryService::delete_from_cloudinary(&old_image_id)
+                        .await
+                        .ok();
+                }
+
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data).await?;
+                updated_data.image_id = Some(cloud_res.public_id);
+                updated_data.image = Some(cloud_res.secure_url);
             }
         }
 
@@ -337,131 +344,6 @@ impl<'a> StudentService<'a> {
         let updated_student = self
             .repo
             .update_student(id, &updated_data)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(updated_student)
-    }
-
-    // ------------------------------------------------------------------
-    // ✅ UPDATE WITH EVENTS
-    // ------------------------------------------------------------------
-
-    pub async fn update_student_with_events(
-        &self,
-        id: &IdType,
-        updated_data: UpdateStudent,
-        state: &web::Data<AppState>,
-    ) -> Result<Student, String> {
-        let updated_student = self.update_student(id, updated_data).await?;
-
-        // 🔔 Broadcast student update event
-        if let Some(student_id) = &updated_student.id {
-            Self::broadcast_student_update(state, student_id).await;
-        }
-
-        Ok(updated_student)
-    }
-
-    /// Alternative approach: update student by merging with existing data
-    pub async fn update_student_merged(
-        &self,
-        id: &IdType,
-        updated_data: UpdateStudent,
-    ) -> Result<Student, String> {
-        // Validate name if provided
-        if let Some(ref name) = updated_data.name {
-            if let Err(e) = is_valid_name(name) {
-                return Err(format!("Invalid student name: {}", e));
-            }
-        }
-
-        // Validate email if provided
-        if let Some(ref email) = updated_data.email {
-            if let Err(e) = is_valid_email(email) {
-                return Err(format!("Invalid email: {}", e));
-            }
-        }
-
-        let existing_student = self
-            .repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Student not found".to_string())?;
-
-        // Check email uniqueness if provided and changed
-        if let Some(ref email) = updated_data.email {
-            if existing_student.email != *email {
-                if let Ok(Some(_)) = self.repo.find_by_email(email).await {
-                    return Err("Student email already exists".to_string());
-                }
-            }
-        }
-
-        // Check registration number uniqueness if provided and changed
-        if let Some(ref reg_number) = updated_data.registration_number {
-            if existing_student.registration_number.as_ref() != Some(reg_number) {
-                if let Ok(Some(_)) = self.repo.find_by_registration_number(reg_number).await {
-                    return Err("Registration number already exists".to_string());
-                }
-            }
-        }
-
-        // Create a complete Student object by merging existing data with updates
-        let mut merged_student = existing_student.clone();
-
-        // Update only the fields that are provided in updated_data
-        if let Some(name) = updated_data.name {
-            merged_student.name = name;
-        }
-        if let Some(email) = updated_data.email {
-            merged_student.email = email;
-        }
-        if let Some(phone) = updated_data.phone {
-            merged_student.phone = Some(phone);
-        }
-        if let Some(gender) = updated_data.gender {
-            merged_student.gender = Some(gender);
-        }
-        if let Some(date_of_birth) = updated_data.date_of_birth {
-            merged_student.date_of_birth = Some(date_of_birth);
-        }
-        if let Some(registration_number) = updated_data.registration_number {
-            merged_student.registration_number = Some(registration_number);
-        }
-        if let Some(admission_year) = updated_data.admission_year {
-            merged_student.admission_year = Some(admission_year);
-        }
-        if let Some(status) = updated_data.status {
-            merged_student.status = status;
-        }
-        if let Some(is_active) = updated_data.is_active {
-            merged_student.is_active = is_active;
-        }
-        if let Some(tags) = updated_data.tags {
-            merged_student.tags = tags;
-        }
-
-        merged_student.updated_at = Utc::now();
-
-        // Convert to UpdateStudent for repository
-        let update_data = UpdateStudent {
-            name: Some(merged_student.name),
-            email: Some(merged_student.email),
-            phone: merged_student.phone,
-            gender: merged_student.gender,
-            date_of_birth: merged_student.date_of_birth,
-            registration_number: merged_student.registration_number,
-            admission_year: merged_student.admission_year,
-            status: Some(merged_student.status),
-            is_active: Some(merged_student.is_active),
-            tags: Some(merged_student.tags),
-        };
-
-        let updated_student = self
-            .repo
-            .update_student(id, &update_data)
             .await
             .map_err(|e| e.message)?;
 
@@ -613,73 +495,6 @@ impl<'a> StudentService<'a> {
         }
 
         Ok(created_students)
-    }
-
-    /// Create multiple students with comprehensive validation
-    pub async fn create_many_students_with_validation(
-        &self,
-        students: Vec<Student>,
-    ) -> Result<Vec<Student>, String> {
-        // Validate all students first
-        for student in &students {
-            if let Err(e) = is_valid_name(&student.name) {
-                return Err(format!("Invalid student name '{}': {}", student.name, e));
-            }
-
-            if let Err(e) = is_valid_email(&student.email) {
-                return Err(format!("Invalid email '{}': {}", student.email, e));
-            }
-        }
-
-        // Process students: set timestamps, etc.
-        let mut processed_students = Vec::with_capacity(students.len());
-        let now = Utc::now();
-
-        for mut student in students {
-            // Set timestamps
-            student.created_at = now;
-            student.updated_at = now;
-
-            // Set default values for optional fields
-            if !student.is_active {
-                student.is_active = true;
-            }
-
-            // Ensure tags is initialized
-            if student.tags.is_empty() {
-                student.tags = Vec::new();
-            }
-
-            // Set default status if not provided
-            if matches!(student.status, StudentStatus::Active) {
-                student.status = StudentStatus::Active;
-            }
-
-            // Generate ID
-            student.id = Some(ObjectId::new());
-
-            processed_students.push(student);
-        }
-
-        // Create students using repository with validation
-        let created_students = self
-            .repo
-            .create_many_students_with_validation(processed_students)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(created_students)
-    }
-
-    /// Prepare students for bulk creation
-    pub async fn prepare_students(
-        &self,
-        request: &PrepareStudentRequest,
-    ) -> Result<Vec<Student>, String> {
-        self.repo
-            .prepare_students(request)
-            .await
-            .map_err(|e| e.message)
     }
 
     /// Bulk update multiple students
@@ -854,33 +669,6 @@ impl<'a> StudentService<'a> {
     // ------------------------------------------------------------------
     // 🔧 UTILITY METHODS
     // ------------------------------------------------------------------
-
-    /// Prepare students for bulk creation
-    pub fn prepare_students_for_bulk_creation(
-        &self,
-        students: Vec<Student>,
-        school_id: Option<ObjectId>,
-        class_id: Option<ObjectId>,
-        creator_id: Option<ObjectId>,
-    ) -> Result<Vec<Student>, String> {
-        let prepared_students: Vec<Student> = students
-            .into_iter()
-            .map(|mut student| {
-                if let Some(sid) = school_id {
-                    student.school_id = Some(sid);
-                }
-                if let Some(cid) = class_id {
-                    student.class_id = Some(cid);
-                }
-                if let Some(cid) = creator_id {
-                    student.creator_id = Some(cid);
-                }
-                student
-            })
-            .collect();
-
-        Ok(prepared_students)
-    }
 
     /// Get students by admission year
     pub async fn get_students_by_admission_year(

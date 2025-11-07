@@ -5,8 +5,8 @@ use crate::{
     domain::{
         auth_user::AuthUserDto,
         student::{
-            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest,
-            Student, StudentCountQuery, StudentStatus, UpdateStudent,
+            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, Student, StudentCountQuery,
+            StudentStatus, UpdateStudent,
         },
     },
     guards::role_guard,
@@ -364,63 +364,6 @@ async fn update_student(
     }
 }
 
-#[put("/{id}/merged")]
-async fn update_student_merged(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    data: web::Json<UpdateStudent>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let logged_user = match req.extensions().get::<AuthUserDto>() {
-        Some(u) => u.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "Unauthorized"
-            }))
-        }
-    };
-
-    let target_student_id_str = path.into_inner();
-
-    // Check if user has permission to update student
-    if let Err(err) =
-        crate::guards::role_guard::check_student_access(&logged_user, &target_student_id_str)
-    {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err.to_string()
-        }));
-    }
-
-    let target_student_id = IdType::from_string(target_student_id_str);
-    let repo = StudentRepo::new(&state.db.main_db());
-    let service = StudentService::new(&repo);
-
-    match service
-        .update_student_merged(&target_student_id, data.into_inner())
-        .await
-    {
-        Ok(student) => {
-            // Broadcast updated student event
-            let student_clone = student.clone();
-            let state_clone = state.clone();
-            actix_rt::spawn(async move {
-                if let Some(id) = student_clone.id {
-                    EventService::broadcast_updated(
-                        &state_clone,
-                        "student",
-                        &id.to_hex(),
-                        &student_clone,
-                    )
-                    .await;
-                }
-            });
-
-            HttpResponse::Ok().json(student)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 #[delete("/{id}")]
 async fn delete_student(
     user: web::ReqData<AuthUserDto>,
@@ -570,50 +513,6 @@ async fn create_many_students(
     let service = StudentService::new(&repo);
 
     match service.create_many_students(data.students.clone()).await {
-        Ok(students) => {
-            let state_clone = state.clone();
-            let students_for_spawn = students.clone();
-
-            actix_rt::spawn(async move {
-                for student in &students_for_spawn {
-                    if let Some(id) = student.id {
-                        EventService::broadcast_created(
-                            &state_clone,
-                            "student",
-                            &id.to_hex(),
-                            student,
-                        )
-                        .await;
-                    }
-                }
-            });
-
-            HttpResponse::Created().json(students)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Create multiple students with validation
-#[post("/bulk/validation")]
-async fn create_many_students_with_validation(
-    user: web::ReqData<AuthUserDto>,
-    data: web::Json<BulkStudentsRequest>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let logged_user = user.into_inner();
-
-    if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
-        return HttpResponse::Forbidden().json(serde_json::json!({ "message": err.to_string() }));
-    }
-
-    let repo = StudentRepo::new(&state.db.main_db());
-    let service = StudentService::new(&repo);
-
-    match service
-        .create_many_students_with_validation(data.students.clone())
-        .await
-    {
         Ok(students) => {
             let state_clone = state.clone();
             let students_for_spawn = students.clone();
@@ -896,31 +795,6 @@ async fn transfer_students_to_class(
     }
 }
 
-/// Prepare students for bulk creation
-#[post("/bulk/prepare")]
-async fn prepare_students_for_bulk_creation(
-    user: web::ReqData<AuthUserDto>,
-    data: web::Json<PrepareStudentRequest>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let logged_user = user.into_inner();
-
-    // Only admin, staff, or teachers can prepare students
-    if let Err(err) = crate::guards::role_guard::check_admin_staff_or_teacher(&logged_user) {
-        return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err.to_string()
-        }));
-    }
-
-    let repo = StudentRepo::new(&state.db.main_db());
-    let service = StudentService::new(&repo);
-
-    match service.prepare_students(&data.into_inner()).await {
-        Ok(prepared_students) => HttpResponse::Ok().json(prepared_students),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 /// Get class roster with student details
 #[get("/class/{class_id}/roster")]
 async fn get_class_roster(
@@ -1175,7 +1049,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_student) // POST /students - Create new student (Admin/Staff/Teacher only)
             .service(update_student) // PUT /students/{id} - Update student (Admin/Student access only)
-            .service(update_student_merged) // PUT /students/{id}/merged - Update student with merge (Admin/Student access only)
             .service(delete_student) // DELETE /students/{id} - Delete student (Admin/Student creator only)
             // Student Status Management
             .service(suspend_student) // PUT /students/{id}/suspend - Suspend a student
@@ -1183,13 +1056,11 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(graduate_student) // PUT /students/{id}/graduate - Graduate a student
             // Bulk operations (protected)
             .service(create_many_students) // POST /students/bulk - Create multiple students
-            .service(create_many_students_with_validation) // POST /students/bulk/validation - Create multiple students with validation
             .service(update_many_students) // PUT /students/bulk - Update multiple students
             .service(bulk_update_student_status) // PUT /students/bulk/status - Bulk update status for multiple students
             .service(bulk_add_tags_to_students) // PUT /students/bulk/add-tags - Bulk add tags to multiple students
             .service(bulk_remove_tags_from_students) // PUT /students/bulk/remove-tags - Bulk remove tags from multiple students
             .service(transfer_students_to_class) // PUT /students/bulk/transfer-class - Transfer students to another class
-            .service(delete_many_students) // DELETE /students/bulk - Delete multiple students by IDs
-            .service(prepare_students_for_bulk_creation), // POST /students/bulk/prepare - Prepare students for bulk creation
+            .service(delete_many_students), // DELETE /students/bulk - Delete multiple students by IDs
     );
 }

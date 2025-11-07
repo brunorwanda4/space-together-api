@@ -5,6 +5,7 @@ use crate::domain::teacher::{
 };
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
+use crate::helpers::repo_helpers::safe_create_index;
 use crate::models::id_model::IdType;
 use crate::pipeline::teacher_pipeline::teacher_with_relations_pipeline;
 use crate::utils::object_id::parse_object_id;
@@ -282,28 +283,6 @@ impl TeacherRepo {
     }
 
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
-        // Helper function to safely create an index
-        async fn safe_create(
-            collection: &Collection<Document>,
-            model: IndexModel,
-            name: &str,
-        ) -> Result<(), AppError> {
-            if let Err(e) = collection.create_index(model).await {
-                let msg = e.to_string();
-                if msg.contains("already exists") || msg.contains("IndexKeySpecsConflict") {
-                    println!("⚠️ Skipping existing/conflicting index: {}", name);
-                    Ok(())
-                } else {
-                    Err(AppError {
-                        message: format!("Failed to create {} index: {}", name, msg),
-                    })
-                }
-            } else {
-                // println!("✅ Created index: {}", name);
-                Ok(())
-            }
-        }
-
         // Define all indexes
         let email_index = IndexModel::builder()
             .keys(doc! { "email": 1 })
@@ -370,17 +349,17 @@ impl TeacherRepo {
         let doc_collection = self.collection.clone_with_type::<Document>();
 
         // Create all indexes safely
-        safe_create(&doc_collection, email_index, "email").await?;
-        safe_create(&doc_collection, user_id_index, "user_id").await?;
-        safe_create(&doc_collection, school_index, "school_id").await?;
-        safe_create(&doc_collection, class_ids_index, "class_ids").await?;
-        safe_create(&doc_collection, subject_ids_index, "subject_ids").await?;
-        safe_create(&doc_collection, creator_index, "creator_id").await?;
-        safe_create(&doc_collection, type_index, "type").await?;
-        safe_create(&doc_collection, is_active_index, "is_active").await?;
-        safe_create(&doc_collection, school_type_index, "school_id+type").await?;
-        safe_create(&doc_collection, school_active_index, "school_id+is_active").await?;
-        safe_create(
+        safe_create_index(&doc_collection, email_index, "email").await?;
+        safe_create_index(&doc_collection, user_id_index, "user_id").await?;
+        safe_create_index(&doc_collection, school_index, "school_id").await?;
+        safe_create_index(&doc_collection, class_ids_index, "class_ids").await?;
+        safe_create_index(&doc_collection, subject_ids_index, "subject_ids").await?;
+        safe_create_index(&doc_collection, creator_index, "creator_id").await?;
+        safe_create_index(&doc_collection, type_index, "type").await?;
+        safe_create_index(&doc_collection, is_active_index, "is_active").await?;
+        safe_create_index(&doc_collection, school_type_index, "school_id+type").await?;
+        safe_create_index(&doc_collection, school_active_index, "school_id+is_active").await?;
+        safe_create_index(
             &doc_collection,
             class_subject_index,
             "class_ids+subject_ids",

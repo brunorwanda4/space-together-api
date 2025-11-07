@@ -1,10 +1,11 @@
 use crate::domain::common_details::Gender;
 use crate::domain::student::{
-    BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PrepareStudentRequest, Student,
-    StudentStatus, StudentWithRelations, UpdateStudent,
+    BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, Student, StudentStatus,
+    StudentWithRelations, UpdateStudent,
 };
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
+use crate::helpers::repo_helpers::safe_create_index;
 use crate::models::id_model::IdType;
 use crate::pipeline::student_pipeline::student_with_relations_pipeline;
 use crate::utils::object_id::parse_object_id;
@@ -203,33 +204,6 @@ impl StudentRepo {
         Ok(students)
     }
 
-    pub async fn find_by_school_and_class(
-        &self,
-        school_id: &IdType,
-        class_id: &IdType,
-    ) -> Result<Vec<Student>, AppError> {
-        let school_obj_id = parse_object_id(school_id)?;
-        let class_obj_id = parse_object_id(class_id)?;
-        let mut cursor = self
-            .collection
-            .find(doc! {
-                "school_id": school_obj_id,
-                "class_id": class_obj_id
-            })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find students by school_id and class_id: {}", e),
-            })?;
-
-        let mut students = Vec::new();
-        while let Some(student) = cursor.next().await {
-            students.push(student.map_err(|e| AppError {
-                message: format!("Failed to process student: {}", e),
-            })?);
-        }
-        Ok(students)
-    }
-
     pub async fn find_by_registration_number(
         &self,
         registration_number: &str,
@@ -273,7 +247,8 @@ impl StudentRepo {
             })
     }
 
-    async fn ensure_indexes(&self) -> Result<(), AppError> {
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        // === Define indexes ===
         let email_index = IndexModel::builder()
             .keys(doc! { "email": 1 })
             .options(IndexOptions::builder().unique(true).build())
@@ -281,7 +256,13 @@ impl StudentRepo {
 
         let user_id_index = IndexModel::builder()
             .keys(doc! { "user_id": 1 })
-            .options(IndexOptions::builder().unique(true).build())
+            .options(
+                IndexOptions::builder()
+                    .unique(true)
+                    // ✅ safer than $ne:null — allows only valid ObjectId types
+                    .partial_filter_expression(doc! { "user_id": { "$type": "objectId" } })
+                    .build(),
+            )
             .build();
 
         let school_index = IndexModel::builder()
@@ -314,7 +295,6 @@ impl StudentRepo {
             .options(IndexOptions::builder().unique(true).sparse(true).build())
             .build();
 
-        // Compound indexes for common query patterns
         let school_class_index = IndexModel::builder()
             .keys(doc! { "school_id": 1, "class_id": 1 })
             .options(IndexOptions::builder().unique(false).build())
@@ -325,75 +305,25 @@ impl StudentRepo {
             .options(IndexOptions::builder().unique(false).build())
             .build();
 
-        self.collection
-            .create_index(email_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create email index: {}", e),
-            })?;
+        // === Use Document collection for safety ===
+        let doc_collection = self.collection.clone_with_type::<Document>();
 
-        self.collection
-            .create_index(user_id_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create user_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(class_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create class_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(creator_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create creator_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(status_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create status index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(is_active_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create is_active index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(registration_number_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create registration_number index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_class_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id+class_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_status_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id+status index: {}", e),
-            })?;
+        // === Create all indexes safely ===
+        safe_create_index(&doc_collection, email_index, "email").await?;
+        safe_create_index(&doc_collection, user_id_index, "user_id").await?;
+        safe_create_index(&doc_collection, school_index, "school_id").await?;
+        safe_create_index(&doc_collection, class_index, "class_id").await?;
+        safe_create_index(&doc_collection, creator_index, "creator_id").await?;
+        safe_create_index(&doc_collection, status_index, "status").await?;
+        safe_create_index(&doc_collection, is_active_index, "is_active").await?;
+        safe_create_index(
+            &doc_collection,
+            registration_number_index,
+            "registration_number",
+        )
+        .await?;
+        safe_create_index(&doc_collection, school_class_index, "school_id+class_id").await?;
+        safe_create_index(&doc_collection, school_status_index, "school_id+status").await?;
 
         Ok(())
     }
@@ -497,8 +427,17 @@ impl StudentRepo {
         if let Some(phone) = &update.phone {
             update_doc.insert("phone", phone);
         }
+        if let Some(image) = &update.image {
+            update_doc.insert("image", image);
+        }
+        if let Some(image_id) = &update.image_id {
+            update_doc.insert("image_id", image_id);
+        }
         if let Some(gender) = &update.gender {
             update_doc.insert("gender", gender.to_string());
+        }
+        if let Some(user_id) = &update.user_id {
+            update_doc.insert("user_id", user_id.to_string());
         }
 
         if let Some(date_of_birth) = &update.date_of_birth {
@@ -673,91 +612,6 @@ impl StudentRepo {
         }
 
         Ok(inserted_students)
-    }
-
-    pub async fn create_many_students_with_validation(
-        &self,
-        students: Vec<Student>,
-    ) -> Result<Vec<Student>, AppError> {
-        self.ensure_indexes().await?;
-
-        let mut emails = std::collections::HashSet::new();
-        let mut user_ids = std::collections::HashSet::new();
-        let mut registration_numbers = std::collections::HashSet::new();
-
-        for student in &students {
-            if !emails.insert(&student.email) {
-                return Err(AppError {
-                    message: format!("Duplicate email found: {}", student.email),
-                });
-            }
-
-            if let Some(user_id) = &student.user_id {
-                if !user_ids.insert(user_id) {
-                    return Err(AppError {
-                        message: format!("Duplicate user_id found: {}", user_id),
-                    });
-                }
-            }
-
-            if let Some(reg_num) = &student.registration_number {
-                if !registration_numbers.insert(reg_num) {
-                    return Err(AppError {
-                        message: format!("Duplicate registration number found: {}", reg_num),
-                    });
-                }
-            }
-        }
-
-        for student in &students {
-            if let Some(existing) = self.find_by_email(&student.email).await? {
-                return Err(AppError {
-                    message: format!("Email already exists: {}", existing.email),
-                });
-            }
-
-            if let Some(user_id) = &student.user_id {
-                if let Some(_existing) = self
-                    .find_by_user_id(&IdType::from_object_id(*user_id))
-                    .await?
-                {
-                    return Err(AppError {
-                        message: format!("User ID already exists: {}", user_id),
-                    });
-                }
-            }
-
-            if let Some(reg_num) = &student.registration_number {
-                if let Some(_existing) = self.find_by_registration_number(reg_num).await? {
-                    return Err(AppError {
-                        message: format!("Registration number already exists: {}", reg_num),
-                    });
-                }
-            }
-        }
-
-        self.create_many_students(students).await
-    }
-
-    pub async fn prepare_students(
-        &self,
-        request: &PrepareStudentRequest,
-    ) -> Result<Vec<Student>, AppError> {
-        let mut prepared_students = Vec::new();
-
-        for mut student in request.students.clone() {
-            // Set school_id and creator_id from request if provided
-            if let Some(school_id) = &request.school_id {
-                student.school_id = Some(parse_object_id(&IdType::String(school_id.clone()))?);
-            }
-            if let Some(creator_id) = &request.creator_id {
-                student.creator_id = Some(parse_object_id(&IdType::String(creator_id.clone()))?);
-            }
-
-            prepared_students.push(student);
-        }
-
-        Ok(prepared_students)
     }
 
     pub async fn update_many_students(

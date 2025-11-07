@@ -12,7 +12,7 @@ use crate::{
         },
         school::School,
         school_staff::{parse_staff_type, SchoolStaff, SchoolStaffType},
-        student::{Student, StudentStatus},
+        student::{Student, StudentStatus, UpdateStudent},
         teacher::{parse_teacher_type, Teacher, TeacherType, UpdateTeacher},
         user::User,
     },
@@ -329,34 +329,37 @@ impl<'a> JoinSchoolRequestController<'a> {
                 let student_repo = StudentRepo::new(school_db);
                 let student_service = StudentService::new(&student_repo);
 
-                // Validate class exists in school database before creating student
+                // ✅ Validate class exists before creating student
                 if let Some(class_id) = request.class_id {
                     let class_repo = ClassRepo::new(school_db);
                     let class_service =
                         crate::services::class_service::ClassService::new(&class_repo);
 
-                    // Check if class exists in school database
-                    let class = class_service
+                    if class_service
                         .get_class_by_id(&IdType::ObjectId(class_id))
-                        .await;
-                    if class.is_err() {
+                        .await
+                        .is_err()
+                    {
                         return Err(AppError {
                             message: "Class not found in school database".into(),
                         });
                     }
                 }
 
-                let student = Student {
+                // ✅ Define new student (for creation)
+                let new_student = Student {
                     id: None,
                     user_id: Some(user_id),
                     school_id: Some(school_id),
-                    class_id: request.class_id, // Use the class_id from the request
+                    class_id: request.class_id,
                     creator_id: Some(request.sent_by),
                     name: user.name.clone(),
                     email: user.email.clone(),
                     phone: user.phone.clone(),
                     gender: user.gender.clone(),
                     date_of_birth: user.age.clone(),
+                    image: user.image.clone(),
+                    image_id: user.image_id.clone(),
                     registration_number: generate_school_registration_number(school).await,
                     admission_year: Some(Utc::now().year()),
                     status: StudentStatus::Active,
@@ -366,22 +369,95 @@ impl<'a> JoinSchoolRequestController<'a> {
                     updated_at: Utc::now(),
                 };
 
-                let _created_student = student_service
-                    .create_student(student)
-                    .await
-                    .map_err(|e| AppError { message: e })?;
+                // ✅ Try to find existing student by email (or user_id)
+                let _existing_student =
+                    match student_service.get_student_by_email(&user.email).await {
+                        Ok(existing_student) => {
+                            // ✅ Prepare selective update for missing fields
+                            let update_data = UpdateStudent {
+                                name: if existing_student.name.trim().is_empty() {
+                                    Some(user.name.clone())
+                                } else {
+                                    None
+                                },
+                                user_id: Some(user_id),
+                                email: None, // don't change primary email
+                                phone: if existing_student.phone.is_none() {
+                                    user.phone.clone()
+                                } else {
+                                    None
+                                },
+                                image: if existing_student.image.is_none() {
+                                    user.image.clone()
+                                } else {
+                                    None
+                                },
+                                image_id: if existing_student.image_id.is_none() {
+                                    user.image_id.clone()
+                                } else {
+                                    None
+                                },
+                                gender: if existing_student.gender.is_none() {
+                                    user.gender.clone()
+                                } else {
+                                    None
+                                },
+                                date_of_birth: if existing_student.date_of_birth.is_none() {
+                                    user.age.clone()
+                                } else {
+                                    None
+                                },
+                                registration_number: None,
+                                admission_year: None,
+                                status: None,
+                                is_active: None,
+                                tags: if existing_student.tags.is_empty() {
+                                    Some(vec!["join-request".to_string()])
+                                } else {
+                                    None
+                                },
+                            };
 
-                // If class_id is provided, add student to class in school database
+                            // ✅ Only update if any field has real content
+                            if serde_json::to_value(&update_data)
+                                .map_err(|e| AppError {
+                                    message: e.to_string(),
+                                })?
+                                .as_object()
+                                .unwrap()
+                                .values()
+                                .any(|v| !v.is_null())
+                            {
+                                let student_id = IdType::ObjectId(existing_student.id.unwrap());
+                                student_repo
+                                    .update_student(&student_id, &update_data)
+                                    .await
+                                    .map_err(|e| AppError {
+                                        message: e.to_string(),
+                                    })?;
+                            }
+
+                            existing_student
+                        }
+
+                        // ✅ Create new student if not found
+                        Err(_) => student_service
+                            .create_student(new_student)
+                            .await
+                            .map_err(|e| AppError { message: e })?,
+                    };
+
+                // ✅ Optional: Add to class if class_id provided
                 if let Some(_class_id) = request.class_id {
                     let class_repo = ClassRepo::new(school_db);
                     let _class_service =
                         crate::services::class_service::ClassService::new(&class_repo);
 
-                    // Add student to class in school database
-                    // class_service
+                    // Uncomment when you implement the method:
+                    // _class_service
                     //     .add_student_to_class(
                     //         &IdType::ObjectId(class_id),
-                    //         &IdType::ObjectId(created_student.id.unwrap()),
+                    //         &IdType::ObjectId(existing_student.id.unwrap()),
                     //     )
                     //     .await
                     //     .map_err(|e| AppError { message: e })?;
@@ -438,7 +514,7 @@ impl<'a> JoinSchoolRequestController<'a> {
                                 } else {
                                     None
                                 },
-                                user_id: user.id.clone(),
+                                user_id: user.id,
                                 gender: if existing_teacher.gender.is_none() {
                                     user.gender.clone()
                                 } else {
