@@ -2,7 +2,10 @@ use chrono::Utc;
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
-    domain::class::{Class, ClassLevelType, ClassWithOthers, ClassWithSchool},
+    domain::class::{
+        Class, ClassLevelType, ClassStatistics, ClassWithOthers, ClassWithSchool,
+        MainClassHierarchy, MainClassWithSubclassCount, MainClassWithSubclasses,
+    },
     errors::AppError,
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
@@ -341,5 +344,273 @@ impl<'a> ClassController<'a> {
             .await?;
 
         Ok(created_subclasses)
+    }
+
+    // ===========================
+    // NEW SUBCLASS CONTROLLER METHODS
+    // ===========================
+
+    /// Get main classes with their subclasses (hierarchy data)
+    pub async fn get_main_classes_with_subclasses(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<MainClassWithSubclasses>, AppError> {
+        let class_service = ClassService::new(&self.class_repo);
+
+        // Get main classes
+        let main_classes = class_service
+            .get_main_classes(filter, limit, skip)
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        let mut result = Vec::new();
+
+        for main_class in main_classes {
+            // Get subclasses for this main class
+            let subclasses = class_service
+                .get_subclasses(&IdType::from_object_id(main_class.id.unwrap()))
+                .await
+                .map_err(|e| AppError { message: e })?;
+
+            // Enrich main class with relations
+            let main_class_with_others = self.enrich_class_with_relations(main_class).await?;
+
+            result.push(MainClassWithSubclasses {
+                main_class: main_class_with_others,
+                subclasses: subclasses.into_iter().map(sanitize_class).collect(),
+            });
+        }
+
+        Ok(result)
+    }
+
+    /// Get a specific main class with all its subclasses and full details
+    pub async fn get_main_class_hierarchy_with_details(
+        &self,
+        main_class_id: &IdType,
+    ) -> Result<MainClassHierarchy, AppError> {
+        let class_service = ClassService::new(&self.class_repo);
+
+        // Get main class with details
+        let main_class = self.get_class_by_id_with_others(main_class_id).await?;
+
+        // Verify it's actually a main class
+        if main_class.class.level_type != Some(ClassLevelType::MainClass) {
+            return Err(AppError {
+                message: "Class is not a main class".to_string(),
+            });
+        }
+
+        // Get subclasses with full details
+        let subclasses = class_service
+            .get_subclasses_with_others(main_class_id)
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        Ok(MainClassHierarchy {
+            main_class,
+            subclasses,
+        })
+    }
+
+    /// Get only main classes (without subclasses) with full details
+    pub async fn get_main_classes_with_details(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<ClassWithOthers>, AppError> {
+        let class_service = ClassService::new(&self.class_repo);
+
+        // Get main classes
+        let main_classes = class_service
+            .get_main_classes(filter, limit, skip)
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        let mut result = Vec::new();
+
+        for main_class in main_classes {
+            let main_class_with_details = self.enrich_class_with_relations(main_class).await?;
+            result.push(main_class_with_details);
+        }
+
+        Ok(result)
+    }
+
+    /// Get only subclasses (without main classes) with full details
+    pub async fn get_all_subclasses_with_details(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<ClassWithOthers>, AppError> {
+        // We'll get all classes and filter for subclasses
+        let all_classes = self
+            .class_repo
+            .get_all_classes(filter, limit, skip)
+            .await
+            .map_err(|e| AppError { message: e.message })?;
+
+        let mut subclasses_with_details = Vec::new();
+
+        for class in all_classes {
+            if class.level_type == Some(ClassLevelType::SubClass) {
+                let subclass_with_details = self.enrich_class_with_relations(class).await?;
+                subclasses_with_details.push(subclass_with_details);
+            }
+        }
+
+        Ok(subclasses_with_details)
+    }
+
+    /// Get subclasses by parent class ID with full details
+    pub async fn get_subclasses_by_parent_with_details(
+        &self,
+        parent_class_id: &IdType,
+    ) -> Result<Vec<ClassWithOthers>, AppError> {
+        let class_service = ClassService::new(&self.class_repo);
+
+        let subclasses = class_service
+            .get_subclasses_with_others(parent_class_id)
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        Ok(subclasses)
+    }
+
+    /// Get class statistics (count of main classes, subclasses, etc.)
+    pub async fn get_class_statistics(&self) -> Result<ClassStatistics, AppError> {
+        let class_service = ClassService::new(&self.class_repo);
+
+        // Get all classes for counting
+        let all_classes = self
+            .class_repo
+            .get_all_classes(None, None, None)
+            .await
+            .map_err(|e| AppError { message: e.message })?;
+
+        let mut main_class_count = 0;
+        let mut subclass_count = 0;
+        let mut active_class_count = 0;
+        let mut inactive_class_count = 0;
+
+        for class in all_classes {
+            if class.level_type == Some(ClassLevelType::MainClass) {
+                main_class_count += 1;
+            } else if class.level_type == Some(ClassLevelType::SubClass) {
+                subclass_count += 1;
+            }
+
+            if class.is_active {
+                active_class_count += 1;
+            } else {
+                inactive_class_count += 1;
+            }
+        }
+
+        Ok(ClassStatistics {
+            total_classes: main_class_count + subclass_count,
+            main_classes: main_class_count,
+            subclasses: subclass_count,
+            active_classes: active_class_count,
+            inactive_classes: inactive_class_count,
+        })
+    }
+
+    /// Search classes by type (main class or subclass)
+    pub async fn search_classes_by_level_type(
+        &self,
+        level_type: ClassLevelType,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<ClassWithOthers>, AppError> {
+        // We'll get all classes and filter by level type
+        let all_classes = self
+            .class_repo
+            .get_all_classes(filter, limit, skip)
+            .await
+            .map_err(|e| AppError { message: e.message })?;
+
+        let mut filtered_classes = Vec::new();
+
+        for class in all_classes {
+            if class.level_type == Some(level_type.clone()) {
+                let class_with_details = self.enrich_class_with_relations(class).await?;
+                filtered_classes.push(class_with_details);
+            }
+        }
+
+        Ok(filtered_classes)
+    }
+
+    /// Get classes that have no subclasses (empty main classes or subclasses)
+    pub async fn get_classes_without_subclasses(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<ClassWithOthers>, AppError> {
+        let all_classes = self
+            .class_repo
+            .get_all_classes(filter, limit, skip)
+            .await
+            .map_err(|e| AppError { message: e.message })?;
+
+        let mut result = Vec::new();
+
+        for class in all_classes {
+            let has_subclasses = if class.level_type == Some(ClassLevelType::MainClass) {
+                class.subclass_ids.as_ref().map_or(false, |v| !v.is_empty())
+            } else {
+                false // Subclasses don't have subclasses
+            };
+
+            if !has_subclasses {
+                let class_with_details = self.enrich_class_with_relations(class).await?;
+                result.push(class_with_details);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Get classes with the most subclasses (top N main classes)
+    pub async fn get_main_classes_by_subclass_count(
+        &self,
+        limit: Option<i64>,
+    ) -> Result<Vec<MainClassWithSubclassCount>, AppError> {
+        let class_service = ClassService::new(&self.class_repo);
+
+        let main_classes = class_service
+            .get_main_classes(None, None, None)
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        let mut main_classes_with_count: Vec<MainClassWithSubclassCount> = Vec::new();
+
+        for main_class in main_classes {
+            let subclass_count = main_class.subclass_ids.as_ref().map_or(0, |v| v.len());
+
+            let main_class_with_details = self.enrich_class_with_relations(main_class).await?;
+
+            main_classes_with_count.push(MainClassWithSubclassCount {
+                main_class: main_class_with_details,
+                subclass_count,
+            });
+        }
+
+        // Sort by subclass count descending
+        main_classes_with_count.sort_by(|a, b| b.subclass_count.cmp(&a.subclass_count));
+
+        // Apply limit
+        if let Some(limit_val) = limit {
+            main_classes_with_count.truncate(limit_val as usize);
+        }
+
+        Ok(main_classes_with_count)
     }
 }

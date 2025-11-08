@@ -160,7 +160,7 @@ impl<'a> SchoolController<'a> {
                         image: None,
                         image_id: None,
                         background_images: None,
-                        subclass_ids: None,
+                        subclass_ids: Some(vec![]),
                         parent_class_id: None,
                         level_type: Some(ClassLevelType::MainClass),
                     };

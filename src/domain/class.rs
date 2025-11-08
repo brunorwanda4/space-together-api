@@ -176,3 +176,43 @@ pub struct BulkUpdateItem {
     pub id: String,
     pub update: UpdateClass,
 }
+
+// ===========================
+// NEW DATA STRUCTURES FOR FRONTEND
+// ===========================
+
+#[derive(Debug, serde::Serialize)]
+pub struct MainClassWithSubclasses {
+    pub main_class: ClassWithOthers,
+    pub subclasses: Vec<Class>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct MainClassHierarchy {
+    pub main_class: ClassWithOthers,
+    pub subclasses: Vec<ClassWithOthers>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ClassStatistics {
+    pub total_classes: usize,
+    pub main_classes: usize,
+    pub subclasses: usize,
+    pub active_classes: usize,
+    pub inactive_classes: usize,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct MainClassWithSubclassCount {
+    pub main_class: ClassWithOthers,
+    pub subclass_count: usize,
+}
+
+// get class with pages
+#[derive(Serialize)]
+pub struct PaginatedClasses {
+    pub classes: Vec<Class>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}

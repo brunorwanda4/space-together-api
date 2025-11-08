@@ -1198,7 +1198,7 @@ impl ClassRepo {
         let update_doc = doc! {
             "$push": {
                 "subclass_ids": {
-                    "$each": subclass_ids
+                    "$each": {"$each" :subclass_ids}
                 }
             },
             "$set": {

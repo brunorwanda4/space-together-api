@@ -8,7 +8,7 @@ use crate::{
     controller::class_controller::ClassController,
     domain::{
         auth_user::AuthUserDto,
-        class::{BulkClassesRequest, BulkUpdateRequest, Class, UpdateClass},
+        class::{BulkClassesRequest, BulkUpdateRequest, Class, ClassLevelType, UpdateClass},
     },
     models::{
         api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel,
@@ -1374,6 +1374,263 @@ async fn get_class_hierarchy(
     }
 }
 
+// ===========================
+// NEW SUBCLASS HIERARCHY ENDPOINTS
+// ===========================
+
+/// Get main classes with their subclasses (hierarchy data)
+#[get("/main-classes/with-subclasses")]
+async fn get_main_classes_with_subclasses(
+    req: actix_web::HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_main_classes_with_subclasses(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(hierarchies) => HttpResponse::Ok().json(hierarchies),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get a specific main class with all its subclasses and full details
+#[get("/{main_class_id}/hierarchy")]
+async fn get_main_class_hierarchy_with_details(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let main_class_id = IdType::from_string(path.into_inner());
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_main_class_hierarchy_with_details(&main_class_id)
+        .await
+    {
+        Ok(hierarchy) => HttpResponse::Ok().json(hierarchy),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get only main classes (without subclasses) with full details
+#[get("/main-classes/with-details")]
+async fn get_main_classes_with_details(
+    req: actix_web::HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_main_classes_with_details(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(main_classes) => HttpResponse::Ok().json(main_classes),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get only subclasses (without main classes) with full details
+#[get("/subclasses/with-details")]
+async fn get_all_subclasses_with_details(
+    req: actix_web::HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_all_subclasses_with_details(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(subclasses) => HttpResponse::Ok().json(subclasses),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get subclasses by parent class ID with full details
+#[get("/{parent_class_id}/subclasses/with-details")]
+async fn get_subclasses_by_parent_with_details(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let parent_class_id = IdType::from_string(path.into_inner());
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_subclasses_by_parent_with_details(&parent_class_id)
+        .await
+    {
+        Ok(subclasses) => HttpResponse::Ok().json(subclasses),
+        Err(e) => HttpResponse::NotFound().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get class statistics (count of main classes, subclasses, etc.)
+#[get("/stats/detailed")]
+async fn get_class_statistics(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller.get_class_statistics().await {
+        Ok(stats) => HttpResponse::Ok().json(stats),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Search classes by level type (main class or subclass)
+#[get("/search/by-level/{level_type}")]
+async fn search_classes_by_level_type(
+    req: actix_web::HttpRequest,
+    path: web::Path<String>,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let level_type_str = path.into_inner();
+    let level_type = match level_type_str.to_lowercase().as_str() {
+        "mainclass" | "main" => ClassLevelType::MainClass,
+        "subclass" | "sub" => ClassLevelType::SubClass,
+        _ => {
+            return HttpResponse::BadRequest().json(ReqErrModel {
+                message: "Invalid level type. Use 'mainclass' or 'subclass'".to_string(),
+            })
+        }
+    };
+
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .search_classes_by_level_type(level_type, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(classes) => HttpResponse::Ok().json(classes),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get classes that have no subclasses (empty main classes or subclasses)
+#[get("/without-subclasses")]
+async fn get_classes_without_subclasses(
+    req: actix_web::HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_classes_without_subclasses(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(classes) => HttpResponse::Ok().json(classes),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
+/// Get main classes with the most subclasses (top N main classes)
+#[get("/main-classes/top-by-subclass-count")]
+async fn get_main_classes_by_subclass_count(
+    req: actix_web::HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let class_controller = create_class_controller(&state, &claims);
+
+    match class_controller
+        .get_main_classes_by_subclass_count(query.limit)
+        .await
+    {
+        Ok(classes) => HttpResponse::Ok().json(classes),
+        Err(e) => HttpResponse::BadRequest().json(ReqErrModel { message: e.message }),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/school/classes")
@@ -1383,7 +1640,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_all_school_classes_with_details) // GET /school/classes/with-details - Get all classes with details in school
             .service(get_all_school_classes_with_others) // GET /school/classes/with-others - Get all classes with others
             .service(get_active_school_classes) // GET /school/classes/active - Get active classes in school
-            .service(get_school_class_by_id_with_details) // GET /school/classes/{id}/with-details - Get class by ID with details in school
             .service(get_school_class_by_username) // GET /school/classes/username/{username} - Get class by username in school
             .service(get_school_class_by_username_with_details) // GET /school/classes/username/{username}/with-details - Get class by username with details in school
             .service(get_school_class_by_code) // GET /school/classes/code/{code} - Get class by code in school
@@ -1394,6 +1650,17 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_school_class_by_id) // GET /school/classes/{id} - Get class by ID in school
             .service(count_school_classes) // GET /school/classes/stats/count - Count classes in school
             .service(count_school_classes_by_creator_id) // GET /school/classes/stats/count-by-creator/{creator_id} - Count classes by creator ID in school
+            // New subclass hierarchy and analytics endpoints
+            .service(get_main_classes_with_subclasses) // GET /school/classes/main-classes/with-subclasses - Get main classes with their subclasses
+            .service(get_main_class_hierarchy_with_details) // GET /school/classes/{main_class_id}/hierarchy - Get specific main class with all subclasses and details
+            .service(get_main_classes_with_details) // GET /school/classes/main-classes/with-details - Get only main classes with full details
+            .service(get_all_subclasses_with_details) // GET /school/classes/subclasses/with-details - Get only subclasses with full details
+            .service(get_subclasses_by_parent_with_details) // GET /school/classes/{parent_class_id}/subclasses/with-details - Get subclasses by parent with details
+            .service(get_class_statistics) // GET /school/classes/stats/detailed - Get detailed class statistics
+            .service(search_classes_by_level_type) // GET /school/classes/search/by-level/{level_type} - Search classes by level type
+            .service(get_classes_without_subclasses) // GET /school/classes/without-subclasses - Get classes without subclasses
+            .service(get_main_classes_by_subclass_count) // GET /school/classes/main-classes/top-by-subclass-count - Get main classes sorted by subclass count
+            .service(get_school_class_by_id_with_details) // GET /school/classes/{id}/with-details - Get class by ID with details in school
             // =============================================
             // PROTECTED ROUTES (WRITE OPERATIONS)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
