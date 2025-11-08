@@ -17,6 +17,12 @@ pub enum ClassType {
     Public,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub enum ClassLevelType {
+    #[default]
+    MainClass, // e.g., "Primary 1"
+    SubClass, // e.g., "Primary 1 A"
+}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Class {
     #[serde(
@@ -58,7 +64,28 @@ pub struct Class {
     pub class_teacher_id: Option<ObjectId>,
 
     #[serde(default)]
-    pub r#type: ClassType,
+    pub r#type: ClassType, // (Private, School, Public)
+
+    /// 👇 NEW: Is this a MainClass or a SubClass?
+    #[serde(default)]
+    pub level_type: Option<ClassLevelType>,
+
+    /// 👇 NEW: If SubClass, reference to its main class (e.g., "Primary 1")
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub parent_class_id: Option<ObjectId>,
+
+    /// 👇 OPTIONAL: If this is a main class, list all its subclasses
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
+        default
+    )]
+    pub subclass_ids: Option<Vec<ObjectId>>,
 
     #[serde(
         serialize_with = "object_id_helpers::serialize",

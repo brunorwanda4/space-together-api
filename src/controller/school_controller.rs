@@ -8,7 +8,7 @@ use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        class::{Class, ClassType},
+        class::{Class, ClassLevelType, ClassType},
         school::{SchoolAcademicRequest, SchoolAcademicResponse},
         subject::Subject,
     },
@@ -160,6 +160,9 @@ impl<'a> SchoolController<'a> {
                         image: None,
                         image_id: None,
                         background_images: None,
+                        subclass_ids: None,
+                        parent_class_id: None,
+                        level_type: Some(ClassLevelType::MainClass),
                     };
 
                 class_trade_pairs.push((class, trade.r#type.clone()));

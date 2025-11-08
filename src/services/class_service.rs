@@ -524,4 +524,292 @@ impl<'a> ClassService<'a> {
 
         Ok(sanitize_classes(classes))
     }
+
+    // ===========================
+    // SUBCLASS MANAGEMENT METHODS
+    // ===========================
+
+    /// Add a subclass to a main class
+    pub async fn add_subclass(
+        &self,
+        main_class_id: &IdType,
+        subclass: Class,
+    ) -> Result<Class, String> {
+        // Validate subclass username
+        is_valid_username(&subclass.username)?;
+
+        // Check if subclass username already exists
+        if let Ok(Some(_)) = self.repo.find_by_username(&subclass.username).await {
+            return Err("Subclass username already exists".to_string());
+        }
+
+        // Process subclass data (images, code generation, etc.)
+        let mut processed_subclass = subclass;
+
+        // Handle image upload for subclass
+        if let Some(image_data) = processed_subclass.image.clone() {
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data).await?;
+            processed_subclass.image_id = Some(cloud_res.public_id);
+            processed_subclass.image = Some(cloud_res.secure_url);
+        }
+
+        // Handle background images for subclass
+        if let Some(background_images_data) = processed_subclass.background_images.clone() {
+            let mut uploaded_images = Vec::new();
+            for bg in background_images_data {
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url).await?;
+                uploaded_images.push(Image {
+                    id: cloud_res.public_id,
+                    url: cloud_res.secure_url,
+                });
+            }
+            processed_subclass.background_images = Some(uploaded_images);
+        }
+
+        // Generate class code if not provided
+        if processed_subclass.code.is_none() {
+            processed_subclass.code = Some(generate_code());
+        }
+
+        // Set timestamps
+        let now = Utc::now();
+        processed_subclass.created_at = now;
+        processed_subclass.updated_at = now;
+
+        // Set default values
+        if !processed_subclass.is_active {
+            processed_subclass.is_active = true;
+        }
+
+        // Add subclass using repository
+        let inserted_subclass = self
+            .repo
+            .add_subclass(main_class_id, &processed_subclass)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_class(inserted_subclass))
+    }
+
+    /// Remove a subclass from its main class
+    pub async fn remove_subclass(&self, subclass_id: &IdType) -> Result<(), String> {
+        // Get subclass to check for images that need cleanup
+        if let Ok(Some(subclass)) = self.repo.find_by_id(subclass_id).await {
+            // Clean up images from cloud storage
+            if let Some(image_id) = subclass.image_id {
+                let _ = CloudinaryService::delete_from_cloudinary(&image_id).await;
+            }
+
+            if let Some(background_images) = subclass.background_images {
+                for bg in background_images {
+                    let _ = CloudinaryService::delete_from_cloudinary(&bg.id).await;
+                }
+            }
+        }
+
+        self.repo
+            .remove_subclass(subclass_id)
+            .await
+            .map_err(|e| e.message)
+    }
+
+    /// Get all subclasses of a main class
+    pub async fn get_subclasses(&self, main_class_id: &IdType) -> Result<Vec<Class>, String> {
+        let subclasses = self
+            .repo
+            .get_subclasses(main_class_id)
+            .await
+            .map_err(|e| e.message)?;
+        Ok(sanitize_classes(subclasses))
+    }
+
+    /// Get subclasses with full details (including school, teacher, etc.)
+    pub async fn get_subclasses_with_others(
+        &self,
+        main_class_id: &IdType,
+    ) -> Result<Vec<ClassWithOthers>, String> {
+        self.repo
+            .get_subclasses_with_others(main_class_id)
+            .await
+            .map_err(|e| e.message)
+    }
+
+    /// Get the main class of a subclass
+    pub async fn get_parent_class(&self, subclass_id: &IdType) -> Result<Option<Class>, String> {
+        let parent_class = self
+            .repo
+            .get_parent_class(subclass_id)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(parent_class.map(sanitize_class))
+    }
+
+    /// Move a subclass to a different main class
+    pub async fn move_subclass(
+        &self,
+        subclass_id: &IdType,
+        new_main_class_id: &IdType,
+    ) -> Result<Class, String> {
+        let updated_subclass = self
+            .repo
+            .move_subclass(subclass_id, new_main_class_id)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_class(updated_subclass))
+    }
+
+    /// Check if a class is a main class with subclasses
+    pub async fn is_main_class_with_subclasses(&self, class_id: &IdType) -> Result<bool, String> {
+        self.repo
+            .is_main_class_with_subclasses(class_id)
+            .await
+            .map_err(|e| e.message)
+    }
+
+    /// Get all main classes (classes without parent_class_id and with MainClass level type)
+    pub async fn get_main_classes(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Class>, String> {
+        let main_classes = self
+            .repo
+            .get_main_classes(filter, limit, skip)
+            .await
+            .map_err(|e| e.message)?;
+        Ok(sanitize_classes(main_classes))
+    }
+
+    /// Update subclass information
+    pub async fn update_subclass(
+        &self,
+        subclass_id: &IdType,
+        update: UpdateClass,
+    ) -> Result<Class, String> {
+        // Verify it's actually a subclass
+        let subclass = self
+            .repo
+            .find_by_id(subclass_id)
+            .await
+            .map_err(|e| e.message.clone())?
+            .ok_or_else(|| "Subclass not found".to_string())?;
+
+        if subclass.level_type != Some(crate::domain::class::ClassLevelType::SubClass) {
+            return Err("Class is not a subclass".to_string());
+        }
+
+        // Ensure level_type remains as SubClass and parent_class_id doesn't change
+        // These fields shouldn't be in UpdateClass anyway, but we're being explicit
+
+        let updated_class = self.update_class_merged(subclass_id, update).await?;
+
+        Ok(updated_class)
+    }
+
+    /// Bulk add multiple subclasses to a main class
+    pub async fn add_multiple_subclasses(
+        &self,
+        main_class_id: &IdType,
+        subclasses: Vec<Class>,
+    ) -> Result<Vec<Class>, String> {
+        // Validate all subclasses first
+        for subclass in &subclasses {
+            is_valid_username(&subclass.username)?;
+
+            // Check if subclass username already exists
+            if let Ok(Some(_)) = self.repo.find_by_username(&subclass.username).await {
+                return Err(format!(
+                    "Subclass username already exists: {}",
+                    subclass.username
+                ));
+            }
+        }
+
+        // Process subclasses: generate codes, set timestamps, etc.
+        let mut processed_subclasses = Vec::with_capacity(subclasses.len());
+        let now = Utc::now();
+
+        for mut subclass in subclasses {
+            // Generate class code if not provided
+            if subclass.code.is_none() {
+                subclass.code = Some(generate_code());
+            }
+
+            // Set timestamps
+            subclass.created_at = now;
+            subclass.updated_at = now;
+
+            // Set default values for optional fields
+            if !subclass.is_active {
+                subclass.is_active = true;
+            }
+
+            // Clear images for bulk processing (they can be updated later)
+            if subclass.image.is_some() {
+                subclass.image = None;
+                subclass.image_id = None;
+            }
+            if subclass.background_images.is_some() {
+                subclass.background_images = None;
+            }
+
+            // Generate ID
+            subclass.id = Some(ObjectId::new());
+
+            processed_subclasses.push(subclass);
+        }
+
+        // Add subclasses using repository
+        let inserted_subclasses = self
+            .repo
+            .add_multiple_subclasses(main_class_id, processed_subclasses)
+            .await
+            .map_err(|e| e.message)?;
+
+        Ok(sanitize_classes(inserted_subclasses))
+    }
+
+    /// Create a main class (convenience method)
+    pub async fn create_main_class(&self, mut main_class: Class) -> Result<Class, String> {
+        // Ensure level_type is set to MainClass
+        main_class.level_type = Some(crate::domain::class::ClassLevelType::MainClass);
+        main_class.parent_class_id = None;
+        main_class.subclass_ids = Some(Vec::new());
+
+        self.create_class(main_class).await
+    }
+
+    /// Check if a class can be deleted (no subclasses if it's a main class)
+    pub async fn can_delete_class(&self, class_id: &IdType) -> Result<bool, String> {
+        let class = self
+            .repo
+            .find_by_id(class_id)
+            .await
+            .map_err(|e| e.message.clone())?
+            .ok_or_else(|| "Class not found".to_string())?;
+
+        // If it's a main class, check if it has subclasses
+        if class.level_type == Some(crate::domain::class::ClassLevelType::MainClass) {
+            if let Some(subclass_ids) = class.subclass_ids {
+                return Ok(subclass_ids.is_empty());
+            }
+        }
+
+        Ok(true)
+    }
+
+    /// Get class hierarchy (main class with all its subclasses)
+    pub async fn get_class_hierarchy(
+        &self,
+        main_class_id: &IdType,
+    ) -> Result<(Class, Vec<Class>), String> {
+        let main_class = self.get_class_by_id(main_class_id).await?;
+
+        let subclasses = self.get_subclasses(main_class_id).await?;
+
+        Ok((main_class, subclasses))
+    }
 }

@@ -24,9 +24,9 @@ use crate::{
         school_staff_repo::SchoolStaffRepo, student_repo::StudentRepo, teacher_repo::TeacherRepo,
     },
     services::{
-        school_service::SchoolService, school_staff_service::SchoolStaffService,
-        student_service::StudentService, teacher_service::TeacherService,
-        user_service::UserService,
+        class_service::ClassService, school_service::SchoolService,
+        school_staff_service::SchoolStaffService, student_service::StudentService,
+        teacher_service::TeacherService, user_service::UserService,
     },
     utils::{code::generate_school_registration_number, email::is_valid_email},
 };
@@ -328,13 +328,12 @@ impl<'a> JoinSchoolRequestController<'a> {
             JoinRole::Student => {
                 let student_repo = StudentRepo::new(school_db);
                 let student_service = StudentService::new(&student_repo);
-
                 // ✅ Validate class exists before creating student
-                if let Some(class_id) = request.class_id {
-                    let class_repo = ClassRepo::new(school_db);
-                    let class_service =
-                        crate::services::class_service::ClassService::new(&class_repo);
+                let class_repo = ClassRepo::new(school_db);
+                let class_service = ClassService::new(&class_repo);
+                // ✅ Validate class exists before creating student
 
+                if let Some(class_id) = request.class_id {
                     if class_service
                         .get_class_by_id(&IdType::ObjectId(class_id))
                         .await
@@ -358,6 +357,7 @@ impl<'a> JoinSchoolRequestController<'a> {
                     phone: user.phone.clone(),
                     gender: user.gender.clone(),
                     date_of_birth: user.age.clone(),
+                    subclass_id: None,
                     image: user.image.clone(),
                     image_id: user.image_id.clone(),
                     registration_number: generate_school_registration_number(school).await,

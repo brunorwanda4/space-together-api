@@ -1,12 +1,16 @@
+use chrono::Utc;
+use mongodb::bson::oid::ObjectId;
+
 use crate::{
-    domain::class::{Class, ClassWithOthers, ClassWithSchool},
+    domain::class::{Class, ClassLevelType, ClassWithOthers, ClassWithSchool},
     errors::AppError,
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
     repositories::class_repo::ClassRepo,
     services::{
-        main_class_service::MainClassService, school_service::SchoolService,
-        teacher_service::TeacherService, trade_service::TradeService, user_service::UserService,
+        class_service::ClassService, main_class_service::MainClassService,
+        school_service::SchoolService, teacher_service::TeacherService,
+        trade_service::TradeService, user_service::UserService,
     },
     utils::{
         class_utils::sanitize_class, school_utils::sanitize_school, user_utils::sanitize_user,
@@ -270,5 +274,72 @@ impl<'a> ClassController<'a> {
             .map_err(|e| e.to_string())?;
 
         Ok(updated_class)
+    }
+
+    /// Create multiple sub-classes (e.g., Primary 1 A, Primary 1 B, etc.) under a given main class
+    pub async fn create_many_sub_class_by_class_id(
+        &self,
+        main_class_id: &IdType,
+        num_sub_classes: u8,
+        creator_id: ObjectId,
+    ) -> Result<Vec<Class>, String> {
+        if !(2..=12).contains(&num_sub_classes) {
+            return Err("Count must be a number between 2 and 12".to_string());
+        };
+
+        let class_service = ClassService::new(&self.class_repo);
+        // 1️⃣ Get the main class first
+        let main_class = class_service.get_class_by_id(main_class_id).await?;
+        let main_class_id_obj = parse_object_id(main_class_id)?;
+        // 2️⃣ Prepare subclass list
+        let mut subclasses = Vec::new();
+
+        for i in 0..num_sub_classes {
+            // Generate subclass name like "Primary 1 A", "Primary 1 B", etc.
+            // Using letters A, B, C... (you can also switch to numbers if you prefer)
+            let letter = ((b'A' + i) as char).to_string();
+
+            let subclass_name = format!("{} {}", main_class.name, letter);
+            let subclass_username = format!("{}_{}", main_class.username, letter.to_lowercase());
+
+            let now = Utc::now();
+
+            // Build subclass object
+            let subclass = Class {
+                id: None,
+                name: subclass_name,
+                username: subclass_username,
+                code: None,
+                school_id: main_class.school_id,
+                creator_id: Some(creator_id),
+                class_teacher_id: None, // can be assigned later
+                r#type: main_class.r#type.clone(),
+                level_type: Some(ClassLevelType::SubClass),
+                parent_class_id: Some(main_class_id_obj),
+                subclass_ids: None,
+                main_class_id: main_class.main_class_id,
+                trade_id: main_class.trade_id,
+                is_active: true,
+                image_id: None,
+                image: None,
+                background_images: None,
+                description: Some(format!("Sub class of {}", main_class.name)),
+                capacity: None,
+                subject: None,
+                grade_level: main_class.grade_level.clone(),
+                tags: vec!["subclass".to_string()],
+                created_at: now,
+                updated_at: now,
+            };
+
+            subclasses.push(subclass);
+        }
+
+        // 3️⃣ Call service to add subclasses
+        let created_subclasses = class_service
+            .add_multiple_subclasses(main_class_id, subclasses)
+            .await?;
+
+        Ok(created_subclasses)
     }
 }
