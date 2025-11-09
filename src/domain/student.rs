@@ -163,3 +163,20 @@ impl fmt::Display for StudentStatus {
         )
     }
 }
+
+// get class with pages
+#[derive(Serialize)]
+pub struct PaginatedStudents {
+    pub students: Vec<Student>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}
+
+#[derive(Serialize)]
+pub struct PaginatedStudentsWithOthers {
+    pub students: Vec<StudentWithRelations>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}

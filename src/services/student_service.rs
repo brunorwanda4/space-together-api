@@ -3,8 +3,8 @@ use crate::{
     domain::{
         common_details::Gender,
         student::{
-            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, Student, StudentStatus,
-            StudentWithRelations, UpdateStudent,
+            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PaginatedStudents, Student,
+            StudentStatus, StudentWithRelations, UpdateStudent,
         },
     },
     helpers::object_id_helpers::parse_object_id,
@@ -36,10 +36,10 @@ impl<'a> StudentService<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<Student>, String> {
+    ) -> Result<PaginatedStudents, String> {
         let students = self
             .repo
-            .get_all_students(filter, limit, skip)
+            .get_all_students(filter, limit, skip, None)
             .await
             .map_err(|e| e.message)?;
         Ok(students)
@@ -646,50 +646,6 @@ impl<'a> StudentService<'a> {
             .await;
         });
     }
-
-    // ------------------------------------------------------------------
-    // 🔧 UTILITY METHODS
-    // ------------------------------------------------------------------
-
-    /// Get students by admission year
-    pub async fn get_students_by_admission_year(
-        &self,
-        admission_year: i32,
-        school_id: Option<&IdType>,
-    ) -> Result<Vec<Student>, String> {
-        let all_students = self.get_all_students(None, None, None).await?;
-
-        let filtered_students: Vec<Student> = all_students
-            .into_iter()
-            .filter(|student| {
-                if let Some(year) = student.admission_year {
-                    if year != admission_year {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-
-                // Filter by school_id if provided
-                if let Some(school_id) = school_id {
-                    if let Some(student_school_id) = student.school_id {
-                        let target_school_id = match parse_object_id(school_id) {
-                            Ok(id) => id,
-                            Err(_) => return false,
-                        };
-                        return student_school_id == target_school_id;
-                    } else {
-                        return false;
-                    }
-                }
-
-                true
-            })
-            .collect();
-
-        Ok(filtered_students)
-    }
-
     /// Check if a user is a student of a specific school
     pub async fn is_user_student_of_school(
         &self,

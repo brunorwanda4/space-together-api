@@ -816,31 +816,6 @@ async fn get_class_roster(
     }
 }
 
-/// Get students by admission year
-#[get("/admission-year/{year}")]
-async fn get_students_by_admission_year(
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let repo = StudentRepo::new(&state.db.main_db());
-    let service = StudentService::new(&repo);
-
-    let year_str = path.into_inner();
-    let year = match year_str.parse::<i32>() {
-        Ok(year) => year,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(ReqErrModel {
-                message: "Invalid admission year".to_string(),
-            })
-        }
-    };
-
-    match service.get_students_by_admission_year(year, None).await {
-        Ok(students) => HttpResponse::Ok().json(students),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 /// Get student statistics for a school
 #[get("/stats/school/{school_id}/statistics")]
 async fn get_school_student_statistics(
@@ -1038,7 +1013,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_students_by_status) // GET /students/status/{status} - Get students by status (active/suspended/graduated/left)
             .service(get_school_students_by_status) // GET /students/school/{school_id}/status/{status} - Get students by school and status
             .service(get_class_roster) // GET /students/class/{class_id}/roster - Get class roster with student details
-            .service(get_students_by_admission_year) // GET /students/admission-year/{year} - Get students by admission year
             // Statistics & Analytics
             .service(count_students_by_school_id) // GET /students/stats/count-by-school/{school_id} - Count students by school ID
             .service(count_students_by_class_id) // GET /students/stats/count-by-class/{class_id} - Count students by class ID

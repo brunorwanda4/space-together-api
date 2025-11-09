@@ -1,7 +1,7 @@
 use crate::domain::common_details::Gender;
 use crate::domain::student::{
-    BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, Student, StudentStatus,
-    StudentWithRelations, UpdateStudent,
+    BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PaginatedStudents, Student,
+    StudentStatus, StudentWithRelations, UpdateStudent,
 };
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
@@ -333,42 +333,77 @@ impl StudentRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<Student>, AppError> {
+        extra_match: Option<Document>, // 👈 same as get_all_classes
+    ) -> Result<PaginatedStudents, AppError> {
         let mut pipeline = vec![];
 
-        // Add search/filter functionality
-        if let Some(f) = filter {
+        // ===== BUILD MATCH STAGE =====
+        let mut match_stage = if let Some(f) = filter.clone() {
             let regex = doc! {
                 "$regex": f,
-                "$options": "i"  // case insensitive
+                "$options": "i"
             };
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        { "name": &regex },
-                        { "email": &regex },
-                        { "registration_number": &regex },
-                        { "tags": &regex },
-                    ]
+            doc! {
+                "$or": [
+                    { "name": &regex },
+                    { "email": &regex },
+                    { "registration_number": &regex },
+                    { "tags": &regex },
+                    { "gender": &regex },
+                    { "national_id": &regex },
+                ]
+            }
+        } else {
+            doc! {} // empty match (matches all)
+        };
+
+        // ===== MERGE EXTRA MATCH =====
+        if let Some(extra) = extra_match {
+            if !extra.is_empty() {
+                if !match_stage.is_empty() {
+                    match_stage = doc! { "$and": [match_stage, extra] };
+                } else {
+                    match_stage = extra;
                 }
-            });
+            }
         }
 
-        // Add sorting by updated_at (most recent first)
-        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
+        // Add to pipeline
+        if !match_stage.is_empty() {
+            pipeline.push(doc! { "$match": &match_stage });
+        }
 
-        // Add pagination
+        // ===== COUNT TOTAL =====
+        let mut count_pipeline = vec![];
+        if !match_stage.is_empty() {
+            count_pipeline.push(doc! { "$match": &match_stage });
+        }
+        count_pipeline.push(doc! { "$count": "total" });
+
+        let total_cursor = self
+            .collection
+            .aggregate(count_pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to count students: {}", e),
+            })?;
+
+        let results: Vec<mongodb::bson::Document> =
+            total_cursor.try_collect().await.unwrap_or_default();
+        let total = results
+            .first()
+            .and_then(|doc| doc.get_i32("total").ok())
+            .unwrap_or(0) as i64;
+
+        // ===== PAGINATION =====
+        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
         if let Some(s) = skip {
             pipeline.push(doc! { "$skip": s });
         }
+        let limit_value = limit.unwrap_or(50);
+        pipeline.push(doc! { "$limit": limit_value });
 
-        if let Some(l) = limit {
-            pipeline.push(doc! { "$limit": l });
-        } else {
-            // Default limit if none provided
-            pipeline.push(doc! { "$limit": 50 });
-        }
-
+        // ===== FETCH STUDENTS =====
         let mut cursor = self
             .collection
             .aggregate(pipeline)
@@ -387,7 +422,20 @@ impl StudentRepo {
             students.push(student);
         }
 
-        Ok(students)
+        // ===== PAGINATION META =====
+        let current_page = skip.unwrap_or(0) / limit_value + 1;
+        let total_pages = if total == 0 {
+            1
+        } else {
+            (total as f64 / limit_value as f64).ceil() as i64
+        };
+
+        Ok(PaginatedStudents {
+            students,
+            total,
+            total_pages,
+            current_page,
+        })
     }
 
     pub async fn get_active_students(&self) -> Result<Vec<Student>, AppError> {

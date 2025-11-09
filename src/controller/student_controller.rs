@@ -6,7 +6,7 @@ use crate::{
         class::Class,
         join_school_request::{CreateJoinSchoolRequest, JoinRole},
         school::School,
-        student::{Student, StudentWithRelations},
+        student::{PaginatedStudentsWithOthers, Student, StudentWithRelations},
         user::User,
     },
     errors::AppError,
@@ -90,12 +90,13 @@ impl<'a> StudentController<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<StudentWithRelations>, AppError> {
-        let students = self
+    ) -> Result<PaginatedStudentsWithOthers, AppError> {
+        let paginated = self
             .student_repo
-            .get_all_students(filter.clone(), limit, skip)
+            .get_all_students(filter.clone(), limit, skip, None)
             .await
             .map_err(|e| AppError { message: e.message })?;
+        let students = paginated.students;
 
         let mut results = Vec::new();
 
@@ -104,7 +105,12 @@ impl<'a> StudentController<'a> {
             results.push(enriched);
         }
 
-        Ok(results)
+        Ok(PaginatedStudentsWithOthers {
+            students: results,
+            total: paginated.total,
+            total_pages: paginated.total_pages,
+            current_page: paginated.current_page,
+        })
     }
 
     // ----------------------------------------------------------------------

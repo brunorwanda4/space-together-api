@@ -1016,45 +1016,6 @@ async fn get_class_roster(
     }
 }
 
-/// Get students by admission year
-#[get("/admission-year/{year}")]
-async fn get_students_by_admission_year(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let year_str = path.into_inner();
-    let year = match year_str.parse::<i32>() {
-        Ok(year) => year,
-        Err(_) => {
-            return HttpResponse::BadRequest().json(ReqErrModel {
-                message: "Invalid admission year".to_string(),
-            })
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = StudentRepo::new(&school_db);
-    let service = StudentService::new(&repo);
-
-    match service
-        .get_students_by_admission_year(year, Some(&IdType::from_string(claims.id.clone())))
-        .await
-    {
-        Ok(students) => HttpResponse::Ok().json(students),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 /// Get student statistics for a school
 #[get("/stats/school-statistics")]
 async fn get_school_student_statistics(
@@ -1332,7 +1293,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_students_by_class_id) // GET    /school/students/class/{creator_id} - Get students  by class id
             .service(get_students_by_status) // GET    /school/students/status/{status} - Get students by status (active/suspended/graduated/left)
             .service(get_class_roster) // GET    /school/students/class/{class_id}/roster - Get class roster with student details
-            .service(get_students_by_admission_year) // GET    /school/students/admission-year/{year} - Get students by admission year
             .service(get_school_students_by_status) // GET    /school/students/status/{status} - Get students by status
             // Permission Checking
             .service(is_user_student_of_school) // GET    /school/students/check/{user_id} - Check if user is student of current school

@@ -15,8 +15,11 @@ mod subjects;
 mod teachers;
 mod trade;
 mod users;
+mod welcome;
 
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
+    welcome::init(cfg);
+
     database_status::init(cfg);
     sector::init(cfg);
     auth::init(cfg);
