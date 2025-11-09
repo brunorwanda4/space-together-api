@@ -144,13 +144,6 @@ pub struct UpdateClass {
 // Add these to your existing class.rs file
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ClassWithSchool {
-    #[serde(flatten)]
-    pub class: Class,
-    pub school: Option<School>, // You'll need to define School struct
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassWithOthers {
     #[serde(flatten)]
     pub class: Class,
@@ -194,15 +187,6 @@ pub struct MainClassHierarchy {
 }
 
 #[derive(Debug, serde::Serialize)]
-pub struct ClassStatistics {
-    pub total_classes: usize,
-    pub main_classes: usize,
-    pub subclasses: usize,
-    pub active_classes: usize,
-    pub inactive_classes: usize,
-}
-
-#[derive(Debug, serde::Serialize)]
 pub struct MainClassWithSubclassCount {
     pub main_class: ClassWithOthers,
     pub subclass_count: usize,
@@ -212,6 +196,14 @@ pub struct MainClassWithSubclassCount {
 #[derive(Serialize)]
 pub struct PaginatedClasses {
     pub classes: Vec<Class>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}
+
+#[derive(Serialize)]
+pub struct PaginatedClassesWithOthers {
+    pub classes: Vec<ClassWithOthers>,
     pub total: i64,
     pub total_pages: i64,
     pub current_page: i64,

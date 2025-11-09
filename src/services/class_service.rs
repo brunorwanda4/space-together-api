@@ -1,6 +1,6 @@
 use crate::{
     domain::{
-        class::{Class, ClassWithOthers, ClassWithSchool, UpdateClass},
+        class::{Class, ClassWithOthers, PaginatedClasses, UpdateClass},
         common_details::Image,
     },
     models::id_model::IdType,
@@ -30,36 +30,18 @@ impl<'a> ClassService<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<Class>, String> {
+    ) -> Result<PaginatedClasses, String> {
         let classes = self
             .repo
-            .get_all_classes(filter, limit, skip)
+            .get_all_classes(filter, limit, skip, None)
             .await
             .map_err(|e| e.message)?;
-        Ok(sanitize_classes(classes))
-    }
-
-    /// Get all classes with school information
-    pub async fn get_all_classes_with_school(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-    ) -> Result<Vec<ClassWithSchool>, String> {
-        self.repo
-            .get_all_with_school(filter, limit, skip)
-            .await
-            .map_err(|e| e.message)
-    }
-
-    /// Get active classes
-    pub async fn get_active_classes(&self) -> Result<Vec<Class>, String> {
-        let classes = self
-            .repo
-            .get_active_classes()
-            .await
-            .map_err(|e| e.message)?;
-        Ok(sanitize_classes(classes))
+        Ok(PaginatedClasses {
+            classes: sanitize_classes(classes.classes),
+            total: classes.total,
+            total_pages: classes.total_pages,
+            current_page: classes.current_page,
+        })
     }
 
     /// Create a new class
@@ -399,14 +381,6 @@ impl<'a> ClassService<'a> {
         self.repo.delete_class(id).await.map_err(|e| e.message)
     }
 
-    /// Count classes by school ID
-    pub async fn count_classes_by_school_id(&self, school_id: &IdType) -> Result<u64, String> {
-        self.repo
-            .count_by_school_id(school_id)
-            .await
-            .map_err(|e| e.message)
-    }
-
     /// Count classes by creator ID
     pub async fn count_classes_by_creator_id(&self, creator_id: &IdType) -> Result<u64, String> {
         self.repo
@@ -674,39 +648,18 @@ impl<'a> ClassService<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<Class>, String> {
+    ) -> Result<PaginatedClasses, String> {
         let main_classes = self
             .repo
             .get_main_classes(filter, limit, skip)
             .await
             .map_err(|e| e.message)?;
-        Ok(sanitize_classes(main_classes))
-    }
-
-    /// Update subclass information
-    pub async fn update_subclass(
-        &self,
-        subclass_id: &IdType,
-        update: UpdateClass,
-    ) -> Result<Class, String> {
-        // Verify it's actually a subclass
-        let subclass = self
-            .repo
-            .find_by_id(subclass_id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Subclass not found".to_string())?;
-
-        if subclass.level_type != Some(crate::domain::class::ClassLevelType::SubClass) {
-            return Err("Class is not a subclass".to_string());
-        }
-
-        // Ensure level_type remains as SubClass and parent_class_id doesn't change
-        // These fields shouldn't be in UpdateClass anyway, but we're being explicit
-
-        let updated_class = self.update_class_merged(subclass_id, update).await?;
-
-        Ok(updated_class)
+        Ok(PaginatedClasses {
+            total: main_classes.total,
+            total_pages: main_classes.total_pages,
+            current_page: main_classes.current_page,
+            classes: sanitize_classes(main_classes.classes),
+        })
     }
 
     /// Bulk add multiple subclasses to a main class
@@ -748,13 +701,13 @@ impl<'a> ClassService<'a> {
             }
 
             // Clear images for bulk processing (they can be updated later)
-            if subclass.image.is_some() {
-                subclass.image = None;
-                subclass.image_id = None;
-            }
-            if subclass.background_images.is_some() {
-                subclass.background_images = None;
-            }
+            // if subclass.image.is_some() {
+            //     subclass.image = None;
+            //     subclass.image_id = None;
+            // }
+            // if subclass.background_images.is_some() {
+            //     subclass.background_images = None;
+            // }
 
             // Generate ID
             subclass.id = Some(ObjectId::new());

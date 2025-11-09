@@ -29,34 +29,6 @@ async fn get_all_classes(
     }
 }
 
-#[get("/with-school")]
-async fn get_all_classes_with_school(
-    query: web::Query<RequestQuery>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let repo = ClassRepo::new(&state.db.main_db());
-    let service = ClassService::new(&repo);
-
-    match service
-        .get_all_classes_with_school(query.filter.clone(), query.limit, query.skip)
-        .await
-    {
-        Ok(classes) => HttpResponse::Ok().json(classes),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-#[get("/active")]
-async fn get_active_classes(state: web::Data<AppState>) -> impl Responder {
-    let repo = ClassRepo::new(&state.db.main_db());
-    let service = ClassService::new(&repo);
-
-    match service.get_active_classes().await {
-        Ok(classes) => HttpResponse::Ok().json(classes),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 #[get("/{id}")]
 async fn get_class_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
     let repo = ClassRepo::new(&state.db.main_db());
@@ -432,22 +404,6 @@ async fn delete_class(
     }
 }
 
-#[get("/stats/count-by-school/{school_id}")]
-async fn count_classes_by_school_id(
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let repo = ClassRepo::new(&state.db.main_db());
-    let service = ClassService::new(&repo);
-
-    let school_id = IdType::from_string(path.into_inner());
-
-    match service.count_classes_by_school_id(&school_id).await {
-        Ok(count) => HttpResponse::Ok().json(serde_json::json!({ "count": count })),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 #[get("/stats/count-by-creator/{creator_id}")]
 async fn count_classes_by_creator_id(
     path: web::Path<String>,
@@ -564,9 +520,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/classes")
             // Public routes (read-only)
             .service(get_all_classes) // GET /classes - Get all classes
-            .service(get_all_classes_with_school) // GET /classes/with-school - Get all classes with school information
             .service(get_all_school_classes_with_others) // GET /classes/with-others - Get all classes with others
-            .service(get_active_classes) // GET /classes/active - Get all active classes
             .service(get_class_by_id_with_details) // GET /classes/{id}/with-details - Get class by ID with full details
             .service(get_class_by_username) // GET /classes/username/{username} - Get class by username
             .service(get_class_by_username_with_details) // GET /classes/username/{username}/with-details - Get class by username with full details
@@ -576,7 +530,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_classes_by_creator_id) // GET /classes/creator/{creator_id} - Get classes by creator ID
             .service(get_classes_by_teacher_id) // GET /classes/teacher/{teacher_id} - Get classes by teacher ID
             .service(get_classes_by_main_class_id) // GET /classes/main-class/{main_class_id} - Get classes by main class ID
-            .service(count_classes_by_school_id) // GET /classes/stats/count-by-school/{school_id} - Count classes by school ID
             .service(count_classes_by_creator_id) // GET /classes/stats/count-by-creator/{creator_id} - Count classes by creator ID
             .service(get_class_by_id) // GET /classes/{id} - Get class by ID
             // Protected routes (require JWT)

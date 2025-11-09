@@ -1,13 +1,12 @@
-use crate::domain::class::{Class, ClassLevelType, ClassWithOthers, ClassWithSchool, UpdateClass};
+use crate::domain::class::{Class, ClassLevelType, ClassWithOthers, PaginatedClasses, UpdateClass};
 use crate::domain::main_class::MainClass;
 use crate::domain::school::School;
 use crate::domain::teacher::Teacher;
 use crate::domain::trade::Trade;
 use crate::domain::user::User;
 use crate::errors::AppError;
-use crate::helpers::aggregate_helpers::aggregate_many;
 use crate::models::id_model::IdType;
-use crate::pipeline::class_pipeline::{class_with_others_pipeline, class_with_school_pipeline};
+use crate::pipeline::class_pipeline::class_with_others_pipeline;
 use crate::utils::object_id::parse_object_id;
 use crate::utils::school_utils::sanitize_school;
 use crate::utils::user_utils::sanitize_user;
@@ -29,64 +28,6 @@ impl ClassRepo {
         Self {
             collection: db.collection::<Class>("classes"),
         }
-    }
-
-    pub async fn get_all_with_school(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-    ) -> Result<Vec<ClassWithSchool>, AppError> {
-        let mut pipeline = vec![];
-
-        // 🔍 Add search/filter functionality
-        if let Some(f) = filter {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i" // case-insensitive search
-            };
-
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        { "name": &regex },
-                        { "username": &regex },
-                        { "code": &regex },
-                        { "description": &regex },
-                        { "subject": &regex },
-                        { "grade_level": &regex },
-                        { "tags": &regex },
-                    ]
-                }
-            });
-        }
-
-        // 🧩 Merge with class + school relation pipeline
-        let mut relations_pipeline = class_with_school_pipeline(doc! {});
-        pipeline.append(&mut relations_pipeline);
-
-        // 🕒 Sort by recently updated
-        pipeline.insert(0, doc! { "$sort": { "updated_at": -1 } });
-
-        // ⏭️ Add pagination
-        if let Some(s) = skip {
-            pipeline.push(doc! { "$skip": s });
-        }
-
-        if let Some(l) = limit {
-            pipeline.push(doc! { "$limit": l });
-        } else {
-            pipeline.push(doc! { "$limit": 50 }); // default limit
-        }
-
-        // 🧠 Run aggregation
-        let docs = aggregate_many(
-            &self.collection.clone().clone_with_type::<Document>(),
-            pipeline,
-        )
-        .await?;
-
-        Ok(docs)
     }
 
     pub async fn find_class_with_others(
@@ -488,45 +429,79 @@ impl ClassRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<Class>, AppError> {
+        extra_match: Option<Document>, // 👈 new optional prop for custom query
+    ) -> Result<PaginatedClasses, AppError> {
         let mut pipeline = vec![];
 
-        // Add search/filter functionality
-        if let Some(f) = filter {
+        // ===== BUILD MATCH STAGE =====
+        let mut match_stage = if let Some(f) = filter.clone() {
             let regex = doc! {
                 "$regex": f,
-                "$options": "i"  // case insensitive
+                "$options": "i"
             };
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        { "name": &regex },
-                        { "username": &regex },
-                        { "code": &regex },
-                        { "description": &regex },
-                        { "subject": &regex },
-                        { "grade_level": &regex },
-                        { "tags": &regex },
-                    ]
+            doc! {
+                "$or": [
+                    { "name": &regex },
+                    { "username": &regex },
+                    { "code": &regex },
+                    { "description": &regex },
+                    { "subject": &regex },
+                    { "grade_level": &regex },
+                    { "tags": &regex },
+                ]
+            }
+        } else {
+            doc! {} // empty match (matches all)
+        };
+
+        // ===== MERGE EXTRA MATCH =====
+        if let Some(extra) = extra_match {
+            if !extra.is_empty() {
+                // Combine both using $and to preserve both filters
+                if !match_stage.is_empty() {
+                    match_stage = doc! { "$and": [match_stage, extra] };
+                } else {
+                    match_stage = extra;
                 }
-            });
+            }
         }
 
-        // Add sorting by updated_at (most recent first)
-        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
+        // Add to pipeline
+        if !match_stage.is_empty() {
+            pipeline.push(doc! { "$match": &match_stage });
+        }
 
-        // Add pagination
+        // ===== COUNT TOTAL =====
+        let mut count_pipeline = vec![];
+        if !match_stage.is_empty() {
+            count_pipeline.push(doc! { "$match": &match_stage });
+        }
+        count_pipeline.push(doc! { "$count": "total" });
+
+        let total_cursor = self
+            .collection
+            .aggregate(count_pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to count classes: {}", e),
+            })?;
+
+        let results: Vec<mongodb::bson::Document> =
+            total_cursor.try_collect().await.unwrap_or_default();
+        let total = results
+            .first()
+            .and_then(|doc| doc.get_i32("total").ok())
+            .unwrap_or(0) as i64;
+
+        // ===== PAGINATION =====
+        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
         if let Some(s) = skip {
             pipeline.push(doc! { "$skip": s });
         }
+        let limit_value = limit.unwrap_or(50);
+        pipeline.push(doc! { "$limit": limit_value });
 
-        if let Some(l) = limit {
-            pipeline.push(doc! { "$limit": l });
-        } else {
-            // Default limit if none provided
-            pipeline.push(doc! { "$limit": 50 });
-        }
-
+        // ===== FETCH CLASSES =====
         let mut cursor = self
             .collection
             .aggregate(pipeline)
@@ -545,25 +520,19 @@ impl ClassRepo {
             classes.push(class);
         }
 
-        Ok(classes)
-    }
+        let current_page = skip.unwrap_or(0) / limit_value + 1;
+        let total_pages = if total == 0 {
+            1
+        } else {
+            (total as f64 / limit_value as f64).ceil() as i64
+        };
 
-    pub async fn get_active_classes(&self) -> Result<Vec<Class>, AppError> {
-        let mut cursor = self
-            .collection
-            .find(doc! { "is_active": true })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find active classes: {}", e),
-            })?;
-
-        let mut classes = Vec::new();
-        while let Some(class) = cursor.next().await {
-            classes.push(class.map_err(|e| AppError {
-                message: format!("Failed to process class: {}", e),
-            })?);
-        }
-        Ok(classes)
+        Ok(PaginatedClasses {
+            classes,
+            total,
+            total_pages,
+            current_page,
+        })
     }
 
     pub async fn update_class(&self, id: &IdType, update: &UpdateClass) -> Result<Class, AppError> {
@@ -636,16 +605,6 @@ impl ClassRepo {
             });
         }
         Ok(())
-    }
-
-    pub async fn count_by_school_id(&self, school_id: &IdType) -> Result<u64, AppError> {
-        let obj_id = parse_object_id(school_id)?;
-        self.collection
-            .count_documents(doc! { "school_id": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to count classes by school_id: {}", e),
-            })
     }
 
     pub async fn count_by_creator_id(&self, creator_id: &IdType) -> Result<u64, AppError> {
@@ -1058,7 +1017,7 @@ impl ClassRepo {
         })?;
 
         Ok(class.level_type == Some(ClassLevelType::MainClass)
-            && class.subclass_ids.as_ref().map_or(false, |v| !v.is_empty()))
+            && class.subclass_ids.as_ref().is_some_and(|v| !v.is_empty()))
     }
 
     /// Get all main classes (classes without parent_class_id and with MainClass level type)
@@ -1067,93 +1026,19 @@ impl ClassRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<Class>, AppError> {
-        let mut pipeline = vec![];
-
-        // Match main classes
-        let mut match_stage = doc! {
+    ) -> Result<PaginatedClasses, AppError> {
+        // 👇 Define extra MongoDB match for main classes
+        let extra_match = Some(doc! {
             "level_type": "MainClass",
             "parent_class_id": { "$exists": false }
-        };
+        });
 
-        // Add search/filter functionality
-        if let Some(f) = filter {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i"
-            };
-
-            let search_filter = doc! {
-                "$or": [
-                    { "name": &regex },
-                    { "username": &regex },
-                    { "code": &regex },
-                    { "description": &regex },
-                    { "subject": &regex },
-                    { "grade_level": &regex },
-                    { "tags": &regex },
-                ]
-            };
-
-            match_stage = doc! {
-                "$and": [match_stage, search_filter]
-            };
-        }
-
-        pipeline.push(doc! { "$match": match_stage });
-        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
-
-        if let Some(s) = skip {
-            pipeline.push(doc! { "$skip": s });
-        }
-
-        if let Some(l) = limit {
-            pipeline.push(doc! { "$limit": l });
-        } else {
-            pipeline.push(doc! { "$limit": 50 });
-        }
-
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
+        let paginated = self
+            .get_all_classes(filter, limit, skip, extra_match)
             .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch main classes: {}", e),
-            })?;
+            .map_err(|e| AppError { message: e.message })?;
 
-        let mut classes = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate main classes: {}", e),
-        })? {
-            let class: Class = mongodb::bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize main class: {}", e),
-            })?;
-            classes.push(class);
-        }
-
-        Ok(classes)
-    }
-
-    /// Update subclass information
-    pub async fn update_subclass(
-        &self,
-        subclass_id: &IdType,
-        update: &UpdateClass,
-    ) -> Result<Class, AppError> {
-        let subclass = self
-            .find_by_id(subclass_id)
-            .await?
-            .ok_or_else(|| AppError {
-                message: "Subclass not found".to_string(),
-            })?;
-
-        if subclass.level_type != Some(ClassLevelType::SubClass) {
-            return Err(AppError {
-                message: "Class is not a subclass".to_string(),
-            });
-        }
-
-        self.update_class(subclass_id, update).await
+        Ok(paginated)
     }
 
     /// Bulk add multiple subclasses to a main class
@@ -1194,20 +1079,44 @@ impl ClassRepo {
             return Ok(inserted_subclasses);
         }
 
-        // Update main class with all new subclass IDs
-        let update_doc = doc! {
-            "$push": {
-                "subclass_ids": {
-                    "$each": {"$each" :subclass_ids}
+        // --- FIX START ---
+        // The previous error indicated that 'subclass_ids' can be 'null' in the database,
+        // which causes '$push' to fail. We must use an update pipeline to
+        // atomically check for null, set to an empty array if it is, and then
+        // concatenate our new subclass IDs.
+
+        // Convert our new subclass IDs into a BSON array for the pipeline
+        let subclass_ids_bson = bson::to_bson(&subclass_ids).map_err(|e| AppError {
+            message: format!("Failed to serialize subclass IDs for update: {}", e),
+        })?;
+
+        // Define the update pipeline
+        let update_pipeline = vec![
+            doc! {
+                "$set": {
+                    // Stage 1: Fix the 'subclass_ids' field.
+                    // If it's null, set it to an empty array [].
+                    // Otherwise, keep its existing value.
+                    // Also set the 'updated_at' timestamp.
+                    "subclass_ids": { "$ifNull": [ "$subclass_ids", [] ] },
+                    "updated_at": bson::to_bson(&Utc::now()).unwrap()
                 }
             },
-            "$set": {
-                "updated_at": bson::to_bson(&Utc::now()).unwrap()
-            }
-        };
+            doc! {
+                "$set": {
+                    // Stage 2: Concatenate the (now guaranteed to be an array)
+                    // 'subclass_ids' field with our new IDs.
+                    "subclass_ids": {
+                        "$concatArrays": [ "$subclass_ids", subclass_ids_bson ]
+                    }
+                }
+            },
+        ];
+        // --- FIX END ---
 
         self.collection
-            .update_one(doc! { "_id": main_obj_id }, update_doc)
+            // Pass the update_pipeline (a Vec<Document>) instead of a single update_doc
+            .update_one(doc! { "_id": main_obj_id }, update_pipeline)
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to update main class with subclasses: {}", e),

@@ -1,10 +1,10 @@
 use chrono::Utc;
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{doc, oid::ObjectId};
 
 use crate::{
     domain::class::{
-        Class, ClassLevelType, ClassStatistics, ClassWithOthers, ClassWithSchool,
-        MainClassHierarchy, MainClassWithSubclassCount, MainClassWithSubclasses,
+        Class, ClassLevelType, ClassWithOthers, MainClassHierarchy, MainClassWithSubclassCount,
+        MainClassWithSubclasses, PaginatedClassesWithOthers,
     },
     errors::AppError,
     helpers::object_id_helpers::parse_object_id,
@@ -56,13 +56,15 @@ impl<'a> ClassController<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<ClassWithOthers>, AppError> {
-        // First, get classes from school database
-        let classes = self
+    ) -> Result<PaginatedClassesWithOthers, AppError> {
+        let paginated = self
             .class_repo
-            .get_all_classes(filter.clone(), limit, skip)
+            .get_all_classes(filter.clone(), limit, skip, None)
             .await
             .map_err(|e| AppError { message: e.message })?;
+        // First, get classes from school database
+
+        let classes = paginated.classes;
 
         let mut classes_with_others = Vec::new();
 
@@ -71,7 +73,12 @@ impl<'a> ClassController<'a> {
             classes_with_others.push(class_with_others);
         }
 
-        Ok(classes_with_others)
+        Ok(PaginatedClassesWithOthers {
+            total: paginated.total,
+            total_pages: paginated.total_pages,
+            classes: classes_with_others,
+            current_page: paginated.current_page,
+        })
     }
 
     // ----------------------------------------------------------------------
@@ -210,43 +217,6 @@ impl<'a> ClassController<'a> {
         })
     }
 
-    // ----------------------------------------------------------------------
-    // Get classes with school information only
-    // ----------------------------------------------------------------------
-    pub async fn get_all_classes_with_school(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-    ) -> Result<Vec<ClassWithSchool>, AppError> {
-        let classes = self
-            .class_repo
-            .get_all_classes(filter.clone(), limit, skip)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
-
-        let mut classes_with_school = Vec::new();
-
-        for class in classes {
-            let mut school = None;
-
-            // Get school from main database
-            if let Some(school_id) = class.school_id {
-                let school_id_type = IdType::ObjectId(school_id);
-                if let Ok(s) = self.school_service.get_school_by_id(&school_id_type).await {
-                    school = Some(s);
-                }
-            }
-
-            classes_with_school.push(ClassWithSchool {
-                class: sanitize_class(class),
-                school,
-            });
-        }
-
-        Ok(classes_with_school)
-    }
-
     pub async fn add_or_update_class_teacher(
         &self,
         class_id: &IdType,
@@ -286,21 +256,26 @@ impl<'a> ClassController<'a> {
         num_sub_classes: u8,
         creator_id: ObjectId,
     ) -> Result<Vec<Class>, String> {
-        if !(2..=12).contains(&num_sub_classes) {
-            return Err("Count must be a number between 2 and 12".to_string());
-        };
+        if !(1..=12).contains(&num_sub_classes) {
+            return Err("Count must be a number between 1 and 12".to_string());
+        }
 
         let class_service = ClassService::new(&self.class_repo);
+
         // 1️⃣ Get the main class first
         let main_class = class_service.get_class_by_id(main_class_id).await?;
         let main_class_id_obj = parse_object_id(main_class_id)?;
-        // 2️⃣ Prepare subclass list
+
+        // 3️⃣ Determine the next starting letter
+        // Example: if A,B exist => start from C (index = 2)
+        let start_index = main_class.subclass_ids.as_ref().map_or(0, |ids| ids.len()) as u8;
+
+        // 4️⃣ Prepare subclass list
         let mut subclasses = Vec::new();
 
         for i in 0..num_sub_classes {
-            // Generate subclass name like "Primary 1 A", "Primary 1 B", etc.
-            // Using letters A, B, C... (you can also switch to numbers if you prefer)
-            let letter = ((b'A' + i) as char).to_string();
+            // Letter = 'A' + start_index + i
+            let letter = ((b'A' + start_index + i) as char).to_string();
 
             let subclass_name = format!("{} {}", main_class.name, letter);
             let subclass_username = format!("{}_{}", main_class.username, letter.to_lowercase());
@@ -315,7 +290,7 @@ impl<'a> ClassController<'a> {
                 code: None,
                 school_id: main_class.school_id,
                 creator_id: Some(creator_id),
-                class_teacher_id: None, // can be assigned later
+                class_teacher_id: None,
                 r#type: main_class.r#type.clone(),
                 level_type: Some(ClassLevelType::SubClass),
                 parent_class_id: Some(main_class_id_obj),
@@ -323,12 +298,12 @@ impl<'a> ClassController<'a> {
                 main_class_id: main_class.main_class_id,
                 trade_id: main_class.trade_id,
                 is_active: true,
-                image_id: None,
-                image: None,
-                background_images: None,
+                image_id: main_class.image_id.clone(),
+                image: main_class.image.clone(),
+                background_images: main_class.background_images.clone(),
                 description: Some(format!("Sub class of {}", main_class.name)),
-                capacity: None,
-                subject: None,
+                capacity: main_class.capacity,
+                subject: main_class.subject.clone(),
                 grade_level: main_class.grade_level.clone(),
                 tags: vec!["subclass".to_string()],
                 created_at: now,
@@ -338,7 +313,7 @@ impl<'a> ClassController<'a> {
             subclasses.push(subclass);
         }
 
-        // 3️⃣ Call service to add subclasses
+        // 5️⃣ Create the subclasses
         let created_subclasses = class_service
             .add_multiple_subclasses(main_class_id, subclasses)
             .await?;
@@ -367,7 +342,7 @@ impl<'a> ClassController<'a> {
 
         let mut result = Vec::new();
 
-        for main_class in main_classes {
+        for main_class in main_classes.classes {
             // Get subclasses for this main class
             let subclasses = class_service
                 .get_subclasses(&IdType::from_object_id(main_class.id.unwrap()))
@@ -421,14 +396,14 @@ impl<'a> ClassController<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<ClassWithOthers>, AppError> {
+    ) -> Result<PaginatedClassesWithOthers, AppError> {
         let class_service = ClassService::new(&self.class_repo);
-
-        // Get main classes
-        let main_classes = class_service
+        let paginated = class_service
             .get_main_classes(filter, limit, skip)
             .await
             .map_err(|e| AppError { message: e })?;
+        // Get main classes
+        let main_classes = paginated.classes;
 
         let mut result = Vec::new();
 
@@ -437,7 +412,12 @@ impl<'a> ClassController<'a> {
             result.push(main_class_with_details);
         }
 
-        Ok(result)
+        Ok(PaginatedClassesWithOthers {
+            total: paginated.total,
+            total_pages: paginated.total_pages,
+            classes: result,
+            current_page: paginated.current_page,
+        })
     }
 
     /// Get only subclasses (without main classes) with full details
@@ -446,24 +426,30 @@ impl<'a> ClassController<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<ClassWithOthers>, AppError> {
-        // We'll get all classes and filter for subclasses
-        let all_classes = self
+    ) -> Result<PaginatedClassesWithOthers, AppError> {
+        // 👇 Create MongoDB filter for only SubClasses
+        let extra_match = Some(doc! { "level_type": "SubClass" });
+
+        // 👇 Call the shared function with the new extra_match parameter
+        let paginated = self
             .class_repo
-            .get_all_classes(filter, limit, skip)
+            .get_all_classes(filter.clone(), limit, skip, extra_match)
             .await
             .map_err(|e| AppError { message: e.message })?;
 
+        // === Enrich classes with relations ===
         let mut subclasses_with_details = Vec::new();
-
-        for class in all_classes {
-            if class.level_type == Some(ClassLevelType::SubClass) {
-                let subclass_with_details = self.enrich_class_with_relations(class).await?;
-                subclasses_with_details.push(subclass_with_details);
-            }
+        for class in paginated.classes {
+            let subclass_with_details = self.enrich_class_with_relations(class).await?;
+            subclasses_with_details.push(subclass_with_details);
         }
 
-        Ok(subclasses_with_details)
+        Ok(PaginatedClassesWithOthers {
+            total: paginated.total,
+            total_pages: paginated.total_pages,
+            classes: subclasses_with_details,
+            current_page: paginated.current_page,
+        })
     }
 
     /// Get subclasses by parent class ID with full details
@@ -481,90 +467,28 @@ impl<'a> ClassController<'a> {
         Ok(subclasses)
     }
 
-    /// Get class statistics (count of main classes, subclasses, etc.)
-    pub async fn get_class_statistics(&self) -> Result<ClassStatistics, AppError> {
-        let class_service = ClassService::new(&self.class_repo);
-
-        // Get all classes for counting
-        let all_classes = self
-            .class_repo
-            .get_all_classes(None, None, None)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
-
-        let mut main_class_count = 0;
-        let mut subclass_count = 0;
-        let mut active_class_count = 0;
-        let mut inactive_class_count = 0;
-
-        for class in all_classes {
-            if class.level_type == Some(ClassLevelType::MainClass) {
-                main_class_count += 1;
-            } else if class.level_type == Some(ClassLevelType::SubClass) {
-                subclass_count += 1;
-            }
-
-            if class.is_active {
-                active_class_count += 1;
-            } else {
-                inactive_class_count += 1;
-            }
-        }
-
-        Ok(ClassStatistics {
-            total_classes: main_class_count + subclass_count,
-            main_classes: main_class_count,
-            subclasses: subclass_count,
-            active_classes: active_class_count,
-            inactive_classes: inactive_class_count,
-        })
-    }
-
-    /// Search classes by type (main class or subclass)
-    pub async fn search_classes_by_level_type(
-        &self,
-        level_type: ClassLevelType,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-    ) -> Result<Vec<ClassWithOthers>, AppError> {
-        // We'll get all classes and filter by level type
-        let all_classes = self
-            .class_repo
-            .get_all_classes(filter, limit, skip)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
-
-        let mut filtered_classes = Vec::new();
-
-        for class in all_classes {
-            if class.level_type == Some(level_type.clone()) {
-                let class_with_details = self.enrich_class_with_relations(class).await?;
-                filtered_classes.push(class_with_details);
-            }
-        }
-
-        Ok(filtered_classes)
-    }
-
     /// Get classes that have no subclasses (empty main classes or subclasses)
     pub async fn get_classes_without_subclasses(
         &self,
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<ClassWithOthers>, AppError> {
-        let all_classes = self
+    ) -> Result<PaginatedClassesWithOthers, AppError> {
+        let extra_match = Some(doc! { "level_type": "MainClass" });
+
+        let paginated = self
             .class_repo
-            .get_all_classes(filter, limit, skip)
+            .get_all_classes(filter.clone(), limit, skip, extra_match)
             .await
             .map_err(|e| AppError { message: e.message })?;
+
+        let all_classes = paginated.classes;
 
         let mut result = Vec::new();
 
         for class in all_classes {
             let has_subclasses = if class.level_type == Some(ClassLevelType::MainClass) {
-                class.subclass_ids.as_ref().map_or(false, |v| !v.is_empty())
+                class.subclass_ids.as_ref().is_some_and(|v| !v.is_empty())
             } else {
                 false // Subclasses don't have subclasses
             };
@@ -575,7 +499,12 @@ impl<'a> ClassController<'a> {
             }
         }
 
-        Ok(result)
+        Ok(PaginatedClassesWithOthers {
+            total: paginated.total,
+            total_pages: paginated.total_pages,
+            classes: result,
+            current_page: paginated.current_page,
+        })
     }
 
     /// Get classes with the most subclasses (top N main classes)
@@ -584,11 +513,11 @@ impl<'a> ClassController<'a> {
         limit: Option<i64>,
     ) -> Result<Vec<MainClassWithSubclassCount>, AppError> {
         let class_service = ClassService::new(&self.class_repo);
-
-        let main_classes = class_service
+        let paginated = class_service
             .get_main_classes(None, None, None)
             .await
             .map_err(|e| AppError { message: e })?;
+        let main_classes = paginated.classes;
 
         let mut main_classes_with_count: Vec<MainClassWithSubclassCount> = Vec::new();
 

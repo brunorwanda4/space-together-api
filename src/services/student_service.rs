@@ -143,25 +143,6 @@ impl<'a> StudentService<'a> {
         Ok(inserted_student)
     }
 
-    // ------------------------------------------------------------------
-    // ✅ CREATE WITH EVENTS
-    // ------------------------------------------------------------------
-
-    pub async fn create_student_with_events(
-        &self,
-        new_student: Student,
-        state: &web::Data<AppState>,
-    ) -> Result<Student, String> {
-        let student = self.create_student(new_student).await?;
-
-        // 🔔 Broadcast student creation event
-        if let Some(id) = &student.id {
-            Self::broadcast_student_update(state, id).await;
-        }
-
-        Ok(student)
-    }
-
     /// Get student by ID
     pub async fn get_student_by_id(&self, id: &IdType) -> Result<Student, String> {
         let student = self

@@ -41,18 +41,3 @@ pub fn class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
         doc! { "$unwind": { "path": "$main_class", "preserveNullAndEmptyArrays": true } },
     ]
 }
-
-pub fn class_with_school_pipeline(match_stage: Document) -> Vec<Document> {
-    vec![
-        doc! { "$match": match_stage },
-        doc! {
-            "$lookup": {
-                "from": "schools",
-                "localField": "school_id",
-                "foreignField": "_id",
-                "as": "school"
-            }
-        },
-        doc! { "$unwind": { "path": "$school", "preserveNullAndEmptyArrays": true } },
-    ]
-}
