@@ -199,23 +199,23 @@ impl JoinSchoolRequestRepo {
     }
 
     // Find operations
-    pub async fn find_by_email(&self, email: &str) -> Result<Vec<JoinSchoolRequest>, AppError> {
-        let mut cursor = self
-            .collection
-            .find(doc! { "email": email })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find join requests by email: {}", e),
-            })?;
+    // pub async fn find_by_email(&self, email: &str) -> Result<Vec<JoinSchoolRequest>, AppError> {
+    //     let mut cursor = self
+    //         .collection
+    //         .find(doc! { "email": email })
+    //         .await
+    //         .map_err(|e| AppError {
+    //             message: format!("Failed to find join requests by email: {}", e),
+    //         })?;
 
-        let mut requests = Vec::new();
-        while let Some(request) = cursor.next().await {
-            requests.push(request.map_err(|e| AppError {
-                message: format!("Failed to process join request: {}", e),
-            })?);
-        }
-        Ok(requests)
-    }
+    //     let mut requests = Vec::new();
+    //     while let Some(request) = cursor.next().await {
+    //         requests.push(request.map_err(|e| AppError {
+    //             message: format!("Failed to process join request: {}", e),
+    //         })?);
+    //     }
+    //     Ok(requests)
+    // }
 
     // Get all join requests by email with relations
     pub async fn find_with_relations_by_email(

@@ -71,7 +71,7 @@ async fn main() -> std::io::Result<()> {
     println!("🪟 Running in normal mode (Windows or no systemfd)");
 
     loop {
-        let address = ("127.0.0.1", port_num);
+        let address = ("0.0.0.0", port_num);
 
         // Create a new HttpServer with fresh closure each iteration
         let server = HttpServer::new({

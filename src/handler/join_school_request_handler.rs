@@ -162,12 +162,12 @@ pub async fn cleanup_expired_requests_handler(
     })))
 }
 
-/// Get join requests by class ID
-pub async fn get_join_requests_by_class_handler(
-    controller: web::Data<JoinSchoolRequestController<'_>>,
-    class_id: web::Path<String>,
-) -> Result<HttpResponse, AppError> {
-    let class_id = IdType::String(class_id.into_inner());
-    let requests = controller.get_join_requests_by_class(&class_id).await?;
-    Ok(HttpResponse::Ok().json(requests))
-}
+// Get join requests by class ID
+// pub async fn get_join_requests_by_class_handler(
+//     controller: web::Data<JoinSchoolRequestController<'_>>,
+//     class_id: web::Path<String>,
+// ) -> Result<HttpResponse, AppError> {
+//     let class_id = IdType::String(class_id.into_inner());
+//     let requests = controller.get_join_requests_by_class(&class_id).await?;
+//     Ok(HttpResponse::Ok().json(requests))
+// }

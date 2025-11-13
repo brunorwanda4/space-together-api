@@ -38,17 +38,17 @@ pub struct JoinSchoolRequestController<'a> {
 }
 
 impl<'a> JoinSchoolRequestController<'a> {
-    pub fn new(
-        join_request_repo: JoinSchoolRequestRepo,
-        user_service: &'a UserService<'a>,
-        school_service: &'a SchoolService<'a>,
-    ) -> Self {
-        Self {
-            join_request_repo,
-            user_service,
-            school_service,
-        }
-    }
+    // pub fn new(
+    //     join_request_repo: JoinSchoolRequestRepo,
+    //     user_service: &'a UserService<'a>,
+    //     school_service: &'a SchoolService<'a>,
+    // ) -> Self {
+    //     Self {
+    //         join_request_repo,
+    //         user_service,
+    //         school_service,
+    //     }
+    // }
 
     // ----------------------------------------------------------------------
     // Create a new join school request

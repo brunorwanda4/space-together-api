@@ -197,7 +197,7 @@ impl<'a> TeacherController<'a> {
         let mut creator: Option<User> = None;
         let mut user = None;
         let mut classes = None;
-        let mut subjects = None;
+        let subjects;
 
         // ✅ Get school from main database
         if let Some(school_id) = teacher.school_id {
