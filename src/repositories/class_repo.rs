@@ -7,6 +7,7 @@ use crate::domain::user::User;
 use crate::errors::AppError;
 use crate::models::id_model::IdType;
 use crate::pipeline::class_pipeline::class_with_others_pipeline;
+use crate::repositories::base_repo::BaseRepository;
 use crate::utils::object_id::parse_object_id;
 use crate::utils::school_utils::sanitize_school;
 use crate::utils::user_utils::sanitize_user;
@@ -429,103 +430,26 @@ impl ClassRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-        extra_match: Option<Document>, // 👈 new optional prop for custom query
+        extra_match: Option<Document>, // 👈 extra filter support
     ) -> Result<PaginatedClasses, AppError> {
-        let mut pipeline = vec![];
+        // ✅ Use BaseRepository with correct type (Document)
+        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        // ===== BUILD MATCH STAGE =====
-        let mut match_stage = if let Some(f) = filter.clone() {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i"
-            };
-            doc! {
-                "$or": [
-                    { "name": &regex },
-                    { "username": &regex },
-                    { "code": &regex },
-                    { "description": &regex },
-                    { "subject": &regex },
-                    { "grade_level": &regex },
-                    { "tags": &regex },
-                ]
-            }
-        } else {
-            doc! {} // empty match (matches all)
-        };
+        // Define which fields to search in
+        let searchable_fields = [
+            "name",
+            "username",
+            "code",
+            "description",
+            "subject",
+            "grade_level",
+            "tags",
+        ];
 
-        // ===== MERGE EXTRA MATCH =====
-        if let Some(extra) = extra_match {
-            if !extra.is_empty() {
-                // Combine both using $and to preserve both filters
-                if !match_stage.is_empty() {
-                    match_stage = doc! { "$and": [match_stage, extra] };
-                } else {
-                    match_stage = extra;
-                }
-            }
-        }
-
-        // Add to pipeline
-        if !match_stage.is_empty() {
-            pipeline.push(doc! { "$match": &match_stage });
-        }
-
-        // ===== COUNT TOTAL =====
-        let mut count_pipeline = vec![];
-        if !match_stage.is_empty() {
-            count_pipeline.push(doc! { "$match": &match_stage });
-        }
-        count_pipeline.push(doc! { "$count": "total" });
-
-        let total_cursor = self
-            .collection
-            .aggregate(count_pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to count classes: {}", e),
-            })?;
-
-        let results: Vec<mongodb::bson::Document> =
-            total_cursor.try_collect().await.unwrap_or_default();
-        let total = results
-            .first()
-            .and_then(|doc| doc.get_i32("total").ok())
-            .unwrap_or(0) as i64;
-
-        // ===== PAGINATION =====
-        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
-        if let Some(s) = skip {
-            pipeline.push(doc! { "$skip": s });
-        }
-        let limit_value = limit.unwrap_or(50);
-        pipeline.push(doc! { "$limit": limit_value });
-
-        // ===== FETCH CLASSES =====
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch classes: {}", e),
-            })?;
-
-        let mut classes = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate classes: {}", e),
-        })? {
-            let class: Class = mongodb::bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize class: {}", e),
-            })?;
-            classes.push(class);
-        }
-
-        let current_page = skip.unwrap_or(0) / limit_value + 1;
-        let total_pages = if total == 0 {
-            1
-        } else {
-            (total as f64 / limit_value as f64).ceil() as i64
-        };
+        // ✅ Call the generic get_all<T>() method
+        let (classes, total, total_pages, current_page) = base_repo
+            .get_all::<Class>(filter, &searchable_fields, limit, skip, extra_match)
+            .await?;
 
         Ok(PaginatedClasses {
             classes,

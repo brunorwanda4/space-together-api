@@ -219,3 +219,12 @@ pub struct UserStats {
     pub no_school: i64,
     pub recent_30_days: i64,
 }
+
+// get class with pages
+#[derive(Serialize)]
+pub struct PaginatedUsers {
+    pub users: Vec<User>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}

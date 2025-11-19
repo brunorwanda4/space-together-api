@@ -8,6 +8,7 @@ use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::helpers::repo_helpers::safe_create_index;
 use crate::models::id_model::IdType;
 use crate::pipeline::student_pipeline::student_with_relations_pipeline;
+use crate::repositories::base_repo::BaseRepository;
 use crate::utils::object_id::parse_object_id;
 
 use chrono::Utc;
@@ -335,101 +336,20 @@ impl StudentRepo {
         skip: Option<i64>,
         extra_match: Option<Document>, // 👈 same as get_all_classes
     ) -> Result<PaginatedStudents, AppError> {
-        let mut pipeline = vec![];
+        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        // ===== BUILD MATCH STAGE =====
-        let mut match_stage = if let Some(f) = filter.clone() {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i"
-            };
-            doc! {
-                "$or": [
-                    { "name": &regex },
-                    { "email": &regex },
-                    { "registration_number": &regex },
-                    { "tags": &regex },
-                    { "gender": &regex },
-                    { "national_id": &regex },
-                ]
-            }
-        } else {
-            doc! {} // empty match (matches all)
-        };
+        let searchable_fields = [
+            "name",
+            "email",
+            "registration_number",
+            "tags",
+            "gender",
+            "national_id",
+        ];
 
-        // ===== MERGE EXTRA MATCH =====
-        if let Some(extra) = extra_match {
-            if !extra.is_empty() {
-                if !match_stage.is_empty() {
-                    match_stage = doc! { "$and": [match_stage, extra] };
-                } else {
-                    match_stage = extra;
-                }
-            }
-        }
-
-        // Add to pipeline
-        if !match_stage.is_empty() {
-            pipeline.push(doc! { "$match": &match_stage });
-        }
-
-        // ===== COUNT TOTAL =====
-        let mut count_pipeline = vec![];
-        if !match_stage.is_empty() {
-            count_pipeline.push(doc! { "$match": &match_stage });
-        }
-        count_pipeline.push(doc! { "$count": "total" });
-
-        let total_cursor = self
-            .collection
-            .aggregate(count_pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to count students: {}", e),
-            })?;
-
-        let results: Vec<mongodb::bson::Document> =
-            total_cursor.try_collect().await.unwrap_or_default();
-        let total = results
-            .first()
-            .and_then(|doc| doc.get_i32("total").ok())
-            .unwrap_or(0) as i64;
-
-        // ===== PAGINATION =====
-        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
-        if let Some(s) = skip {
-            pipeline.push(doc! { "$skip": s });
-        }
-        let limit_value = limit.unwrap_or(50);
-        pipeline.push(doc! { "$limit": limit_value });
-
-        // ===== FETCH STUDENTS =====
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch students: {}", e),
-            })?;
-
-        let mut students = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate students: {}", e),
-        })? {
-            let student: Student = mongodb::bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize student: {}", e),
-            })?;
-            students.push(student);
-        }
-
-        // ===== PAGINATION META =====
-        let current_page = skip.unwrap_or(0) / limit_value + 1;
-        let total_pages = if total == 0 {
-            1
-        } else {
-            (total as f64 / limit_value as f64).ceil() as i64
-        };
-
+        let (students, total, total_pages, current_page) = base_repo
+            .get_all::<Student>(filter, &searchable_fields, limit, skip, extra_match)
+            .await?;
         Ok(PaginatedStudents {
             students,
             total,

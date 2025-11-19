@@ -1,7 +1,7 @@
 use crate::{
     domain::{
         common_details::Image,
-        user::{UpdateUserDto, User, UserStats},
+        user::{PaginatedUsers, UpdateUserDto, User, UserStats},
     },
     errors::AppError,
     models::id_model::IdType,
@@ -31,13 +31,19 @@ impl<'a> UserService<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<User>, String> {
+    ) -> Result<PaginatedUsers, String> {
         let users = self
             .repo
-            .get_all_users(filter, limit, skip)
+            .get_all_users(filter, limit, skip, None)
             .await
             .map_err(|e| e.message)?;
-        Ok(sanitize_users(users))
+
+        Ok(PaginatedUsers {
+            users: sanitize_users(users.users),
+            total: users.total,
+            total_pages: users.total_pages,
+            current_page: users.current_page,
+        })
     }
 
     pub async fn get_user_stats(&self) -> Result<UserStats, String> {

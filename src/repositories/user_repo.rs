@@ -1,11 +1,11 @@
-use crate::domain::user::{UpdateUserDto, User, UserStats};
+use crate::domain::user::{PaginatedUsers, UpdateUserDto, User, UserStats};
 use crate::errors::AppError;
 use crate::models::id_model::IdType;
+use crate::repositories::base_repo::BaseRepository;
 use crate::services::user_service::normalize_user_ids;
 use chrono::{Duration, Utc, Weekday};
-use futures::TryStreamExt;
 use mongodb::{
-    bson::{self, doc, oid::ObjectId, DateTime as BsonDateTime},
+    bson::{self, doc, oid::ObjectId, DateTime as BsonDateTime, Document},
     options::IndexOptions,
     Collection, Database, IndexModel,
 };
@@ -23,106 +23,109 @@ impl UserRepo {
     }
 
     // =========================================================
-    // 🔹 Basic CRUD Operations
+    // 🔹 Utility Helpers
+    // =========================================================
+
+    fn obj_id_from_str(id: &str) -> Result<ObjectId, AppError> {
+        ObjectId::parse_str(id).map_err(|e| AppError {
+            message: format!("Invalid ObjectId: {}", e),
+        })
+    }
+
+    fn obj_id_from_idtype(id: &IdType) -> Result<ObjectId, AppError> {
+        Self::obj_id_from_str(&id.as_string()) // ✅ borrow fix
+    }
+
+    async fn find_one_by_filter(&self, filter: Document) -> Result<Option<User>, AppError> {
+        self.collection
+            .find_one(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Database query failed: {}", e),
+            })
+    }
+
+    async fn update_one_and_fetch(
+        &self,
+        filter: Document,
+        update: Document,
+    ) -> Result<User, AppError> {
+        self.collection
+            .update_one(filter.clone(), update)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to update user: {}", e),
+            })?;
+
+        self.find_one_by_filter(filter).await?.ok_or(AppError {
+            message: "User not found after update".to_string(),
+        })
+    }
+
+    // =========================================================
+    // 🔹 Find User
     // =========================================================
 
     pub async fn find_by_email(&self, email: &str) -> Result<Option<User>, AppError> {
-        let filter = doc! { "email": email };
-        self.collection
-            .find_one(filter)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find user by email: {}", e),
-            })
+        self.find_one_by_filter(doc! { "email": email }).await
     }
 
     pub async fn find_by_username(&self, username: &str) -> Result<Option<User>, AppError> {
-        let filter = doc! { "username": username };
-        self.collection
-            .find_one(filter)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find user by username: {}", e),
-            })
+        self.find_one_by_filter(doc! { "username": username }).await
     }
 
     pub async fn find_by_id(&self, id: &IdType) -> Result<Option<User>, AppError> {
-        let user_obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to format id: {}", e),
-        })?;
-        let filter = doc! { "_id": user_obj_id };
-        self.collection
-            .find_one(filter)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find user by id: {}", e),
-            })
+        let obj_id = Self::obj_id_from_idtype(id)?;
+        self.find_one_by_filter(doc! { "_id": obj_id }).await
     }
 
     // =========================================================
-    // 🔹 Insert New User
+    // 🔹 Insert User
     // =========================================================
+
     pub async fn insert_user(&self, user: &mut User) -> Result<User, AppError> {
-        // Ensure unique email & username
-        let index_email = IndexModel::builder()
-            .keys(doc! { "email": 1,})
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
-        let index_username = IndexModel::builder()
-            .keys(doc! { "username": 1 })
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
+        // Unique indexes
+        for field in ["email", "username"] {
+            let index = IndexModel::builder()
+                .keys(doc! { field: 1 })
+                .options(IndexOptions::builder().unique(true).build())
+                .build();
+            self.collection
+                .create_index(index)
+                .await
+                .map_err(|e| AppError {
+                    message: format!("Failed to create unique index on {}: {}", field, e),
+                })?;
+        }
 
-        self.collection
-            .create_index(index_email)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create index email: {}", e),
-            })?;
-
-        self.collection
-            .create_index(index_username)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create index username: {}", e),
-            })?;
-
+        // Normalize and set timestamps
         let mut user_to_insert = normalize_user_ids(user.clone())?;
         user_to_insert.id = None;
-
-        // ✅ Ensure timestamps and default availability
         user_to_insert.created_at = Some(Utc::now());
         user_to_insert.updated_at = Some(Utc::now());
 
+        // Default availability (✅ fixed)
         if user_to_insert.availability_schedule.is_none() {
             use crate::domain::common_details::{DailyAvailability, TimeRange};
 
-            let default_availability = vec![
-                DailyAvailability {
-                    day: Weekday::Mon,
-                    time_range: TimeRange::new("09:00", "17:00"),
-                },
-                DailyAvailability {
-                    day: Weekday::Tue,
-                    time_range: TimeRange::new("09:00", "17:00"),
-                },
-                DailyAvailability {
-                    day: Weekday::Wed,
-                    time_range: TimeRange::new("09:00", "17:00"),
-                },
-                DailyAvailability {
-                    day: Weekday::Thu,
-                    time_range: TimeRange::new("09:00", "17:00"),
-                },
-                DailyAvailability {
-                    day: Weekday::Fri,
-                    time_range: TimeRange::new("09:00", "17:00"),
-                },
-            ];
+            let availability: Vec<DailyAvailability> = vec![
+                Weekday::Mon,
+                Weekday::Tue,
+                Weekday::Wed,
+                Weekday::Thu,
+                Weekday::Fri,
+            ]
+            .into_iter()
+            .map(|day| DailyAvailability {
+                day,
+                time_range: TimeRange::new("09:00", "17:00"),
+            })
+            .collect();
 
-            user_to_insert.availability_schedule = Some(default_availability);
+            user_to_insert.availability_schedule = Some(availability);
         }
 
+        // Insert user
         let res = self
             .collection
             .insert_one(&user_to_insert)
@@ -131,216 +134,143 @@ impl UserRepo {
                 message: format!("Failed to insert user: {}", e),
             })?;
 
-        let inserted_object_id = res.inserted_id.as_object_id().ok_or_else(|| AppError {
-            message: "Failed to convert inserted_id to ObjectId".to_string(),
+        let inserted_id = res.inserted_id.as_object_id().ok_or_else(|| AppError {
+            message: "Failed to extract inserted_id".to_string(),
         })?;
 
-        self.find_by_id(&IdType::from_object_id(inserted_object_id))
+        self.find_by_id(&IdType::from_object_id(inserted_id))
             .await?
             .ok_or(AppError {
-                message: "User not found after insert".to_string(),
+                message: "User not found after insertion".to_string(),
             })
     }
 
     // =========================================================
-    // 🔹 Fetch All Users (with optional search & pagination)
+    // 🔹 Get All Users (search + pagination)
     // =========================================================
+
     pub async fn get_all_users(
         &self,
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<User>, AppError> {
-        let mut pipeline = vec![];
+        extra_match: Option<Document>,
+    ) -> Result<PaginatedUsers, AppError> {
+        // ✅ fixed: BaseRepository expects Collection<Document>
+        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        if let Some(f) = filter {
-            let regex = doc! { "$regex": f.clone(), "$options": "i" };
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        { "name": &regex },
-                        { "email": &regex },
-                        { "username": &regex },
-                        { "phone": &regex },
-                        { "role": &regex },
-                        { "gender": &regex },
-                        { "bio": &regex },
-                        { "dream_career": &regex },
-                        { "languages_spoken": &regex },
-                        { "hobbies_interests": &regex },
-                        { "special_skills": &regex },
-                        { "department": &regex },
-                        { "job_title": &regex },
-                        { "preferred_communication_method": &regex }
-                    ]
-                }
-            });
-        }
+        let searchable_fields = [
+            "name",
+            "email",
+            "username",
+            "phone",
+            "role",
+            "gender",
+            "bio",
+            "dream_career",
+            "languages_spoken",
+            "hobbies_interests",
+            "special_skills",
+            "department",
+            "job_title",
+            "preferred_communication_method",
+        ];
 
-        pipeline.push(doc! {
-            "$addFields": {
-                "sort_date": { "$ifNull": [ "$updated_at", "$created_at" ] }
-            }
-        });
-        pipeline.push(doc! { "$sort": { "sort_date": -1 } });
+        let (users, total, total_pages, current_page) = base_repo
+            .get_all::<User>(filter, &searchable_fields, limit, skip, extra_match)
+            .await?;
 
-        if let Some(s) = skip {
-            pipeline.push(doc! { "$skip": s });
-        }
-
-        pipeline.push(doc! { "$limit": limit.unwrap_or(10) });
-
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch users: {}", e),
-            })?;
-
-        let mut users = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate users: {}", e),
-        })? {
-            let user: User = bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize user: {}", e),
-            })?;
-            users.push(user);
-        }
-
-        Ok(users)
+        Ok(PaginatedUsers {
+            users,
+            total,
+            total_pages,
+            current_page,
+        })
     }
 
     // =========================================================
-    // 🔹 Update User (Partial Update via UpdateUserDto)
+    // 🔹 Update User
     // =========================================================
+
     pub async fn update_user_fields(
         &self,
         id: &str,
         update_dto: &UpdateUserDto,
     ) -> Result<User, AppError> {
-        let user_obj_id = ObjectId::parse_str(id).map_err(|e| AppError {
-            message: format!("Invalid id: {}", e),
+        let obj_id = Self::obj_id_from_str(id)?;
+
+        let update_doc_full = bson::to_document(update_dto).map_err(|e| AppError {
+            message: format!("Failed to serialize update dto: {}", e),
         })?;
 
-        // Convert DTO → BSON document
-        let mut update_doc = bson::to_document(update_dto).map_err(|e| AppError {
-            message: format!("Failed to convert update dto to document: {}", e),
-        })?;
-
-        // Filter out null values
-        update_doc = update_doc
-            .into_iter()
-            .filter(|(_, v)| !matches!(v, bson::Bson::Null))
-            .collect();
+        // ✅ Fix: bson::Document has no retain, so use filter_map
+        let mut update_doc = Document::new();
+        for (k, v) in update_doc_full {
+            if !matches!(v, bson::Bson::Null) {
+                update_doc.insert(k, v);
+            }
+        }
 
         if update_doc.is_empty() {
             return Err(AppError {
-                message: "No valid fields to update".to_string(),
+                message: "No valid fields to update".into(),
             });
         }
 
-        // Always update `updated_at`
         update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
 
-        // Perform update
-        self.collection
-            .update_one(doc! { "_id": user_obj_id }, doc! { "$set": update_doc })
+        self.update_one_and_fetch(doc! { "_id": obj_id }, doc! { "$set": update_doc })
             .await
-            .map_err(|e| AppError {
-                message: format!("Failed to update user: {}", e),
-            })?;
-
-        // Fetch updated user
-        let updated_user = self
-            .collection
-            .find_one(doc! { "_id": user_obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Error fetching updated user: {}", e),
-            })?;
-
-        updated_user.ok_or(AppError {
-            message: "User not found after update".to_string(),
-        })
     }
 
     // =========================================================
     // 🔹 Delete User
     // =========================================================
-    pub async fn delete_user(&self, id: &IdType) -> Result<(), AppError> {
-        let user_obj_id = ObjectId::parse_str(id.as_string()).map_err(|e| AppError {
-            message: format!("Failed to parse id: {}", e),
-        })?;
 
+    pub async fn delete_user(&self, id: &IdType) -> Result<(), AppError> {
+        let obj_id = Self::obj_id_from_idtype(id)?;
         let result = self
             .collection
-            .delete_one(doc! { "_id": user_obj_id })
+            .delete_one(doc! { "_id": obj_id })
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to delete user: {}", e),
             })?;
 
         if result.deleted_count == 0 {
-            return Err(AppError {
-                message: "No user deleted; user may not exist".to_string(),
-            });
+            Err(AppError {
+                message: "No user deleted (user may not exist)".into(),
+            })
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 
     // =========================================================
     // 🔹 Statistics
     // =========================================================
+
     pub async fn get_user_stats(&self) -> Result<UserStats, AppError> {
-        let total = self.collection.count_documents(doc! {}).await?;
-        let male = self
-            .collection
-            .count_documents(doc! { "gender": "MALE" })
-            .await?;
-        let female = self
-            .collection
-            .count_documents(doc! { "gender": "FEMALE" })
-            .await?;
-        let other = self
-            .collection
-            .count_documents(doc! { "gender": "OTHER" })
-            .await?;
+        let count = |filter| async { self.collection.count_documents(filter).await.unwrap_or(0) };
 
-        let admins = self
-            .collection
-            .count_documents(doc! { "role": "ADMIN" })
-            .await?;
-        let staff = self
-            .collection
-            .count_documents(doc! { "role": "SCHOOLSTAFF" })
-            .await?;
-        let students = self
-            .collection
-            .count_documents(doc! { "role": "STUDENT" })
-            .await?;
-        let teachers = self
-            .collection
-            .count_documents(doc! { "role": "TEACHER" })
-            .await?;
+        let total = count(doc! {}).await;
+        let male = count(doc! { "gender": "MALE" }).await;
+        let female = count(doc! { "gender": "FEMALE" }).await;
+        let other = count(doc! { "gender": "OTHER" }).await;
 
-        let assigned_school = self
-            .collection
-            .count_documents(doc! { "current_school_id": { "$exists": true } })
-            .await?;
-        let no_school = self
-            .collection
-            .count_documents(doc! { "current_school_id": { "$exists": false } })
-            .await?;
+        let admins = count(doc! { "role": "ADMIN" }).await;
+        let staff = count(doc! { "role": "SCHOOLSTAFF" }).await;
+        let students = count(doc! { "role": "STUDENT" }).await;
+        let teachers = count(doc! { "role": "TEACHER" }).await;
+
+        let assigned_school = count(doc! { "current_school_id": { "$exists": true } }).await;
+        let no_school = count(doc! { "current_school_id": { "$exists": false } }).await;
 
         let thirty_days_ago = Utc::now() - Duration::days(30);
-        let thirty_days_bson = BsonDateTime::from_system_time(SystemTime::from(thirty_days_ago));
-
-        let recent_30_days = self
-            .collection
-            .count_documents(doc! { "created_at": { "$gte": thirty_days_bson } })
-            .await?;
+        let recent_30_days = count(doc! {
+            "created_at": { "$gte": BsonDateTime::from_system_time(SystemTime::from(thirty_days_ago)) }
+        })
+        .await;
 
         Ok(UserStats {
             total: total as i64,
@@ -358,69 +288,41 @@ impl UserRepo {
     }
 
     // =========================================================
-    // 🔹 Add & Remove Schools
+    // 🔹 Add / Remove Schools
     // =========================================================
+
     pub async fn add_school_to_user(
         &self,
         user_id: &IdType,
         school_id: &IdType,
     ) -> Result<User, AppError> {
-        let user_obj_id = ObjectId::parse_str(user_id.as_string()).map_err(|e| AppError {
-            message: format!("Invalid user id: {}", e),
-        })?;
-        let school_obj_id = ObjectId::parse_str(school_id.as_string()).map_err(|e| AppError {
-            message: format!("Invalid school id: {}", e),
-        })?;
+        let user_obj = Self::obj_id_from_idtype(user_id)?;
+        let school_obj = Self::obj_id_from_idtype(school_id)?;
+        let filter = doc! { "_id": &user_obj };
 
-        let filter = doc! { "_id": &user_obj_id };
-
-        // ✅ Step 1: Ensure `schools` is an array (fix invalid data)
+        // Ensure `schools` array exists
         self.collection
             .update_one(
-                doc! {
-                    "_id": &user_obj_id,
-                    // match only if `schools` is null or missing
-                    "$or": [
-                        { "schools": { "$exists": false } },
-                        { "schools": bson::Bson::Null }
-                    ]
-                },
-                doc! {
-                    "$set": { "schools": bson::to_bson(&Vec::<ObjectId>::new()).unwrap() }
-                },
+                doc! { "_id": &user_obj, "$or": [ { "schools": { "$exists": false } }, { "schools": bson::Bson::Null } ] },
+                doc! { "$set": { "schools": bson::to_bson(&Vec::<ObjectId>::new()).unwrap() } },
             )
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to initialize schools field: {}", e),
             })?;
 
-        // ✅ Step 2: Now safely update (guaranteed that `schools` is an array)
-        self.collection
-            .update_one(
-                filter.clone(),
-                doc! {
-                    "$addToSet": { "schools": &school_obj_id },
-                    "$set": {
-                        "current_school_id": &school_obj_id,
-                        "updated_at": bson::to_bson(&Utc::now()).unwrap()
-                    }
-                },
-            )
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to add school: {}", e),
-            })?;
-
-        // ✅ Step 3: Return updated user
-        self.collection
-            .find_one(filter)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch updated user: {}", e),
-            })?
-            .ok_or(AppError {
-                message: "User not found after update".to_string(),
-            })
+        // Add school
+        self.update_one_and_fetch(
+            filter,
+            doc! {
+                "$addToSet": { "schools": &school_obj },
+                "$set": {
+                    "current_school_id": &school_obj,
+                    "updated_at": bson::to_bson(&Utc::now()).unwrap()
+                }
+            },
+        )
+        .await
     }
 
     pub async fn remove_school_from_user(
@@ -428,34 +330,16 @@ impl UserRepo {
         user_id: &IdType,
         school_id: &IdType,
     ) -> Result<User, AppError> {
-        let user_obj_id = ObjectId::parse_str(user_id.as_string()).map_err(|e| AppError {
-            message: format!("Invalid user id: {}", e),
-        })?;
-        let school_obj_id = ObjectId::parse_str(school_id.as_string()).map_err(|e| AppError {
-            message: format!("Invalid school id: {}", e),
-        })?;
+        let user_obj = Self::obj_id_from_idtype(user_id)?;
+        let school_obj = Self::obj_id_from_idtype(school_id)?;
 
-        let filter = doc! { "_id": &user_obj_id };
-        let update = doc! {
-            "$pull": { "schools": &school_obj_id },
-            "$set": { "updated_at": bson::to_bson(&Utc::now()).unwrap() }
-        };
-
-        self.collection
-            .update_one(filter.clone(), update)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to remove school: {}", e),
-            })?;
-
-        self.collection
-            .find_one(filter)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch updated user: {}", e),
-            })?
-            .ok_or(AppError {
-                message: "User not found after update".to_string(),
-            })
+        self.update_one_and_fetch(
+            doc! { "_id": &user_obj },
+            doc! {
+                "$pull": { "schools": &school_obj },
+                "$set": { "updated_at": bson::to_bson(&Utc::now()).unwrap() }
+            },
+        )
+        .await
     }
 }
