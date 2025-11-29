@@ -2,7 +2,7 @@ use crate::{
     domain::{
         class::Class,
         subjects::{main_subject::MainSubject, subject_category::SubjectCategory},
-        user::User,
+        teacher::Teacher,
     },
     helpers::object_id_helpers,
 };
@@ -87,19 +87,12 @@ pub struct UpdateSubject {
     pub tags: Option<Vec<String>>,
 }
 
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct SubjectWithClass {
-//     #[serde(flatten)]
-//     pub subject: Subject,
-//     pub class: Option<Class>,
-// }
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SubjectWithRelations {
     #[serde(flatten)]
     pub subject: Subject,
     pub class: Option<Class>,
-    pub class_teacher: Option<User>,
+    pub class_teacher: Option<Teacher>,
     pub main_subject: Option<MainSubject>,
 }
 

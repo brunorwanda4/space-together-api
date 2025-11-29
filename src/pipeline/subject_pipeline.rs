@@ -35,18 +35,3 @@ pub fn subject_with_relations_pipeline(match_stage: Document) -> Vec<Document> {
         doc! { "$unwind": { "path": "$main_subject", "preserveNullAndEmptyArrays": true } },
     ]
 }
-
-// pub fn subject_with_class_pipeline(match_stage: Document) -> Vec<Document> {
-//     vec![
-//         doc! { "$match": match_stage },
-//         doc! {
-//             "$lookup": {
-//                 "from": "classes",
-//                 "localField": "class_id",
-//                 "foreignField": "_id",
-//                 "as": "class"
-//             }
-//         },
-//         doc! { "$unwind": { "path": "$class", "preserveNullAndEmptyArrays": true } },
-//     ]
-// }

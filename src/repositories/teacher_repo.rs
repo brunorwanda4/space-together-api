@@ -153,12 +153,55 @@ impl TeacherRepo {
         skip: Option<i64>,
     ) -> Result<Vec<Teacher>, AppError> {
         let obj_id = parse_object_id(class_id)?;
-        let paginated_teachers = self
-            .get_all_teachers(filter, limit, skip, Some(doc! { "class_ids": obj_id }))
-            .await?;
-        let teachers = paginated_teachers.teachers;
 
-        Ok(teachers)
+        // If limit or skip is explicitly provided, use paginated method
+        // Otherwise, return all records to maintain backward compatibility
+        if limit.is_some() || skip.is_some() {
+            let paginated_teachers = self
+                .get_all_teachers(filter, limit, skip, Some(doc! { "class_ids": obj_id }))
+                .await?;
+            Ok(paginated_teachers.teachers)
+        } else {
+            // Return all records when no pagination is requested (original behavior)
+            // Support filter without pagination by using a direct query
+            let match_doc = if let Some(f) = filter {
+                let regex = doc! {
+                    "$regex": f,
+                    "$options": "i"
+                };
+                doc! {
+                    "$and": [
+                        { "class_ids": obj_id },
+                        {
+                            "$or": [
+                                { "name": &regex },
+                                { "email": &regex },
+                                { "phone": &regex },
+                                { "tags": &regex },
+                            ]
+                        }
+                    ]
+                }
+            } else {
+                doc! { "class_ids": obj_id }
+            };
+
+            let mut cursor = self
+                .collection
+                .find(match_doc)
+                .await
+                .map_err(|e| AppError {
+                    message: format!("Failed to find teachers by class_id: {}", e),
+                })?;
+
+            let mut teachers = Vec::new();
+            while let Some(teacher) = cursor.next().await {
+                teachers.push(teacher.map_err(|e| AppError {
+                    message: format!("Failed to process teacher: {}", e),
+                })?);
+            }
+            Ok(teachers)
+        }
     }
 
     pub async fn find_by_subject_id(&self, subject_id: &IdType) -> Result<Vec<Teacher>, AppError> {
