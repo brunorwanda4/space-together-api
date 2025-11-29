@@ -226,10 +226,13 @@ impl<'a> StudentService<'a> {
     pub async fn get_students_by_class_id(
         &self,
         class_id: &IdType,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
     ) -> Result<Vec<Student>, String> {
         let students = self
             .repo
-            .find_by_class_id(class_id)
+            .find_by_class_id(class_id, filter, limit, skip)
             .await
             .map_err(|e| e.message)?;
         Ok(students)

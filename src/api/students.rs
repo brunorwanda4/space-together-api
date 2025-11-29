@@ -177,13 +177,17 @@ async fn get_students_by_school_id(
 async fn get_students_by_class_id(
     path: web::Path<String>,
     state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
 ) -> impl Responder {
     let repo = StudentRepo::new(&state.db.main_db());
     let service = StudentService::new(&repo);
 
     let class_id = IdType::from_string(path.into_inner());
 
-    match service.get_students_by_class_id(&class_id).await {
+    match service
+        .get_students_by_class_id(&class_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(students) => HttpResponse::Ok().json(students),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }

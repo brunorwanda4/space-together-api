@@ -536,6 +536,7 @@ async fn get_teachers_by_class_id(
     req: actix_web::HttpRequest,
     path: web::Path<String>,
     state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
@@ -551,7 +552,15 @@ async fn get_teachers_by_class_id(
     let repo = TeacherRepo::new(&school_db);
     let service = TeacherService::new(&repo);
 
-    match service.get_teachers_by_class_id(&class_id).await {
+    match service
+        .get_teachers_by_class_id(
+            &class_id,
+            query.filter.clone(),
+            query.limit.clone(),
+            query.skip.clone(),
+        )
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
@@ -1404,36 +1413,6 @@ async fn remove_subjects_from_teacher(
 
             HttpResponse::Ok().json(teacher)
         }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Find teachers by name pattern
-#[get("/search/{name_pattern}")]
-async fn find_teachers_by_name_pattern(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let name_pattern = path.into_inner();
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = TeacherRepo::new(&school_db);
-    let service = TeacherService::new(&repo);
-
-    match service
-        .find_teachers_by_name_pattern(&name_pattern, Some(&IdType::from_string(claims.id.clone())))
-        .await
-    {
-        Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
 }

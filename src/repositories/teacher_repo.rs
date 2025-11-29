@@ -1,17 +1,18 @@
 use crate::domain::common_details::Gender;
 use crate::domain::teacher::{
-    BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PrepareTeacherRequest, Teacher,
-    TeacherType, TeacherWithRelations, UpdateTeacher,
+    BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PaginatedTeachers,
+    PrepareTeacherRequest, Teacher, TeacherType, TeacherWithRelations, UpdateTeacher,
 };
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::helpers::repo_helpers::safe_create_index;
 use crate::models::id_model::IdType;
 use crate::pipeline::teacher_pipeline::teacher_with_relations_pipeline;
+use crate::repositories::base_repo::BaseRepository;
 use crate::utils::object_id::parse_object_id;
 
 use chrono::Utc;
-use futures::{StreamExt, TryStreamExt};
+use futures::StreamExt;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
     options::IndexOptions,
@@ -144,22 +145,19 @@ impl TeacherRepo {
         Ok(teachers)
     }
 
-    pub async fn find_by_class_id(&self, class_id: &IdType) -> Result<Vec<Teacher>, AppError> {
+    pub async fn find_by_class_id(
+        &self,
+        class_id: &IdType,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Teacher>, AppError> {
         let obj_id = parse_object_id(class_id)?;
-        let mut cursor = self
-            .collection
-            .find(doc! { "class_ids": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find teachers by class_id: {}", e),
-            })?;
+        let paginated_teachers = self
+            .get_all_teachers(filter, limit, skip, Some(doc! { "class_ids": obj_id }))
+            .await?;
+        let teachers = paginated_teachers.teachers;
 
-        let mut teachers = Vec::new();
-        while let Some(teacher) = cursor.next().await {
-            teachers.push(teacher.map_err(|e| AppError {
-                message: format!("Failed to process teacher: {}", e),
-            })?);
-        }
         Ok(teachers)
     }
 
@@ -375,68 +373,19 @@ impl TeacherRepo {
         limit: Option<i64>,
         skip: Option<i64>,
         extra_filter: Option<Document>, // Additional conditions like is_active
-    ) -> Result<Vec<Teacher>, AppError> {
-        let mut pipeline = vec![];
+    ) -> Result<PaginatedTeachers, AppError> {
+        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        let searchable_fields = ["name", "email", "phone", "tags", "gender"];
 
-        // Build the $match document
-        let mut match_doc = Document::new();
-
-        if let Some(f) = filter {
-            let regex = doc! { "$regex": f, "$options": "i" };
-            match_doc.insert(
-                "$or",
-                vec![
-                    doc! { "name": &regex },
-                    doc! { "email": &regex },
-                    doc! { "phone": &regex },
-                    doc! { "tags": &regex },
-                ],
-            );
-        }
-
-        // Merge extra filter if provided
-        if let Some(extra) = extra_filter {
-            match_doc.extend(extra);
-        }
-
-        if !match_doc.is_empty() {
-            pipeline.push(doc! { "$match": match_doc });
-        }
-
-        // Sorting
-        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
-
-        // Pagination
-        if let Some(s) = skip {
-            pipeline.push(doc! { "$skip": s });
-        }
-
-        if let Some(l) = limit {
-            pipeline.push(doc! { "$limit": l });
-        } else {
-            pipeline.push(doc! { "$limit": 50 });
-        }
-
-        // Execute aggregation
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch teachers: {}", e),
-            })?;
-
-        let mut teachers = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate teachers: {}", e),
-        })? {
-            let teacher: Teacher = mongodb::bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize teacher: {}", e),
-            })?;
-            teachers.push(teacher);
-        }
-
-        Ok(teachers)
+        let (teachers, total, total_pages, current_page) = base_repo
+            .get_all::<Teacher>(filter, &searchable_fields, limit, skip, extra_filter)
+            .await?;
+        Ok(PaginatedTeachers {
+            teachers,
+            total,
+            total_pages,
+            current_page,
+        })
     }
 
     pub async fn get_active_teachers(
@@ -445,13 +394,16 @@ impl TeacherRepo {
         limit: Option<i64>,
         skip: Option<i64>,
     ) -> Result<Vec<Teacher>, AppError> {
-        self.get_all_teachers(
-            filter,                           // no search text
-            limit,                            // no limit
-            skip,                             // no skip
-            Some(doc! { "is_active": true }), // extra filter
-        )
-        .await
+        let class = self
+            .get_all_teachers(
+                filter,                           // no search text
+                limit,                            // no limit
+                skip,                             // no skip
+                Some(doc! { "is_active": true }), // extra filter
+            )
+            .await?;
+
+        Ok(class.teachers)
     }
 
     pub async fn update_teacher(

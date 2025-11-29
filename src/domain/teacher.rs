@@ -172,3 +172,12 @@ pub fn parse_teacher_type(type_str: &str) -> TeacherType {
         _ => TeacherType::Regular,
     }
 }
+
+// get class with pages
+#[derive(Serialize)]
+pub struct PaginatedTeachers {
+    pub teachers: Vec<Teacher>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}

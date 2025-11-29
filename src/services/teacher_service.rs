@@ -3,8 +3,8 @@ use crate::{
     domain::{
         common_details::Gender,
         teacher::{
-            BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PrepareTeacherRequest,
-            Teacher, TeacherType, TeacherWithRelations, UpdateTeacher,
+            BulkTeacherIds, BulkTeacherTags, BulkUpdateTeacherActive, PaginatedTeachers,
+            PrepareTeacherRequest, Teacher, TeacherType, TeacherWithRelations, UpdateTeacher,
         },
     },
     helpers::object_id_helpers::parse_object_id,
@@ -36,7 +36,7 @@ impl<'a> TeacherService<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<Teacher>, String> {
+    ) -> Result<PaginatedTeachers, String> {
         let teachers = self
             .repo
             .get_all_teachers(filter, limit, skip, None)
@@ -225,10 +225,13 @@ impl<'a> TeacherService<'a> {
     pub async fn get_teachers_by_class_id(
         &self,
         class_id: &IdType,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
     ) -> Result<Vec<Teacher>, String> {
         let teachers = self
             .repo
-            .find_by_class_id(class_id)
+            .find_by_class_id(class_id, filter, limit, skip)
             .await
             .map_err(|e| e.message)?;
         Ok(teachers)
@@ -778,32 +781,5 @@ impl<'a> TeacherService<'a> {
         }
 
         Ok(stats)
-    }
-
-    /// Find teachers by name pattern
-    pub async fn find_teachers_by_name_pattern(
-        &self,
-        name_pattern: &str,
-        school_id: Option<&IdType>,
-    ) -> Result<Vec<Teacher>, String> {
-        let all_teachers = self
-            .get_all_teachers(Some(name_pattern.to_string()), None, None)
-            .await?;
-
-        if let Some(school_id) = school_id {
-            let school_obj_id = parse_object_id(school_id)?;
-            let filtered_teachers: Vec<Teacher> = all_teachers
-                .into_iter()
-                .filter(|teacher| {
-                    teacher
-                        .school_id
-                        .map(|id| id == school_obj_id)
-                        .unwrap_or(false)
-                })
-                .collect();
-            Ok(filtered_teachers)
-        } else {
-            Ok(all_teachers)
-        }
     }
 }

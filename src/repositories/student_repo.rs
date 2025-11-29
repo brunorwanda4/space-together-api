@@ -12,7 +12,7 @@ use crate::repositories::base_repo::BaseRepository;
 use crate::utils::object_id::parse_object_id;
 
 use chrono::Utc;
-use futures::{StreamExt, TryStreamExt};
+use futures::StreamExt;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
     options::IndexOptions,
@@ -145,22 +145,19 @@ impl StudentRepo {
         Ok(students)
     }
 
-    pub async fn find_by_class_id(&self, class_id: &IdType) -> Result<Vec<Student>, AppError> {
+    pub async fn find_by_class_id(
+        &self,
+        class_id: &IdType,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Vec<Student>, AppError> {
         let obj_id = parse_object_id(class_id)?;
-        let mut cursor = self
-            .collection
-            .find(doc! { "class_id": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find students by class_id: {}", e),
-            })?;
+        let paginated_students = self
+            .get_all_students(filter, limit, skip, Some(doc! {"class_id": obj_id}))
+            .await?;
+        let students = paginated_students.students;
 
-        let mut students = Vec::new();
-        while let Some(student) = cursor.next().await {
-            students.push(student.map_err(|e| AppError {
-                message: format!("Failed to process student: {}", e),
-            })?);
-        }
         Ok(students)
     }
 
@@ -334,7 +331,7 @@ impl StudentRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-        extra_match: Option<Document>, // 👈 same as get_all_classes
+        extra_match: Option<Document>,
     ) -> Result<PaginatedStudents, AppError> {
         let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 

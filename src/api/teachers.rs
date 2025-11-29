@@ -175,6 +175,7 @@ async fn get_teachers_by_type(
 #[get("/class/{class_id}")]
 async fn get_teachers_by_class_id(
     path: web::Path<String>,
+    query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let repo = TeacherRepo::new(&state.db.main_db());
@@ -182,7 +183,10 @@ async fn get_teachers_by_class_id(
 
     let class_id = IdType::from_string(path.into_inner());
 
-    match service.get_teachers_by_class_id(&class_id).await {
+    match service
+        .get_teachers_by_class_id(&class_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(teachers) => HttpResponse::Ok().json(teachers),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
@@ -1190,26 +1194,6 @@ async fn remove_subjects_from_teacher(
     }
 }
 
-/// Find teachers by name pattern
-#[get("/search/{name_pattern}")]
-async fn find_teachers_by_name_pattern(
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let repo = TeacherRepo::new(&state.db.main_db());
-    let service = TeacherService::new(&repo);
-
-    let name_pattern = path.into_inner();
-
-    match service
-        .find_teachers_by_name_pattern(&name_pattern, None)
-        .await
-    {
-        Ok(teachers) => HttpResponse::Ok().json(teachers),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 /// Get teacher statistics
 #[get("/stats/statistics")]
 async fn get_teacher_statistics(state: web::Data<AppState>) -> impl Responder {
@@ -1221,7 +1205,7 @@ async fn get_teacher_statistics(state: web::Data<AppState>) -> impl Responder {
     match service.get_all_teachers(None, None, None).await {
         Ok(teachers) => {
             let mut stats = std::collections::HashMap::new();
-            for teacher in teachers {
+            for teacher in teachers.teachers {
                 *stats.entry(teacher.r#type).or_insert(0) += 1;
             }
             HttpResponse::Ok().json(stats)
@@ -1242,7 +1226,6 @@ async fn get_head_teachers(state: web::Data<AppState>) -> impl Responder {
     }
 }
 
-/// Get subject teachers
 // Change this endpoint name to avoid conflict
 #[get("/subject-teachers-list")]
 async fn get_all_subject_teachers(state: web::Data<AppState>) -> impl Responder {
@@ -1299,7 +1282,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_teachers_by_creator_id) // GET /teachers/creator/{creator_id} - Get teachers by creator ID
             .service(get_class_teachers) // GET /teachers/class/{class_id}/teachers - Get class teachers with details
             .service(get_subject_teachers) // GET /teachers/subject/{subject_id}/teachers - Get subject teachers with details
-            .service(find_teachers_by_name_pattern) // GET /teachers/search/{name_pattern} - Find teachers by name pattern
             // Specialized teacher types
             .service(get_head_teachers) // GET /teachers/head-teachers - Get head teachers
             .service(get_all_subject_teachers) // GET /teachers/subject-teachers-list - Get subject teachers

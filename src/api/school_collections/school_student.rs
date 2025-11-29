@@ -515,6 +515,7 @@ async fn get_students_by_class_id(
     req: actix_web::HttpRequest,
     path: web::Path<String>,
     state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
 ) -> impl Responder {
     let claims = match req.extensions().get::<SchoolToken>() {
         Some(claims) => claims.clone(),
@@ -530,7 +531,10 @@ async fn get_students_by_class_id(
     let repo = StudentRepo::new(&school_db);
     let service = StudentService::new(&repo);
 
-    match service.get_students_by_class_id(&class_id).await {
+    match service
+        .get_students_by_class_id(&class_id, query.filter.clone(), query.limit, query.skip)
+        .await
+    {
         Ok(students) => HttpResponse::Ok().json(students),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }

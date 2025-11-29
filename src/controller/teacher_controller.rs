@@ -91,11 +91,13 @@ impl<'a> TeacherController<'a> {
         skip: Option<i64>,
     ) -> Result<Vec<TeacherWithRelations>, AppError> {
         // First, get teachers from school database
-        let teachers = self
+        let patination_teachers = self
             .teacher_repo
             .get_all_teachers(filter.clone(), limit, skip, None)
             .await
             .map_err(|e| AppError { message: e.message })?;
+
+        let teachers = patination_teachers.teachers;
 
         let mut teachers_with_relations = Vec::new();
 
