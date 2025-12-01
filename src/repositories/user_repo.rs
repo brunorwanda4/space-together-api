@@ -32,10 +32,6 @@ impl UserRepo {
         })
     }
 
-    fn obj_id_from_idtype(id: &IdType) -> Result<ObjectId, AppError> {
-        Self::obj_id_from_str(&id.as_string()) // ✅ borrow fix
-    }
-
     async fn find_one_by_filter(&self, filter: Document) -> Result<Option<User>, AppError> {
         self.collection
             .find_one(filter)
@@ -75,7 +71,7 @@ impl UserRepo {
     }
 
     pub async fn find_by_id(&self, id: &IdType) -> Result<Option<User>, AppError> {
-        let obj_id = Self::obj_id_from_idtype(id)?;
+        let obj_id = IdType::to_object_id(id)?;
         self.find_one_by_filter(doc! { "_id": obj_id }).await
     }
 
@@ -228,7 +224,7 @@ impl UserRepo {
     // =========================================================
 
     pub async fn delete_user(&self, id: &IdType) -> Result<(), AppError> {
-        let obj_id = Self::obj_id_from_idtype(id)?;
+        let obj_id = IdType::to_object_id(id)?;
         let result = self
             .collection
             .delete_one(doc! { "_id": obj_id })
@@ -296,8 +292,8 @@ impl UserRepo {
         user_id: &IdType,
         school_id: &IdType,
     ) -> Result<User, AppError> {
-        let user_obj = Self::obj_id_from_idtype(user_id)?;
-        let school_obj = Self::obj_id_from_idtype(school_id)?;
+        let user_obj = IdType::to_object_id(user_id)?;
+        let school_obj = IdType::to_object_id(school_id)?;
         let filter = doc! { "_id": &user_obj };
 
         // Ensure `schools` array exists
@@ -330,8 +326,8 @@ impl UserRepo {
         user_id: &IdType,
         school_id: &IdType,
     ) -> Result<User, AppError> {
-        let user_obj = Self::obj_id_from_idtype(user_id)?;
-        let school_obj = Self::obj_id_from_idtype(school_id)?;
+        let user_obj = IdType::to_object_id(user_id)?;
+        let school_obj = IdType::to_object_id(school_id)?;
 
         self.update_one_and_fetch(
             doc! { "_id": &user_obj },

@@ -7,6 +7,7 @@ pub mod jwt;
 pub mod mongo_utils;
 pub mod names;
 pub mod object_id;
+pub mod partial_macro;
 pub mod school_token;
 pub mod school_utils;
 pub mod subject_utils;

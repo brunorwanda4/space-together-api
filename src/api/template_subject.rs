@@ -2,8 +2,10 @@ use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 
 use crate::{
     config::state::AppState,
-    domain::auth_user::AuthUserDto,
-    domain::template_subject::TemplateSubject,
+    domain::{
+        auth_user::AuthUserDto,
+        template_subject::{TemplateSubject, TemplateSubjectPartial},
+    },
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{event_service::EventService, template_subject_service::TemplateSubjectService},
 };
@@ -22,12 +24,7 @@ async fn get_all_template_subjects(
         .get_all(query.filter.clone(), query.limit, query.skip, None)
         .await
     {
-        Ok((list, total, limit, skip)) => HttpResponse::Ok().json(serde_json::json!({
-            "data": list,
-            "total": total,
-            "limit": limit,
-            "skip": skip
-        })),
+        Ok(data) => HttpResponse::Ok().json(data),
         Err(message) => HttpResponse::BadRequest().json(message),
     }
 }
@@ -100,7 +97,7 @@ async fn create_template_subject(
 async fn update_template_subject(
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    data: web::Json<TemplateSubject>,
+    data: web::Json<TemplateSubjectPartial>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let logged_user = user.into_inner();

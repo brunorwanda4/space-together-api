@@ -4,11 +4,14 @@ use mongodb::{
 };
 
 use crate::{
-    domain::template_subject::TemplateSubject,
+    domain::{
+        common_details::Paginated,
+        template_subject::{TemplateSubject, TemplateSubjectPartial},
+    },
     errors::AppError,
     models::id_model::IdType,
     repositories::base_repo::BaseRepository,
-    utils::{mongo_utils::extract_valid_fields, names::is_valid_name},
+    utils::mongo_utils::extract_valid_fields,
 };
 
 pub struct TemplateSubjectService {
@@ -68,7 +71,7 @@ impl TemplateSubjectService {
         limit: Option<i64>,
         skip: Option<i64>,
         extra_match: Option<Document>,
-    ) -> Result<(Vec<TemplateSubject>, i64, i64, i64), AppError> {
+    ) -> Result<Paginated<TemplateSubject>, AppError> {
         let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let searchable = [
@@ -80,16 +83,30 @@ impl TemplateSubjectService {
             "credits",
         ];
 
-        base_repo
+        let (data, total, total_pages, current_page) = base_repo
             .get_all::<TemplateSubject>(filter, &searchable, limit, skip, extra_match)
-            .await
+            .await?;
+        Ok(Paginated {
+            data,
+            total,
+            total_pages,
+            current_page,
+        })
     }
 
     pub async fn update_subject(
         &self,
         id: &IdType,
-        update: &TemplateSubject,
+        update: &TemplateSubjectPartial,
     ) -> Result<TemplateSubject, AppError> {
+        if let Some(code) = update.code.clone() {
+            if let Ok(sub) = self.find_one_by_code(&code).await {
+                return Err(AppError {
+                    message: format!("Subject code is ready exit try other not {}", sub.code),
+                });
+            }
+        }
+
         let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
         let full_doc = bson::to_document(update).map_err(|e| AppError {
             message: format!("Failed to serialize update: {}", e),

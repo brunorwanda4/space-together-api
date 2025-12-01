@@ -1026,3 +1026,11 @@ pub struct Image {
     pub id: String,
     pub url: String,
 }
+
+#[derive(Serialize)]
+pub struct Paginated<T> {
+    pub data: Vec<T>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}

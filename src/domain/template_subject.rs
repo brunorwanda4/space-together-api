@@ -2,8 +2,11 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::{domain::subjects::subject_category::SubjectCategory, helpers::object_id_helpers};
+use crate::{
+    domain::subjects::subject_category::SubjectCategory, helpers::object_id_helpers, make_partial,
+};
 
+make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TemplateTopic {
     pub order: String,
@@ -13,8 +16,10 @@ pub struct TemplateTopic {
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub subtopics: Option<Vec<TemplateTopic>>,
+} => TemplateTopicPartial
 }
 
+make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TemplateSubject {
     #[serde(
@@ -43,10 +48,19 @@ pub struct TemplateSubject {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub topics: Option<Vec<TemplateTopic>>,
 
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
     pub created_by: Option<ObjectId>,
+
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
 
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
+} => TemplateSubjectPartial
+
 }
