@@ -4,6 +4,7 @@ pub mod code;
 pub mod email;
 pub mod hash;
 pub mod jwt;
+pub mod mongo_utils;
 pub mod names;
 pub mod object_id;
 pub mod school_token;

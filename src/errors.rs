@@ -1,8 +1,9 @@
 use actix_web::{HttpResponse, ResponseError};
 use mongodb::error::Error as MongoError;
+use serde::Serialize;
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct AppError {
     pub message: String,
 }

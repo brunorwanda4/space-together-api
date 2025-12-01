@@ -13,5 +13,6 @@ pub mod student;
 pub mod subject;
 pub mod subjects;
 pub mod teacher;
+pub mod template_subject;
 pub mod trade;
 pub mod user;

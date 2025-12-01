@@ -1,10 +1,15 @@
-use crate::errors::AppError;
+use crate::{
+    errors::AppError,
+    models::{id_model::IdType, mongo_model::IndexDef},
+};
+use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::{
     bson::{doc, Document},
-    Collection,
+    options::IndexOptions,
+    Collection, IndexModel,
 };
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 
 pub struct BaseRepository {
     pub collection: Collection<Document>,
@@ -123,12 +128,201 @@ impl BaseRepository {
             1
         };
 
-        // Optional: Debug log
-        // println!(
-        //     "DEBUG -> total: {}, limit_value: {}, total_pages: {}, current_page: {}",
-        //     total, limit_value, total_pages, current_page
-        // );
-
         Ok((items, total, total_pages, current_page))
+    }
+
+    /// Find a single document and deserialize it into type T
+    pub async fn find_one<T: DeserializeOwned>(
+        &self,
+        filter: Document,
+        extra_match: Option<Document>,
+    ) -> Result<Option<T>, AppError> {
+        // Merge filter + extra_match if provided
+        let final_filter = if let Some(extra) = extra_match {
+            if !extra.is_empty() {
+                doc! { "$and": [filter, extra] }
+            } else {
+                filter
+            }
+        } else {
+            filter
+        };
+
+        let result = self
+            .collection
+            .find_one(final_filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch document: {}", e),
+            })?;
+
+        // If no doc found → return Ok(None)
+        let Some(doc) = result else {
+            return Ok(None);
+        };
+
+        let item: T = mongodb::bson::from_document(doc).map_err(|e| AppError {
+            message: format!("Failed to deserialize document: {}", e),
+        })?;
+
+        Ok(Some(item))
+    }
+
+    /// Update a document and return the updated version
+    pub async fn update_one_and_fetch<T: DeserializeOwned>(
+        &self,
+        id: &IdType,
+        update_data: Document,
+    ) -> Result<T, AppError> {
+        let obj_id = IdType::to_object_id(id)?;
+
+        if update_data.is_empty() {
+            return Err(AppError {
+                message: "No valid fields to update".into(),
+            });
+        }
+
+        // Always update timestamp
+        let mut update_doc = update_data.clone();
+        update_doc.insert(
+            "updated_at",
+            mongodb::bson::to_bson(&chrono::Utc::now()).unwrap(),
+        );
+
+        // Perform update
+        let result = self
+            .collection
+            .update_one(doc! { "_id": obj_id }, doc! { "$set": update_doc })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to update document: {}", e),
+            })?;
+
+        if result.matched_count == 0 {
+            return Err(AppError {
+                message: "Document not found".into(),
+            });
+        }
+
+        // Fetch updated document
+        let updated = self
+            .collection
+            .find_one(doc! { "_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch updated document: {}", e),
+            })?
+            .ok_or(AppError {
+                message: "Failed to fetch updated document".into(),
+            })?;
+
+        let item: T = mongodb::bson::from_document(updated).map_err(|e| AppError {
+            message: format!("Failed to deserialize updated document: {}", e),
+        })?;
+
+        Ok(item)
+    }
+
+    /// Delete one document by ID
+    pub async fn delete_one(&self, id: &IdType) -> Result<(), AppError> {
+        let obj_id = IdType::to_object_id(id)?;
+
+        let res = self
+            .collection
+            .delete_one(doc! { "_id": obj_id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to delete document: {}", e),
+            })?;
+
+        if res.deleted_count == 0 {
+            Err(AppError {
+                message: "Document not found".into(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    pub async fn create<T>(&self, dto: T, unique_fields: Option<&[&str]>) -> Result<T, AppError>
+    where
+        T: Serialize + DeserializeOwned + Unpin + Clone,
+    {
+        // ===== CREATE MULTIPLE UNIQUE INDEXES =====
+        if let Some(fields) = unique_fields {
+            for field in fields {
+                let index = IndexModel::builder()
+                    .keys(doc! { *field: 1 })
+                    .options(IndexOptions::builder().unique(true).build())
+                    .build();
+
+                self.collection
+                    .create_index(index)
+                    .await
+                    .map_err(|e| AppError {
+                        message: format!("Failed to create unique index for '{}': {}", field, e),
+                    })?;
+            }
+        }
+
+        // Convert DTO to BSON document
+        let mut doc = mongodb::bson::to_document(&dto).map_err(|e| AppError {
+            message: format!("Serialization failed: {}", e),
+        })?;
+
+        // Auto timestamps
+        let now = mongodb::bson::to_bson(&Utc::now()).unwrap();
+        doc.insert("created_at", now.clone());
+        doc.insert("updated_at", now.clone());
+
+        // ===== INSERT DOCUMENT =====
+        let res = self
+            .collection
+            .insert_one(doc.clone())
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to insert document: {}", e),
+            })?;
+
+        // ===== FETCH INSERTED DOCUMENT =====
+        let id = res.inserted_id.as_object_id().ok_or_else(|| AppError {
+            message: "Failed to extract inserted_id".to_string(),
+        })?;
+
+        let inserted = self
+            .collection
+            .find_one(doc! { "_id": id })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch inserted document: {}", e),
+            })?
+            .ok_or(AppError {
+                message: "Inserted document not found".into(),
+            })?;
+
+        let entity: T = mongodb::bson::from_document(inserted).map_err(|e| AppError {
+            message: format!("Failed to deserialize inserted document: {}", e),
+        })?;
+
+        Ok(entity)
+    }
+
+    pub async fn ensure_indexes(&self, indexes: &[IndexDef]) -> Result<(), AppError> {
+        for idx in indexes {
+            let index = IndexModel::builder()
+                .keys(doc! { &idx.field: 1 })
+                .options(IndexOptions::builder().unique(idx.unique).build())
+                .build();
+
+            // create_index returns a Result<String, _>; we ignore the name but surface errors
+            self.collection
+                .create_index(index)
+                .await
+                .map_err(|e| AppError {
+                    message: format!("Failed to create index on '{}': {}", idx.field, e),
+                })?;
+        }
+
+        Ok(())
     }
 }
