@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod auth_user;
 pub mod class;
+pub mod class_subject;
 pub mod common_details;
 pub mod database_status;
 pub mod guardian;
