@@ -3,7 +3,9 @@ use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    domain::subjects::subject_category::SubjectCategory, helpers::object_id_helpers, make_partial,
+    domain::{main_class::MainClass, subjects::subject_category::SubjectCategory, user::User},
+    helpers::object_id_helpers,
+    make_partial,
 };
 
 make_partial! {
@@ -43,7 +45,7 @@ pub struct TemplateSubject {
         deserialize_with = "object_id_helpers::deserialize_opt_vec",
         default
     )]
-    pub prerequisites: Option<Vec<ObjectId>>,
+    pub prerequisites: Option<Vec<ObjectId>>, // this is form main_classes collection
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub topics: Option<Vec<TemplateTopic>>,
@@ -63,4 +65,12 @@ pub struct TemplateSubject {
     pub updated_at: Option<DateTime<Utc>>,
 } => TemplateSubjectPartial
 
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TemplateSubjectWithOthers {
+    #[serde(flatten)]
+    pub subject: TemplateSubject,
+    pub creator: Option<User>,
+    pub prerequisites: Option<Vec<MainClass>>,
 }

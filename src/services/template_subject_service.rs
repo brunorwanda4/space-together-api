@@ -6,10 +6,11 @@ use mongodb::{
 use crate::{
     domain::{
         common_details::Paginated,
-        template_subject::{TemplateSubject, TemplateSubjectPartial},
+        template_subject::{TemplateSubject, TemplateSubjectPartial, TemplateSubjectWithOthers},
     },
     errors::AppError,
     models::id_model::IdType,
+    pipeline::template_subject_pipeline::template_subject_pipeline,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
 };
@@ -127,5 +128,39 @@ impl TemplateSubjectService {
         base_repo.delete_one(id).await?;
 
         Ok(sub)
+    }
+
+    // get subject with others
+
+    pub async fn get_all_with_other(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Paginated<TemplateSubjectWithOthers>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        // Start pipeline with match from filter
+        let mut pipeline = vec![];
+
+        if let Some(f) = filter {
+            pipeline.push(doc! {
+                "$match": {
+                    "$or": [
+                        { "name": { "$regex": &f, "$options": "i" }},
+                        { "code": { "$regex": &f, "$options": "i" }},
+                        { "description": { "$regex": &f, "$options": "i" }},
+                        { "category": { "$regex": &f, "$options": "i" }}
+                    ]
+                }
+            });
+        }
+
+        pipeline.extend(template_subject_pipeline(doc! {}));
+
+        pipeline.push(doc! { "$sort": { "created_at": -1 } });
+
+        repo.aggregate_with_paginate::<TemplateSubjectWithOthers>(pipeline, limit, skip)
+            .await
     }
 }

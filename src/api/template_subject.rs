@@ -29,6 +29,22 @@ async fn get_all_template_subjects(
     }
 }
 
+#[get("/others")]
+async fn get_all_template_subjects_with_others(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = TemplateSubjectService::new(&state.db.main_db());
+
+    match service
+        .get_all_with_other(query.filter.clone(), query.limit, query.skip)
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(message) => HttpResponse::BadRequest().json(message),
+    }
+}
+
 /// --------------------------------------
 /// GET /template-subjects/{id}
 /// --------------------------------------
@@ -199,6 +215,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/template-subjects")
             .service(get_all_template_subjects) // GET /template-subjects - Get all template subjects
+            .service(get_all_template_subjects_with_others) // GET /template-subjects/others - Get all template subjects with others
             .service(get_template_subject_by_id) // GET /template-subjects/{id}
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_template_subject) // POST /template-subjects

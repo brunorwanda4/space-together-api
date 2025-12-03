@@ -1,4 +1,5 @@
 use crate::{
+    domain::common_details::Paginated,
     errors::AppError,
     models::{id_model::IdType, mongo_model::IndexDef},
 };
@@ -324,5 +325,80 @@ impl BaseRepository {
         }
 
         Ok(())
+    }
+
+    pub async fn aggregate_with_paginate<T>(
+        &self,
+        mut pipeline: Vec<Document>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+    ) -> Result<Paginated<T>, AppError>
+    where
+        T: DeserializeOwned,
+    {
+        let limit_value = limit.unwrap_or(50).max(1);
+        let skip_value = skip.unwrap_or(0);
+
+        // Add pagination stages at end of pipeline
+        pipeline.push(doc! { "$skip": skip_value });
+        pipeline.push(doc! { "$limit": limit_value });
+
+        let mut cursor = self
+            .collection
+            .aggregate(pipeline.clone())
+            .await
+            .map_err(|e| AppError {
+                message: format!("Aggregation failed: {}", e),
+            })?;
+
+        let mut items: Vec<T> = Vec::new();
+        while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to read aggregate cursor: {}", e),
+        })? {
+            let item: T = mongodb::bson::from_document(doc).map_err(|e| AppError {
+                message: format!("Deserialize failed: {}", e),
+            })?;
+            items.push(item);
+        }
+
+        let mut count_pipeline = pipeline.clone();
+        count_pipeline
+            .retain(|stage| !stage.contains_key("$skip") && !stage.contains_key("$limit"));
+
+        count_pipeline.push(doc! { "$count": "total" });
+
+        let mut count_cursor = self
+            .collection
+            .aggregate(count_pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Count aggregation failed: {}", e),
+            })?;
+
+        let total = if let Some(doc) = count_cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed reading count cursor: {}", e),
+        })? {
+            doc.get_i32("total")
+                .ok()
+                .map(|x| x as i64)
+                .or_else(|| doc.get_i64("total").ok())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        let current_page = skip_value / limit_value + 1;
+        let total_pages = if total > 0 {
+            ((total as f64) / (limit_value as f64)).ceil() as i64
+        } else {
+            1
+        };
+
+        Ok(Paginated {
+            data: items,
+            total,
+            total_pages,
+            current_page,
+        })
     }
 }
