@@ -114,6 +114,23 @@ async fn get_template_subject_by_code_others(
 }
 
 /// --------------------------------------
+/// GET /template-subjects/prerequisite/{id}/others
+/// --------------------------------------
+#[get("/prerequisite/{id}/others")]
+async fn find_many_by_prerequisite(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let id = IdType::from_string(path.into_inner());
+    let service = TemplateSubjectService::new(&state.db.main_db());
+
+    match service.find_many_by_prerequisite(&id).await {
+        Ok(subject) => HttpResponse::Ok().json(subject),
+        Err(message) => HttpResponse::NotFound().json(message),
+    }
+}
+
+/// --------------------------------------
 /// POST /template-subjects
 /// --------------------------------------
 #[post("")]
@@ -269,6 +286,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_all_template_subjects_with_others) // GET /template-subjects/others - Get all template subjects with others
             .service(get_template_subject_by_code) // GET /template-subjects/code/{id}
             .service(get_template_subject_by_code_others) // GET /template-subjects/code/{id}/others
+            .service(find_many_by_prerequisite) // GET /template-subjects/prerequisite/{id}/others
             .service(get_template_subject_by_id) // GET /template-subjects/{id}
             .service(get_template_subject_by_id_others) // GET /template-subjects/{id}/others
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

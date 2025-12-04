@@ -102,7 +102,7 @@ impl TemplateSubjectService {
     ) -> Result<TemplateSubject, AppError> {
         if let Some(code) = update.code.clone() {
             if let Ok(sub) = self.find_one_by_code(&code).await {
-                if (sub.code != code) {
+                if sub.code != code {
                     return Err(AppError {
                         message: format!("Subject code is ready exit try other not {}", sub.code),
                     });
@@ -199,5 +199,27 @@ impl TemplateSubjectService {
         code: &str,
     ) -> Result<TemplateSubjectWithOthers, AppError> {
         self.find_one_with_match(doc! { "code": code }).await
+    }
+
+    pub async fn find_many_by_prerequisite(
+        &self,
+        prerequisite_id: &IdType,
+    ) -> Result<Vec<TemplateSubjectWithOthers>, AppError> {
+        let obj_id = IdType::to_object_id(prerequisite_id)?;
+
+        let match_stage = doc! {
+            "prerequisites": obj_id
+        };
+
+        // Build full aggregation with joins
+        let pipeline = template_subject_pipeline(match_stage);
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let results = repo
+            .aggregate_with_paginate::<TemplateSubjectWithOthers>(pipeline, None, None)
+            .await?;
+
+        Ok(results.data)
     }
 }
