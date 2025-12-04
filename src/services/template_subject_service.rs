@@ -201,7 +201,7 @@ impl TemplateSubjectService {
         self.find_one_with_match(doc! { "code": code }).await
     }
 
-    pub async fn find_many_by_prerequisite(
+    pub async fn find_many_by_prerequisite_with_relations(
         &self,
         prerequisite_id: &IdType,
     ) -> Result<Vec<TemplateSubjectWithOthers>, AppError> {
@@ -221,5 +221,19 @@ impl TemplateSubjectService {
             .await?;
 
         Ok(results.data)
+    }
+
+    pub async fn find_many_by_prerequisite(
+        &self,
+        prerequisite_id: &IdType,
+    ) -> Result<Vec<TemplateSubject>, AppError> {
+        let obj_id = IdType::to_object_id(prerequisite_id)?;
+
+        // extra match to pass into get_all
+        let extra_match = doc! { "prerequisites": obj_id };
+
+        let result = self.get_all(None, None, None, Some(extra_match)).await?;
+
+        Ok(result.data)
     }
 }

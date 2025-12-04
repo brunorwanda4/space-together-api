@@ -1,13 +1,11 @@
 use crate::{
     domain::common_details::Paginated,
     errors::AppError,
-    helpers::repo_helpers::set_field,
     models::{id_model::IdType, mongo_model::IndexDef},
 };
-use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{doc, oid::ObjectId, Document},
+    bson::{doc, Document},
     options::IndexOptions,
     Collection, IndexModel,
 };
@@ -267,57 +265,50 @@ impl BaseRepository {
             }
         }
 
-        // ===== PREPARE STRUCT =====
-        let mut to_insert = dto.clone();
-
-        // If struct has these fields, update them
-        // (works because serde ignores unknown fields)
-        if let Some(_) = serde_json::from_value::<serde_json::Value>(
-            serde_json::to_value(&mut to_insert).unwrap(),
-        )
-        .unwrap()
-        .as_object()
-        {
-            // Overwrite optional ID
-            let _ = set_field(&mut to_insert, "id", None::<ObjectId>);
-            // Overwrite timestamps
-            let now = Utc::now();
-            let _ = set_field(&mut to_insert, "created_at", Some(now));
-            let _ = set_field(&mut to_insert, "updated_at", Some(now));
-        }
-
-        // ===== INSERT TYPED STRUCT =====
-        let doc = mongodb::bson::to_document(&to_insert).map_err(|e| AppError {
-            message: format!("Failed to serialize document: {}", e),
+        // ===== PREPARE INSERT DOCUMENT =====
+        let mut base_doc = mongodb::bson::to_document(&dto).map_err(|e| AppError {
+            message: format!("Failed to convert dto to document: {}", e),
         })?;
 
-        let res = self
+        // Remove incoming id if any
+        base_doc.remove("_id");
+
+        // Add timestamps
+        let now = chrono::Utc::now();
+        base_doc.insert("created_at", mongodb::bson::to_bson(&now).unwrap());
+        base_doc.insert("updated_at", mongodb::bson::to_bson(&now).unwrap());
+
+        // ===== INSERT DOCUMENT =====
+        let result = self
             .collection
-            .insert_one(doc)
+            .insert_one(base_doc.clone())
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to insert: {}", e),
+                message: format!("Failed to insert document: {}", e),
             })?;
 
-        let inserted_id = res.inserted_id.as_object_id().ok_or_else(|| AppError {
-            message: "Failed to extract inserted_id".into(),
+        let inserted_id = result.inserted_id.as_object_id().ok_or_else(|| AppError {
+            message: "Insert returned no object_id".into(),
         })?;
 
-        let inserted = self
+        // ===== FETCH INSERTED DOCUMENT =====
+        let inserted_doc = self
             .collection
             .find_one(doc! { "_id": inserted_id })
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to fetch inserted document: {}", e),
+                message: format!("Failed to fetch inserted record: {}", e),
             })?
             .ok_or(AppError {
-                message: "Inserted document not found".into(),
+                message: "Inserted record not found".into(),
             })?;
-        let entity: T = mongodb::bson::from_document(inserted).map_err(|e| AppError {
-            message: format!("Failed to deserialize inserted document: {}", e),
+
+        // ===== DESERIALIZE TO T =====
+        let item: T = mongodb::bson::from_document(inserted_doc).map_err(|e| AppError {
+            message: format!("Failed to deserialize inserted record: {}", e),
         })?;
 
-        Ok(entity)
+        Ok(item)
     }
 
     pub async fn ensure_indexes(&self, indexes: &[IndexDef]) -> Result<(), AppError> {

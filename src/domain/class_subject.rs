@@ -36,7 +36,6 @@ make_partial! {
     )]
     pub school_id: Option<ObjectId>,
 
-
     #[serde(
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
@@ -52,7 +51,7 @@ make_partial! {
         skip_serializing_if = "Option::is_none",
         default
     )]
-    pub main_subject:  Option<ObjectId>, // this is template schema id
+    pub main_subject_id:  Option<ObjectId>, // this is template schema id
 
 pub name: String,
     pub code: String,
