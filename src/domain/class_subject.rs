@@ -3,8 +3,15 @@ use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    domain::subjects::subject_category::SubjectCategory, domain::template_subject::TemplateTopic,
-    helpers::object_id_helpers, make_partial,
+    domain::{
+        class::Class,
+        school::School,
+        subjects::subject_category::SubjectCategory,
+        teacher::Teacher,
+        template_subject::{TemplateSubject, TemplateTopic},
+    },
+    helpers::object_id_helpers,
+    make_partial,
 };
 
 make_partial! {
@@ -53,7 +60,7 @@ make_partial! {
     )]
     pub main_subject_id:  Option<ObjectId>, // this is template schema id
 
-pub name: String,
+    pub name: String,
     pub code: String,
     pub description: String,
     pub category: SubjectCategory,
@@ -77,4 +84,15 @@ pub name: String,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
 } => ClassSubjectPartial
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ClassSubjectWithRelations {
+    #[serde(flatten)]
+    pub subject: ClassSubject,
+
+    pub main_template_subject: Option<TemplateSubject>,
+    pub school: Option<School>,
+    pub class: Option<Class>,
+    pub teacher: Option<Teacher>,
 }

@@ -82,6 +82,7 @@ impl TemplateSubjectService {
             "category",
             "estimated_hours",
             "credits",
+            "_id",
         ];
 
         let (data, total, total_pages, current_page) = base_repo
@@ -149,6 +150,7 @@ impl TemplateSubjectService {
             pipeline.push(doc! {
                 "$match": {
                     "$or": [
+                        { "_id": { "$regex": &f, "$options": "i" }},
                         { "name": { "$regex": &f, "$options": "i" }},
                         { "code": { "$regex": &f, "$options": "i" }},
                         { "description": { "$regex": &f, "$options": "i" }},
