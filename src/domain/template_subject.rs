@@ -13,6 +13,7 @@ make_partial! {
 pub struct TemplateTopic {
     pub order: String,
     pub title: String,
+    pub description: Option<String>,
     pub estimated_hours: Option<i32>,
     pub credits: Option<i32>,
 
@@ -71,6 +72,7 @@ pub struct TemplateSubject {
 pub struct TemplateSubjectWithOthers {
     #[serde(flatten)]
     pub subject: TemplateSubject,
-    pub creator: Option<User>,
-    pub prerequisites: Option<Vec<MainClass>>,
+
+    pub creator_user: Option<User>,
+    pub prerequisite_classes: Option<Vec<MainClass>>,
 }

@@ -34,7 +34,7 @@ impl TemplateSubjectService {
         }
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create(dto, Some(&["code"])).await
+        repo.create(&dto, Some(&["code"])).await
     }
 
     pub async fn find_one_by_id(&self, id: &IdType) -> Result<TemplateSubject, AppError> {
@@ -102,9 +102,11 @@ impl TemplateSubjectService {
     ) -> Result<TemplateSubject, AppError> {
         if let Some(code) = update.code.clone() {
             if let Ok(sub) = self.find_one_by_code(&code).await {
-                return Err(AppError {
-                    message: format!("Subject code is ready exit try other not {}", sub.code),
-                });
+                if (sub.code != code) {
+                    return Err(AppError {
+                        message: format!("Subject code is ready exit try other not {}", sub.code),
+                    });
+                }
             }
         }
 
@@ -162,5 +164,40 @@ impl TemplateSubjectService {
 
         repo.aggregate_with_paginate::<TemplateSubjectWithOthers>(pipeline, limit, skip)
             .await
+    }
+
+    async fn find_one_with_match(
+        &self,
+        match_condition: Document,
+    ) -> Result<TemplateSubjectWithOthers, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let pipeline = template_subject_pipeline(match_condition);
+
+        let result = repo
+            .aggregate_one::<TemplateSubjectWithOthers>(pipeline, None)
+            .await?;
+
+        match result {
+            Some(item) => Ok(item),
+            None => Err(AppError {
+                message: "Template subject not found".to_string(),
+            }),
+        }
+    }
+
+    pub async fn find_one_with_relations(
+        &self,
+        id: &IdType,
+    ) -> Result<TemplateSubjectWithOthers, AppError> {
+        let obj = IdType::to_object_id(id)?;
+        self.find_one_with_match(doc! { "_id": obj }).await
+    }
+
+    pub async fn find_one_with_relations_by_code(
+        &self,
+        code: &str,
+    ) -> Result<TemplateSubjectWithOthers, AppError> {
+        self.find_one_with_match(doc! { "code": code }).await
     }
 }

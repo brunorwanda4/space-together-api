@@ -1,12 +1,13 @@
 use crate::{
     domain::common_details::Paginated,
     errors::AppError,
+    helpers::repo_helpers::set_field,
     models::{id_model::IdType, mongo_model::IndexDef},
 };
 use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{doc, Document},
+    bson::{doc, oid::ObjectId, Document},
     options::IndexOptions,
     Collection, IndexModel,
 };
@@ -245,11 +246,11 @@ impl BaseRepository {
         }
     }
 
-    pub async fn create<T>(&self, dto: T, unique_fields: Option<&[&str]>) -> Result<T, AppError>
+    pub async fn create<T>(&self, dto: &T, unique_fields: Option<&[&str]>) -> Result<T, AppError>
     where
-        T: Serialize + DeserializeOwned + Unpin + Clone,
+        T: Serialize + DeserializeOwned + Clone + Unpin,
     {
-        // ===== CREATE MULTIPLE UNIQUE INDEXES =====
+        // ===== CREATE UNIQUE INDEXES =====
         if let Some(fields) = unique_fields {
             for field in fields {
                 let index = IndexModel::builder()
@@ -266,33 +267,45 @@ impl BaseRepository {
             }
         }
 
-        // Convert DTO to BSON document
-        let mut doc = mongodb::bson::to_document(&dto).map_err(|e| AppError {
-            message: format!("Serialization failed: {}", e),
+        // ===== PREPARE STRUCT =====
+        let mut to_insert = dto.clone();
+
+        // If struct has these fields, update them
+        // (works because serde ignores unknown fields)
+        if let Some(_) = serde_json::from_value::<serde_json::Value>(
+            serde_json::to_value(&mut to_insert).unwrap(),
+        )
+        .unwrap()
+        .as_object()
+        {
+            // Overwrite optional ID
+            let _ = set_field(&mut to_insert, "id", None::<ObjectId>);
+            // Overwrite timestamps
+            let now = Utc::now();
+            let _ = set_field(&mut to_insert, "created_at", Some(now));
+            let _ = set_field(&mut to_insert, "updated_at", Some(now));
+        }
+
+        // ===== INSERT TYPED STRUCT =====
+        let doc = mongodb::bson::to_document(&to_insert).map_err(|e| AppError {
+            message: format!("Failed to serialize document: {}", e),
         })?;
 
-        // Auto timestamps
-        let now = mongodb::bson::to_bson(&Utc::now()).unwrap();
-        doc.insert("created_at", now.clone());
-        doc.insert("updated_at", now.clone());
-
-        // ===== INSERT DOCUMENT =====
         let res = self
             .collection
-            .insert_one(doc.clone())
+            .insert_one(doc)
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to insert document: {}", e),
+                message: format!("Failed to insert: {}", e),
             })?;
 
-        // ===== FETCH INSERTED DOCUMENT =====
-        let id = res.inserted_id.as_object_id().ok_or_else(|| AppError {
-            message: "Failed to extract inserted_id".to_string(),
+        let inserted_id = res.inserted_id.as_object_id().ok_or_else(|| AppError {
+            message: "Failed to extract inserted_id".into(),
         })?;
 
         let inserted = self
             .collection
-            .find_one(doc! { "_id": id })
+            .find_one(doc! { "_id": inserted_id })
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to fetch inserted document: {}", e),
@@ -300,7 +313,6 @@ impl BaseRepository {
             .ok_or(AppError {
                 message: "Inserted document not found".into(),
             })?;
-
         let entity: T = mongodb::bson::from_document(inserted).map_err(|e| AppError {
             message: format!("Failed to deserialize inserted document: {}", e),
         })?;
@@ -400,5 +412,46 @@ impl BaseRepository {
             total_pages,
             current_page,
         })
+    }
+    /// Aggregate a pipeline and return a single deserialized document (with relationships).
+    /// Aggregate a single document with lookup (relations) and deserialize into T.
+    pub async fn aggregate_one<T>(
+        &self,
+        mut pipeline: Vec<Document>,
+        extra_match: Option<Document>,
+    ) -> Result<Option<T>, AppError>
+    where
+        T: DeserializeOwned,
+    {
+        // Optional extra $match merging
+        if let Some(extra) = extra_match {
+            if !extra.is_empty() {
+                pipeline.insert(0, doc! { "$match": extra });
+            }
+        }
+
+        // Force limit to 1 to ensure only one doc is returned
+        pipeline.push(doc! { "$limit": 1 });
+
+        let mut cursor = self
+            .collection
+            .aggregate(pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Aggregation failed: {}", e),
+            })?;
+
+        // Return first doc if exists
+        if let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed reading aggregate cursor: {}", e),
+        })? {
+            let item: T = mongodb::bson::from_document(doc).map_err(|e| AppError {
+                message: format!("Deserialize failed: {}", e),
+            })?;
+
+            Ok(Some(item))
+        } else {
+            Ok(None)
+        }
     }
 }
