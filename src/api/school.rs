@@ -9,11 +9,12 @@ use crate::{
     },
     models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
     repositories::{
-        main_class_repo::MainClassRepo, school_repo::SchoolRepo,
-        subjects::main_subject_repo::MainSubjectRepo, trade_repo::TradeRepo, user_repo::UserRepo,
+        main_class_repo::MainClassRepo, school_repo::SchoolRepo, trade_repo::TradeRepo,
+        user_repo::UserRepo,
     },
     services::{
-        event_service::EventService, school_service::SchoolService, tenant_service::TenantService,
+        event_service::EventService, school_service::SchoolService,
+        template_subject_service::TemplateSubjectService, tenant_service::TenantService,
         user_service::UserService,
     },
 };
@@ -414,15 +415,14 @@ async fn setup_school_academics(
     // Initialize all required repositories with main database for global data
     let school_repo = SchoolRepo::new(&state.db.main_db());
     let main_class_repo = MainClassRepo::new(&state.db.main_db());
-    let main_subject_repo = MainSubjectRepo::new(&state.db.main_db());
     let trade_repo = TradeRepo::new(&state.db.main_db());
-
+    let template_subject_service = TemplateSubjectService::new(&state.db.main_db());
     // Create school controller with main database repositories
     let school_controller = SchoolController::new(
         &school_repo,
         &main_class_repo,
-        &main_subject_repo,
         &trade_repo,
+        &template_subject_service,
     );
 
     match school_controller

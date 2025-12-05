@@ -9,18 +9,17 @@ use crate::{
     domain::{
         auth_user::AuthUserDto,
         class::{Class, ClassLevelType, ClassType},
+        class_subject::ClassSubject,
         school::{SchoolAcademicRequest, SchoolAcademicResponse},
-        subject::Subject,
     },
     models::id_model::IdType,
     repositories::{
         class_repo::ClassRepo, main_class_repo::MainClassRepo, school_repo::SchoolRepo,
-        subject_repo::SubjectRepo, subjects::main_subject_repo::MainSubjectRepo,
         trade_repo::TradeRepo,
     },
     services::{
-        class_service::ClassService, school_service::SchoolService,
-        subject_service::SubjectService, subjects::main_subject_service::MainSubjectService,
+        class_service::ClassService, class_subject_service::ClassSubjectService,
+        school_service::SchoolService, template_subject_service::TemplateSubjectService,
         trade_service::TradeService,
     },
 };
@@ -28,22 +27,22 @@ use crate::{
 pub struct SchoolController<'a> {
     school_repo: &'a SchoolRepo,
     main_class_repo: &'a MainClassRepo,
-    main_subject_repo: &'a MainSubjectRepo,
     trade_repo: &'a TradeRepo,
+    template_subject: &'a TemplateSubjectService,
 }
 
 impl<'a> SchoolController<'a> {
     pub fn new(
         school_repo: &'a SchoolRepo,
         main_class_repo: &'a MainClassRepo,
-        main_subject_repo: &'a MainSubjectRepo,
         trade_repo: &'a TradeRepo,
+        template_subject: &'a TemplateSubjectService,
     ) -> Self {
         Self {
             school_repo,
             main_class_repo,
-            main_subject_repo,
             trade_repo,
+            template_subject,
         }
     }
 
@@ -54,50 +53,49 @@ impl<'a> SchoolController<'a> {
         state: web::Data<AppState>,
         logged_user: AuthUserDto,
     ) -> Result<SchoolAcademicResponse, String> {
-        // Initialize services
+        // Init school service
         let school_service = SchoolService::new(self.school_repo);
         let school = school_service.get_school_by_id(school_id).await?;
 
-        // Validate database setup
+        // Validate DB
         let school_db_name = school
             .database_name
             .as_ref()
             .ok_or("School database not configured")?;
         let school_db = state.db.get_db(school_db_name);
 
-        // ✅ FIXED: keep repos alive
+        // Local repos (must stay alive)
         let class_repo_school = ClassRepo::new(&school_db);
-        let subject_repo_school = SubjectRepo::new(&school_db);
+
+        let class_subject_service = ClassSubjectService::new(&school_db);
 
         let class_service_school = ClassService::new(&class_repo_school);
-        let subject_service_school = SubjectService::new(&subject_repo_school);
 
-        // Global repositories
-        let main_subject_service = MainSubjectService::new(self.main_subject_repo);
+        // Other global services
         let trade_service = TradeService::new(self.trade_repo);
 
         // Academic year
         let current_year = Utc::now().year();
         let academic_year = format!("{}-{}", current_year, current_year + 1);
 
-        // Get sectors/trades
+        // Get trades
         let sector_ids = req.sector_ids.unwrap_or_default();
         let trade_ids = req.trade_ids.unwrap_or_default();
 
         let trades = match (!trade_ids.is_empty(), !sector_ids.is_empty()) {
             (true, _) => trade_service.get_trades_by_ids(&trade_ids).await?,
             (false, true) => trade_service.get_trades_by_sector_ids(&sector_ids).await?,
-            (false, false) => return Err("No sectors or trades selected".to_string()),
+            _ => return Err("No sectors or trades selected".to_string()),
         };
 
         let creator_id = Some(
             ObjectId::from_str(&logged_user.id)
-                .map_err(|e| format!("Failed to change creator id: {}", e))?,
+                .map_err(|e| format!("Failed to convert creator id: {}", e))?,
         );
 
         let mut created_subjects_count = 0;
 
-        // ---- Step 1: Create Classes ----
+        // ---- Step 1: Build list of classes to create ----
         let mut class_trade_pairs = Vec::new();
 
         for trade in trades {
@@ -135,40 +133,38 @@ impl<'a> SchoolController<'a> {
                 )
                 .to_lowercase();
 
-                let class =
-                    Class {
-                        id: None,
-                        name: class_name,
-                        username: class_username,
-                        code: None,
-                        description: Some(format!("Class for {} - {}", trade.name, academic_year)),
-                        school_id: school.id,
-                        class_teacher_id: None,
-                        r#type: ClassType::School,
-                        subject: None,
-                        grade_level: Some(level.to_string()),
-                        tags: vec!["academic".into(), trade.name.clone()],
-                        is_active: true,
-                        capacity: Some(30),
-                        created_at: Utc::now(),
-                        updated_at: Utc::now(),
-                        creator_id,
-                        main_class_id: main_class.id,
-                        trade_id: Some(trade.id.ok_or_else(|| {
-                            format!("Trade id not found for trade '{}'", trade.name)
-                        })?),
-                        image: None,
-                        image_id: None,
-                        background_images: None,
-                        subclass_ids: Some(vec![]),
-                        parent_class_id: None,
-                        level_type: Some(ClassLevelType::MainClass),
-                    };
+                let class = Class {
+                    id: None,
+                    name: class_name,
+                    username: class_username,
+                    code: None,
+                    description: Some(format!("Class for {} - {}", trade.name, academic_year)),
+                    school_id: school.id,
+                    class_teacher_id: None,
+                    r#type: ClassType::School,
+                    subject: None,
+                    grade_level: Some(level.to_string()),
+                    tags: vec!["academic".into(), trade.name.clone()],
+                    is_active: true,
+                    capacity: Some(30),
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    creator_id,
+                    main_class_id: main_class.id,
+                    trade_id: Some(trade.id.unwrap()),
+                    image: None,
+                    image_id: None,
+                    background_images: None,
+                    subclass_ids: Some(vec![]),
+                    parent_class_id: None,
+                    level_type: Some(ClassLevelType::MainClass),
+                };
 
                 class_trade_pairs.push((class, trade.r#type.clone()));
             }
         }
 
+        // No classes
         if class_trade_pairs.is_empty() {
             return Ok(SchoolAcademicResponse {
                 success: true,
@@ -177,9 +173,7 @@ impl<'a> SchoolController<'a> {
             });
         }
 
-        // ✅ only create counter here to avoid unused assignment warning
-
-        // Separate classes for DB insertion
+        // --- Insert classes into school DB ---
         let classes_to_create: Vec<Class> = class_trade_pairs
             .iter()
             .map(|(class, _)| class.clone())
@@ -190,13 +184,13 @@ impl<'a> SchoolController<'a> {
             .await?;
         let created_classes_count = created_classes.len();
 
-        // ---- Step 3: Create Subjects for Each Class ----
+        // ---- Step 3: Create Subjects Using TEMPLATE SUBJECTS ----
         for (mut class, trade_type) in class_trade_pairs {
             let Some(main_class_id) = class.main_class_id else {
                 continue;
             };
 
-            // Replace local ID if available
+            // map local class.id
             if let Some(created) = created_classes
                 .iter()
                 .find(|c| c.username == class.username)
@@ -204,63 +198,54 @@ impl<'a> SchoolController<'a> {
                 class.id = created.id;
             }
 
-            let main_subjects = main_subject_service
-                .get_subjects_by_main_class_id(&IdType::ObjectId(main_class_id))
-                .await?;
+            // TEMPLATE SUBJECTS BY PREREQUISITE (main_class_id)
+            let template_subjects = self
+                .template_subject
+                .find_many_by_prerequisite(&IdType::ObjectId(main_class_id))
+                .await
+                .map_err(|e| e.message)?;
 
             let mut class_subjects = Vec::new();
 
-            for main_subject in main_subjects {
-                if !main_subject.is_active {
-                    continue;
-                }
-
+            for t_sub in template_subjects {
                 let level = class.name.split_whitespace().nth(1).unwrap_or("0");
 
                 let subject_name = format!(
                     "{} {:?} {} {}",
-                    main_subject.name, trade_type, level, academic_year
+                    t_sub.name, trade_type, level, academic_year
                 );
 
-                let subject_username = format!(
-                    "{}_{:?}_{}_{}",
-                    main_subject.name.replace(' ', "_"),
-                    trade_type,
-                    level,
-                    academic_year.replace('-', "_")
-                )
-                .to_lowercase();
-
-                class_subjects.push(Subject {
+                class_subjects.push(ClassSubject {
                     id: None,
+                    teacher_id: None,
+                    school_id: school.id,
+                    credits: t_sub.credits,
                     name: subject_name,
-                    username: subject_username,
                     class_id: class.id,
-                    creator_id,
-                    class_teacher_id: None,
-                    main_subject_id: main_subject.id,
-                    subject_type: main_subject.category.clone(),
-                    description: main_subject.description.clone(),
-                    code: None,
-                    is_active: true,
-                    tags: vec![],
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
+                    estimated_hours: t_sub.estimated_hours,
+                    created_by: creator_id,
+                    main_subject_id: None, // removed (template subjects do not use this)
+                    category: t_sub.category.clone(),
+                    description: Some(t_sub.description.clone()),
+                    code: t_sub.code.clone(),
+                    topics: t_sub.topics,
+                    disable: Some(false),
+                    created_at: Some(Utc::now()),
+                    updated_at: Some(Utc::now()),
                 });
             }
 
             if !class_subjects.is_empty() {
-                let created_subjects = subject_service_school
-                    .create_many_subjects_for_class(
-                        &IdType::ObjectId(class.id.unwrap()),
-                        class_subjects,
-                    )
-                    .await?;
+                let created_subjects = class_subject_service
+                    .create_many(class_subjects)
+                    .await
+                    .map_err(|e| e.message)?;
+
                 created_subjects_count += created_subjects.len();
             }
         }
 
-        // ---- Step 4: Return Summary ----
+        // ---- Summary ----
         Ok(SchoolAcademicResponse {
             success: true,
             created_classes: created_classes_count,

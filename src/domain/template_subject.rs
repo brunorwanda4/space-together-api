@@ -27,7 +27,7 @@ make_partial! {
 pub struct TemplateSubject {
     #[serde(
         rename = "_id",
-        alias = "id",
+        // alias = "id",
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",
@@ -58,7 +58,7 @@ pub struct TemplateSubject {
         default
     )]
     pub created_by: Option<ObjectId>,
-
+    pub disable: Option<bool>,
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
 

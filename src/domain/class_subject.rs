@@ -14,12 +14,12 @@ use crate::{
     make_partial,
 };
 
+// this line
 make_partial! {
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct ClassSubject {
     #[serde(
         rename = "_id",
-        alias = "id",
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",
@@ -62,7 +62,7 @@ make_partial! {
 
     pub name: String,
     pub code: String,
-    pub description: String,
+    pub description: Option<String>,
     pub category: SubjectCategory,
     pub estimated_hours: i32,
     pub credits: Option<i32>,
@@ -77,6 +77,7 @@ make_partial! {
         default
     )]
     pub created_by: Option<ObjectId>,
+    pub disable: Option<bool>,
 
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,

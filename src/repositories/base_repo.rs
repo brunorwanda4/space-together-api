@@ -9,7 +9,7 @@ use mongodb::{
     options::IndexOptions,
     Collection, IndexModel,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::de::DeserializeOwned;
 
 pub struct BaseRepository {
     pub collection: Collection<Document>,
@@ -244,9 +244,13 @@ impl BaseRepository {
         }
     }
 
-    pub async fn create<T>(&self, dto: &T, unique_fields: Option<&[&str]>) -> Result<T, AppError>
+    pub async fn create<T>(
+        &self,
+        mut doc: Document,
+        unique_fields: Option<&[&str]>,
+    ) -> Result<T, AppError>
     where
-        T: Serialize + DeserializeOwned + Clone + Unpin,
+        T: DeserializeOwned,
     {
         // ===== CREATE UNIQUE INDEXES =====
         if let Some(fields) = unique_fields {
@@ -260,31 +264,25 @@ impl BaseRepository {
                     .create_index(index)
                     .await
                     .map_err(|e| AppError {
-                        message: format!("Failed to create unique index for '{}': {}", field, e),
+                        message: format!("Failed to create unique index '{}': {}", field, e),
                     })?;
             }
         }
 
-        // ===== PREPARE INSERT DOCUMENT =====
-        let mut base_doc = mongodb::bson::to_document(&dto).map_err(|e| AppError {
-            message: format!("Failed to convert dto to document: {}", e),
-        })?;
+        // ===== PREPARE DOCUMENT =====
+        doc.remove("_id");
 
-        // Remove incoming id if any
-        base_doc.remove("_id");
-
-        // Add timestamps
         let now = chrono::Utc::now();
-        base_doc.insert("created_at", mongodb::bson::to_bson(&now).unwrap());
-        base_doc.insert("updated_at", mongodb::bson::to_bson(&now).unwrap());
+        doc.insert("created_at", mongodb::bson::to_bson(&now).unwrap());
+        doc.insert("updated_at", mongodb::bson::to_bson(&now).unwrap());
 
         // ===== INSERT DOCUMENT =====
         let result = self
             .collection
-            .insert_one(base_doc.clone())
+            .insert_one(doc)
             .await
             .map_err(|e| AppError {
-                message: format!("Failed to insert document: {}", e),
+                message: format!("Insert failed: {}", e),
             })?;
 
         let inserted_id = result.inserted_id.as_object_id().ok_or_else(|| AppError {
@@ -292,7 +290,7 @@ impl BaseRepository {
         })?;
 
         // ===== FETCH INSERTED DOCUMENT =====
-        let inserted_doc = self
+        let fetched = self
             .collection
             .find_one(doc! { "_id": inserted_id })
             .await
@@ -304,11 +302,82 @@ impl BaseRepository {
             })?;
 
         // ===== DESERIALIZE TO T =====
-        let item: T = mongodb::bson::from_document(inserted_doc).map_err(|e| AppError {
-            message: format!("Failed to deserialize inserted record: {}", e),
+        let item: T = mongodb::bson::from_document(fetched).map_err(|e| AppError {
+            message: format!("Deserialize inserted record failed: {}", e),
         })?;
 
         Ok(item)
+    }
+
+    /// Create many documents fast and safely.
+    /// - Ensures optional unique indexes
+    /// - Auto adds timestamps
+    /// - Inserts everything in one batch
+    /// - Returns Vec<T> (fully deserialized)
+    pub async fn create_many<T>(
+        &self,
+        docs: Vec<Document>,
+        unique_fields: Option<&[&str]>,
+    ) -> Result<Vec<T>, AppError>
+    where
+        T: DeserializeOwned,
+    {
+        // ===== ENSURE UNIQUE INDEXES (run once, fast) =====
+        if let Some(fields) = unique_fields {
+            for field in fields {
+                let index = IndexModel::builder()
+                    .keys(doc! { *field: 1 })
+                    .options(IndexOptions::builder().unique(true).build())
+                    .build();
+
+                self.collection
+                    .create_index(index)
+                    .await
+                    .map_err(|e| AppError {
+                        message: format!("Failed to create unique index '{}': {}", field, e),
+                    })?;
+            }
+        }
+
+        let insert_result = self
+            .collection
+            .insert_many(docs)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Insert many failed: {}", e),
+            })?;
+
+        // Collect all ObjectIds
+        let ids: Vec<_> = insert_result
+            .inserted_ids
+            .values()
+            .filter_map(|id| id.as_object_id())
+            .collect();
+
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // ===== FETCH ALL INSERTED DOCUMENTS =====
+        let mut cursor = self
+            .collection
+            .find(doc! { "_id": { "$in": &ids } })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch inserted documents: {}", e),
+            })?;
+
+        let mut items = Vec::new();
+        while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Iteration error: {}", e),
+        })? {
+            let item: T = mongodb::bson::from_document(doc).map_err(|e| AppError {
+                message: format!("Deserialize error: {}", e),
+            })?;
+            items.push(item);
+        }
+
+        Ok(items)
     }
 
     pub async fn ensure_indexes(&self, indexes: &[IndexDef]) -> Result<(), AppError> {

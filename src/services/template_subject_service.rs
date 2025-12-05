@@ -32,9 +32,14 @@ impl TemplateSubjectService {
                 message: format!("Subject code is ready exit try other not {}", sub.code),
             });
         }
+        let new_subject = dto.to_partial();
+        let full_doc = bson::to_document(&new_subject).map_err(|e| AppError {
+            message: format!("Failed to serialize create: {}", e),
+        })?;
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create(&dto, Some(&["code"])).await
+        repo.create::<TemplateSubject>(full_doc, Some(&["code"]))
+            .await
     }
 
     pub async fn find_one_by_id(&self, id: &IdType) -> Result<TemplateSubject, AppError> {

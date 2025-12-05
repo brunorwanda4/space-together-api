@@ -33,9 +33,12 @@ impl ClassSubjectService {
                 message: format!("Class subject code already exists: {}", sub.code),
             });
         }
+        let full_doc = bson::to_document(&dto.to_partial()).map_err(|e| AppError {
+            message: format!("Failed to serialize create: {}", e),
+        })?;
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create(&dto, Some(&["code"])).await
+        repo.create::<ClassSubject>(full_doc, Some(&["code"])).await
     }
 
     // FIND BY ID
@@ -214,5 +217,22 @@ impl ClassSubjectService {
 
         let res = self.get_all(None, None, None, Some(extra_match)).await?;
         Ok(res.data)
+    }
+
+    pub async fn create_many(
+        &self,
+        dtos: Vec<ClassSubject>,
+    ) -> Result<Vec<ClassSubject>, AppError> {
+        let docs = dtos
+            .into_iter()
+            .map(|dto| bson::to_document(&dto))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError {
+                message: format!("Failed to serialize DTO: {}", e),
+            })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.create_many::<ClassSubject>(docs, Some(&["code"]))
+            .await
     }
 }
