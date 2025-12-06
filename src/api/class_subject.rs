@@ -40,7 +40,7 @@ async fn get_all_class_subjects_with_others(
     let service = ClassSubjectService::new(&state.db.main_db());
 
     match service
-        .get_all_with_relations(query.filter.clone(), query.limit, query.skip)
+        .get_all_with_relations(query.filter.clone(), query.limit, query.skip, None)
         .await
     {
         Ok(data) => HttpResponse::Ok().json(data),

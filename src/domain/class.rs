@@ -27,7 +27,7 @@ pub enum ClassLevelType {
 pub struct Class {
     #[serde(
         rename = "_id",
-        alias = "id",
+        // alias = "id",
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",

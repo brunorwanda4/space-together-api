@@ -7,7 +7,7 @@ description = "space-together-api which implements all request from space-togeth
 authors = ["Rwanda Bruno Happyheart <brunorwanda4@gmail.com>"]
 
 [dependencies]
-actix-web = "4.11.0"
+actix-web = "4.12.1"
 config = "0.15.14"
 dotenv = "0.15.0"
 serde = { version = "1.0.214", features = ["derive"] }
@@ -51,7 +51,7 @@ anyhow = "1.0.100"
 
 
 [dependencies.mongodb]
-version = "3.2.4"
+version = "3.4.1"
 features = ["sync"]
 
 [[bin]]

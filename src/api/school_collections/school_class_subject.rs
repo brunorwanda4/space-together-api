@@ -59,7 +59,7 @@ async fn get_all_class_subjects_with_others(
     let service = ClassSubjectService::new(&school_db);
 
     match service
-        .get_all_with_relations(query.filter.clone(), query.limit, query.skip)
+        .get_all_with_relations(query.filter.clone(), query.limit, query.skip, None)
         .await
     {
         Ok(data) => HttpResponse::Ok().json(data),
@@ -208,6 +208,66 @@ async fn get_by_teacher(
 }
 
 /// --------------------------------------
+/// GET /class-subjects/class/{class_id}
+/// --------------------------------------
+#[get("/class/{class_id}")]
+async fn get_by_class(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+    req: HttpRequest,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+    let school_db = state.db.get_db(&claims.database_name);
+
+    let service = ClassSubjectService::new(&school_db);
+
+    let class_id = IdType::from_string(path.into_inner());
+    match service.find_many_by_class_id(&class_id).await {
+        Ok(subjects) => HttpResponse::Ok().json(subjects),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// --------------------------------------
+/// GET /class-subjects/class/{id}/others
+/// --------------------------------------
+#[get("/class/{id}/others")]
+async fn get_many_and_others_by_class_id(
+    path: web::Path<String>,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+    req: HttpRequest,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+    let school_db = state.db.get_db(&claims.database_name);
+
+    let service = ClassSubjectService::new(&school_db);
+
+    let class_id = IdType::from_string(path.into_inner());
+    match service
+        .find_many_and_others_by_class_id(query.filter.clone(), query.limit, query.skip, &class_id)
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// --------------------------------------
 /// POST /class-subjects
 /// --------------------------------------
 #[post("")]
@@ -324,7 +384,7 @@ async fn delete_class_subject(
     let before = service.find_one_by_id(&id).await.ok();
 
     match service.delete_subject(&id).await {
-        Ok(_) => {
+        Ok(sub) => {
             if let Some(subject) = before {
                 let state_clone = state.clone();
                 let clone = subject.clone();
@@ -341,9 +401,7 @@ async fn delete_class_subject(
                 });
             }
 
-            HttpResponse::Ok().json(serde_json::json!({
-                "message": "Class subject deleted successfully"
-            }))
+            HttpResponse::Ok().json(sub)
         }
         Err(err) => HttpResponse::BadRequest().json(err),
     }
@@ -362,6 +420,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_class_subject_by_code_others)
             .service(get_by_teacher)
             .service(get_class_subject_by_id)
+            .service(get_many_and_others_by_class_id)
+            .service(get_by_class)
             .service(get_class_subject_by_id_others)
             .service(create_class_subject)
             .service(update_class_subject)

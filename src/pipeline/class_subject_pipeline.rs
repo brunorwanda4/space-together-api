@@ -71,7 +71,7 @@ pub fn class_subject_pipeline(match_stage: Document) -> Vec<Document> {
         // JOIN teacher
         doc! {
             "$lookup": {
-                "from": "users",
+                "from": "teachers",
                 "localField": "teacher_id",
                 "foreignField": "_id",
                 "as": "teacher"
@@ -87,7 +87,7 @@ pub fn class_subject_pipeline(match_stage: Document) -> Vec<Document> {
                 "as": "class"
             }
         },
-        doc! { "$unwind": { "path": "$class_info", "preserveNullAndEmptyArrays": true } },
+        doc! { "$unwind": { "path": "$class", "preserveNullAndEmptyArrays": true } },
         // JOIN school
         doc! {
             "$lookup": {

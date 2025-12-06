@@ -1,11 +1,12 @@
 use crate::{
     domain::common_details::Paginated,
     errors::AppError,
+    helpers::repo_helpers::debug_deserialize_error,
     models::{id_model::IdType, mongo_model::IndexDef},
 };
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{doc, Document},
+    bson::{self, doc, Document},
     options::IndexOptions,
     Collection, IndexModel,
 };
@@ -114,7 +115,7 @@ impl BaseRepository {
         while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
             message: format!("Failed to iterate documents: {}", e),
         })? {
-            let item: T = mongodb::bson::from_document(result).map_err(|e| AppError {
+            let item: T = bson::from_document(result).map_err(|e| AppError {
                 message: format!("Failed to deserialize document: {}", e),
             })?;
             items.push(item);
@@ -161,7 +162,7 @@ impl BaseRepository {
             return Ok(None);
         };
 
-        let item: T = mongodb::bson::from_document(doc).map_err(|e| AppError {
+        let item: T = bson::from_document(doc).map_err(|e| AppError {
             message: format!("Failed to deserialize document: {}", e),
         })?;
 
@@ -184,10 +185,7 @@ impl BaseRepository {
 
         // Always update timestamp
         let mut update_doc = update_data.clone();
-        update_doc.insert(
-            "updated_at",
-            mongodb::bson::to_bson(&chrono::Utc::now()).unwrap(),
-        );
+        update_doc.insert("updated_at", bson::to_bson(&chrono::Utc::now()).unwrap());
 
         // Perform update
         let result = self
@@ -216,7 +214,7 @@ impl BaseRepository {
                 message: "Failed to fetch updated document".into(),
             })?;
 
-        let item: T = mongodb::bson::from_document(updated).map_err(|e| AppError {
+        let item: T = bson::from_document(updated).map_err(|e| AppError {
             message: format!("Failed to deserialize updated document: {}", e),
         })?;
 
@@ -273,8 +271,8 @@ impl BaseRepository {
         doc.remove("_id");
 
         let now = chrono::Utc::now();
-        doc.insert("created_at", mongodb::bson::to_bson(&now).unwrap());
-        doc.insert("updated_at", mongodb::bson::to_bson(&now).unwrap());
+        doc.insert("created_at", bson::to_bson(&now).unwrap());
+        doc.insert("updated_at", bson::to_bson(&now).unwrap());
 
         // ===== INSERT DOCUMENT =====
         let result = self
@@ -302,7 +300,7 @@ impl BaseRepository {
             })?;
 
         // ===== DESERIALIZE TO T =====
-        let item: T = mongodb::bson::from_document(fetched).map_err(|e| AppError {
+        let item: T = bson::from_document(fetched).map_err(|e| AppError {
             message: format!("Deserialize inserted record failed: {}", e),
         })?;
 
@@ -371,7 +369,7 @@ impl BaseRepository {
         while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
             message: format!("Iteration error: {}", e),
         })? {
-            let item: T = mongodb::bson::from_document(doc).map_err(|e| AppError {
+            let item: T = bson::from_document(doc).map_err(|e| AppError {
                 message: format!("Deserialize error: {}", e),
             })?;
             items.push(item);
@@ -382,17 +380,22 @@ impl BaseRepository {
 
     pub async fn ensure_indexes(&self, indexes: &[IndexDef]) -> Result<(), AppError> {
         for idx in indexes {
+            let mut keys_doc = Document::new();
+            for (field, order) in &idx.fields {
+                keys_doc.insert(field, order);
+            }
+
+            // Build index
             let index = IndexModel::builder()
-                .keys(doc! { &idx.field: 1 })
+                .keys(keys_doc)
                 .options(IndexOptions::builder().unique(idx.unique).build())
                 .build();
 
-            // create_index returns a Result<String, _>; we ignore the name but surface errors
             self.collection
                 .create_index(index)
                 .await
                 .map_err(|e| AppError {
-                    message: format!("Failed to create index on '{}': {}", idx.field, e),
+                    message: format!("Failed to create index on {:?}: {}", idx.fields, e),
                 })?;
         }
 
@@ -427,9 +430,19 @@ impl BaseRepository {
         while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
             message: format!("Failed to read aggregate cursor: {}", e),
         })? {
-            let item: T = mongodb::bson::from_document(doc).map_err(|e| AppError {
-                message: format!("Deserialize failed: {}", e),
+            let item: T = bson::from_document(doc.clone()).map_err(|e| {
+                // Convert BSON Document → JSON string
+                let raw_json = serde_json::to_string_pretty(&doc)
+                    .unwrap_or("<json encode failed>".to_string());
+
+                // Debug the error
+                debug_deserialize_error::<T>(&raw_json);
+
+                AppError {
+                    message: format!("Deserialize failed: {}", e),
+                }
             })?;
+
             items.push(item);
         }
 
@@ -505,8 +518,16 @@ impl BaseRepository {
         if let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
             message: format!("Failed reading aggregate cursor: {}", e),
         })? {
-            let item: T = mongodb::bson::from_document(doc).map_err(|e| AppError {
-                message: format!("Deserialize failed: {}", e),
+            let item: T = bson::from_document(doc.clone()).map_err(|e| {
+                let raw_json = serde_json::to_string_pretty(&doc)
+                    .unwrap_or("<json encode failed>".to_string());
+
+                // Debug the error
+                debug_deserialize_error::<T>(&raw_json);
+
+                AppError {
+                    message: format!("Deserialize failed: {}", e),
+                }
             })?;
 
             Ok(Some(item))

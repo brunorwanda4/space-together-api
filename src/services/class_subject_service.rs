@@ -9,7 +9,7 @@ use crate::{
         common_details::Paginated,
     },
     errors::AppError,
-    models::id_model::IdType,
+    models::{id_model::IdType, mongo_model::IndexDef},
     pipeline::class_subject_pipeline::class_subject_pipeline,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
@@ -26,8 +26,30 @@ impl ClassSubjectService {
         }
     }
 
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let indexes = vec![
+            // single-field
+            IndexDef::single("code", true),
+            IndexDef::single("school_id", false),
+            IndexDef::single("class_id", false),
+            IndexDef::single("teacher_id", false),
+            IndexDef::single("main_subject_id", false),
+            IndexDef::single("name", false),
+            // compound
+            IndexDef::compound(vec![("school_id", 1), ("class_id", 1)], false),
+            IndexDef::compound(vec![("school_id", 1), ("teacher_id", 1)], false),
+            IndexDef::compound(vec![("school_id", 1), ("disable", 1)], false),
+        ];
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        let _ = repo.ensure_indexes(&indexes).await?;
+
+        Ok(())
+    }
+
     // CREATE
     pub async fn create(&self, dto: ClassSubject) -> Result<ClassSubject, AppError> {
+        self.ensure_indexes().await?;
         if let Ok(sub) = self.find_one_by_code(&dto.code).await {
             return Err(AppError {
                 message: format!("Class subject code already exists: {}", sub.code),
@@ -89,6 +111,9 @@ impl ClassSubjectService {
             "description",
             "category",
             "estimated_hours",
+            "class_id",
+            "school_id",
+            "teacher_id",
         ];
 
         let (data, total, total_pages, current_page) = repo
@@ -147,11 +172,18 @@ impl ClassSubjectService {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
+        extra_match: Option<Document>,
     ) -> Result<Paginated<ClassSubjectWithRelations>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let mut pipeline = vec![];
 
+        // add extra match first
+        if let Some(extra) = extra_match {
+            pipeline.push(doc! { "$match": extra });
+        }
+
+        // optional filter search
         if let Some(f) = filter {
             pipeline.push(doc! {
                 "$match": {
@@ -165,9 +197,24 @@ impl ClassSubjectService {
             });
         }
 
+        // relation joins
         pipeline.extend(class_subject_pipeline(doc! {}));
 
         repo.aggregate_with_paginate::<ClassSubjectWithRelations>(pipeline, limit, skip)
+            .await
+    }
+
+    pub async fn find_many_and_others_by_class_id(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        class_id: &IdType,
+    ) -> Result<Paginated<ClassSubjectWithRelations>, AppError> {
+        let obj = IdType::to_object_id(class_id)?;
+        let extra_match = doc! { "class_id": obj };
+
+        self.get_all_with_relations(filter, limit, skip, Some(extra_match))
             .await
     }
 
@@ -219,13 +266,26 @@ impl ClassSubjectService {
         Ok(res.data)
     }
 
+    pub async fn find_many_by_class_id(
+        &self,
+        class_id: &IdType,
+    ) -> Result<Vec<ClassSubject>, AppError> {
+        let obj = IdType::to_object_id(class_id)?;
+
+        let extra_match = doc! { "class_id": obj };
+
+        let res = self.get_all(None, None, None, Some(extra_match)).await?;
+        Ok(res.data)
+    }
+
     pub async fn create_many(
         &self,
         dtos: Vec<ClassSubject>,
     ) -> Result<Vec<ClassSubject>, AppError> {
+        self.ensure_indexes().await?;
         let docs = dtos
             .into_iter()
-            .map(|dto| bson::to_document(&dto))
+            .map(|dto| bson::to_document(&dto.to_partial()))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError {
                 message: format!("Failed to serialize DTO: {}", e),
