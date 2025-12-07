@@ -1,0 +1,150 @@
+use crate::{helpers::object_id_helpers, make_partial};
+use chrono::Weekday;
+use chrono::{DateTime, Utc};
+use mongodb::bson::oid::ObjectId;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum PeriodType {
+    Subject,
+    Break,
+    Lunch,
+    Free,
+}
+
+make_partial! {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Period {
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_oid",
+        deserialize_with = "object_id_helpers::deserialize_oid"
+    )]
+    pub period_id: ObjectId,
+
+    pub r#type: PeriodType,
+
+    pub order: i32,                       // non-negative in Zod
+    pub title: Option<String>,
+    pub description: Option<String>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub subject_id: Option<ObjectId>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub teacher_id: Option<ObjectId>,
+
+    pub start_offset: i32,                // minutes from day start
+    pub duration_minutes: i32,            // positive
+
+    pub enabled: Option<bool>,
+} => PeriodPartial
+}
+
+make_partial! {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WeekSchedule {
+    pub day: Weekday,
+
+    #[serde(default)]
+    pub is_holiday: bool,
+
+    /// Required when NOT holiday. Must be "HH:MM".
+    pub start_on: Option<String>,
+
+    pub periods: Vec<Period>,
+} => WeekSchedulePartial
+}
+
+make_partial! {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ClassTimetable {
+    #[serde(
+        rename = "_id",
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub id: Option<ObjectId>,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_oid",
+        deserialize_with = "object_id_helpers::deserialize_oid"
+    )]
+    pub class_id: ObjectId,
+
+    pub academic_year: String,
+
+    pub weekly_schedule: Vec<WeekSchedule>,
+
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
+} => ClassTimetablePartial
+}
+
+impl Period {
+    pub fn validate(&self) -> Result<(), String> {
+        // Order must be non-negative
+        if self.order < 0 {
+            return Err("order must be non-negative".into());
+        }
+
+        // Duration must be positive
+        if self.duration_minutes <= 0 {
+            return Err("duration_minutes must be a positive integer".into());
+        }
+
+        // start_offset must be >= 0
+        if self.start_offset < 0 {
+            return Err("start_offset must be non-negative".into());
+        }
+
+        // When period type is Subject, subject_id must be present
+        if matches!(self.r#type, PeriodType::Subject) && self.subject_id.is_none() {
+            return Err("subject_id is required for subject periods".into());
+        }
+
+        // Optional: check teacher_id for subject periods
+        if matches!(self.r#type, PeriodType::Subject) && self.teacher_id.is_none() {
+            return Err("teacher_id is required for subject periods".into());
+        }
+
+        Ok(())
+    }
+}
+
+impl WeekSchedule {
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.is_holiday {
+            let Some(time) = &self.start_on else {
+                return Err("start_on is required for non-holiday days".into());
+            };
+
+            let valid = regex::Regex::new(r"^([01]\d|2[0-3]):([0-5]\d)$").unwrap();
+            if !valid.is_match(time) {
+                return Err("start_on must be HH:MM 24-hour format".into());
+            }
+        }
+
+        for p in &self.periods {
+            p.validate()?; // now works
+        }
+
+        Ok(())
+    }
+}
+
+impl ClassTimetable {
+    // pub fn new
+}
