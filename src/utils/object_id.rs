@@ -7,3 +7,9 @@ pub fn parse_object_id(id: &IdType) -> Result<ObjectId, AppError> {
         message: format!("Invalid ObjectId: {}", e),
     })
 }
+
+pub fn parse_object_id_value(value: &str) -> Result<ObjectId, AppError> {
+    ObjectId::parse_str(value).map_err(|e| AppError {
+        message: format!("Invalid ObjectId: {}", e),
+    })
+}

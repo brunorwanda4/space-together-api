@@ -260,7 +260,7 @@ impl ClassSubjectService {
     ) -> Result<Vec<ClassSubject>, AppError> {
         let obj = IdType::to_object_id(teacher_id)?;
 
-        let extra_match = doc! { "class_teacher_id": obj };
+        let extra_match = doc! { "teacher_id": obj };
 
         let res = self.get_all(None, None, None, Some(extra_match)).await?;
         Ok(res.data)

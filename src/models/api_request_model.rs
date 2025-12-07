@@ -11,4 +11,6 @@ pub struct RequestQuery {
     pub limit: Option<i64>,
     pub skip: Option<i64>,
     pub is_active: Option<bool>,
+    pub field: Option<String>,
+    pub value: Option<String>,
 }
