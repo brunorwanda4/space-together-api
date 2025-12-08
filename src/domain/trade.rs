@@ -1,4 +1,4 @@
-use crate::{domain::sector::Sector, helpers::object_id_helpers};
+use crate::{domain::sector::Sector, helpers::object_id_helpers, make_partial};
 use chrono::{DateTime, Utc};
 use mongodb::bson::{self, oid::ObjectId};
 use serde::{Deserialize, Serialize};
@@ -51,11 +51,11 @@ impl fmt::Display for TradeType {
     }
 }
 
+make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Trade {
     #[serde(
         rename = "_id",
-        alias = "id",
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",
@@ -91,34 +91,7 @@ pub struct Trade {
 
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UpdateTrade {
-    #[serde(
-        serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    pub sector_id: Option<ObjectId>,
-
-    #[serde(
-        serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    pub trade_id: Option<ObjectId>,
-    pub name: Option<String>,
-    pub username: Option<String>,
-    pub description: Option<String>,
-    pub class_min: Option<i32>,
-    pub class_max: Option<i32>,
-    pub r#type: Option<TradeType>, // Senior, Primary, Level, Nursing
-    pub disable: Option<bool>,
-    #[serde(default)]
-    pub updated_at: Option<DateTime<Utc>>,
+} => UpdateTrade
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

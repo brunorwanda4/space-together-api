@@ -3,9 +3,10 @@ use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::models::id_model::IdType;
 use crate::pipeline::trade_pipeline::trade_with_others_pipeline;
+use crate::repositories::base_repo::BaseRepository;
+use crate::utils::mongo_utils::extract_valid_fields;
 use crate::utils::object_id::parse_object_id;
 
-use chrono::Utc;
 use futures::TryStreamExt; // Add this import
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
@@ -68,33 +69,13 @@ impl TradeRepo {
 
     pub async fn insert_trade(&self, trade: &Trade) -> Result<Trade, AppError> {
         self.ensure_indexes().await?;
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let mut trade_to_insert = trade.clone();
-        trade_to_insert.id = None;
-        trade_to_insert.created_at = Some(Utc::now());
-        trade_to_insert.updated_at = Some(Utc::now());
+        let full_doc = bson::to_document(&trade.to_partial()).map_err(|e| AppError {
+            message: format!("Failed to serialize create: {}", e),
+        })?;
 
-        let res = self
-            .collection
-            .insert_one(&trade_to_insert)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to insert trade: {}", e),
-            })?;
-
-        let inserted_id: ObjectId = res
-            .inserted_id
-            .as_object_id()
-            .ok_or_else(|| AppError {
-                message: "Failed to extract inserted trade id".to_string(),
-            })?
-            .to_owned();
-
-        self.find_by_id(&IdType::from_object_id(inserted_id))
-            .await?
-            .ok_or(AppError {
-                message: "Trade not found after insert".to_string(),
-            })
+        repo.create::<Trade>(full_doc, Some(&["code"])).await
     }
 
     async fn ensure_indexes(&self) -> Result<(), AppError> {
@@ -196,32 +177,17 @@ impl TradeRepo {
     }
 
     pub async fn update_trade(&self, id: &IdType, update: &UpdateTrade) -> Result<Trade, AppError> {
-        let obj_id = parse_object_id(id)?;
-        let update_doc = bson::to_document(update).map_err(|e| AppError {
-            message: format!("Failed to convert update trade to document: {}", e),
+        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let full_doc = bson::to_document(&update).map_err(|e| AppError {
+            message: format!("Failed to serialize update: {}", e),
         })?;
 
-        // 🔥 Remove all `null` fields
-        let mut update_doc: Document = update_doc
-            .into_iter()
-            .filter(|(_, v)| !matches!(v, bson::Bson::Null))
-            .collect();
+        let update_doc = extract_valid_fields(full_doc);
 
-        update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
-        update_doc.remove("_id"); // prevent overwriting id
-
-        let update_doc = doc! { "$set": update_doc };
-
-        self.collection
-            .update_one(doc! { "_id": obj_id }, update_doc)
+        base_repo
+            .update_one_and_fetch::<Trade>(id, update_doc)
             .await
-            .map_err(|e| AppError {
-                message: format!("Failed to update trade: {}", e),
-            })?;
-
-        self.find_by_id(id).await?.ok_or(AppError {
-            message: "Trade not found after update".to_string(),
-        })
     }
 
     pub async fn delete_trade(&self, id: &IdType) -> Result<(), AppError> {

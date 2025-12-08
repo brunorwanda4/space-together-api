@@ -128,7 +128,7 @@ impl<'a> TradeService<'a> {
     pub async fn update_trade(
         &self,
         id: &IdType,
-        mut updated_data: UpdateTrade,
+        updated_data: UpdateTrade,
         sector_service: &SectorService<'a>,
     ) -> Result<Trade, String> {
         let trade_to_update = self
@@ -149,30 +149,33 @@ impl<'a> TradeService<'a> {
 
         // ✅ Check sector existence if sector_id is updated
         if let Some(ref sector_id) = updated_data.sector_id {
-            let sector_id_type = IdType::from_object_id(*sector_id);
-            sector_service
-                .get_sector_by_id(&sector_id_type)
-                .await
-                .map_err(|_| "Sector not found".to_string())?;
+            if let Some(s_id) = sector_id {
+                let sector_id_type = IdType::from_object_id(*s_id);
+                sector_service
+                    .get_sector_by_id(&sector_id_type)
+                    .await
+                    .map_err(|_| "Sector not found".to_string())?;
+            }
         }
 
         // ✅ Parent trade validation
         if let Some(ref parent_trade_id) = updated_data.trade_id {
-            let parent_id_type = IdType::from_object_id(*parent_trade_id);
-            self.repo
-                .find_by_id(&parent_id_type)
-                .await
-                .map_err(|e| e.message.to_string())?
-                .ok_or("Parent trade not found".to_string())?;
+            if let Some(p_id) = parent_trade_id {
+                let parent_id_type = IdType::from_object_id(*p_id);
+                self.repo
+                    .find_by_id(&parent_id_type)
+                    .await
+                    .map_err(|e| e.message.to_string())?
+                    .ok_or("Parent trade not found".to_string())?;
 
-            // Prevent setting itself as its own parent
-            if trade_to_update.id == Some(*parent_trade_id) {
-                return Err("A trade cannot be its own parent".to_string());
+                // Prevent setting itself as its own parent
+                if trade_to_update.id == Some(*p_id) {
+                    return Err("A trade cannot be its own parent".to_string());
+                }
             }
         }
 
         // Update timestamp
-        updated_data.updated_at = Some(Utc::now());
 
         let updated_trade = self
             .repo
