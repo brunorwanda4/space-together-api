@@ -1,12 +1,12 @@
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
-use mongodb::bson::{self, doc};
+use mongodb::bson::doc;
 
 use crate::{
     config::state::AppState,
     domain::class_subject::{ClassSubject, ClassSubjectPartial},
     models::{api_request_model::RequestQuery, id_model::IdType, school_token_model::SchoolToken},
     services::{class_subject_service::ClassSubjectService, event_service::EventService},
-    utils::object_id::parse_object_id_value,
+    utils::api_utils::build_extra_match,
 };
 
 /// --------------------------------------
@@ -50,7 +50,7 @@ async fn get_all_class_subjects_with_others(
 ) -> impl Responder {
     // Validate school token
     let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
+        Some(c) => c.clone(),
         None => {
             return HttpResponse::Unauthorized().json(serde_json::json!({
                 "message": "School token required"
@@ -61,45 +61,16 @@ async fn get_all_class_subjects_with_others(
     let school_db = state.db.get_db(&claims.database_name);
     let service = ClassSubjectService::new(&school_db);
 
-    // Base request
-    let mut req_result = service
-        .get_all_with_relations(query.filter.clone(), query.limit, query.skip, None)
+    // Build extra match only once
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    let req_result = service
+        .get_all_with_relations(query.filter.clone(), query.limit, query.skip, extra_match)
         .await;
 
-    // -----------------------------
-    //   Validate field + value
-    // -----------------------------
-    if let (Some(field), Some(value_str)) = (&query.field, &query.value) {
-        let mut bson_value: bson::Bson = value_str.clone().into();
-
-        // If field ends with "_id" → convert to ObjectId
-        if field.ends_with("_id") {
-            match parse_object_id_value(value_str) {
-                Ok(object_id) => {
-                    bson_value = object_id.into();
-                }
-                Err(e) => {
-                    return HttpResponse::BadRequest().json(e);
-                }
-            }
-        }
-
-        // Build match document
-        let extra_match = doc! {
-            field: bson_value
-        };
-
-        req_result = service
-            .get_all_with_relations(
-                query.filter.clone(),
-                query.limit,
-                query.skip,
-                Some(extra_match),
-            )
-            .await;
-    }
-
-    // Final response
     match req_result {
         Ok(data) => HttpResponse::Ok().json(data),
         Err(err) => HttpResponse::BadRequest().json(err),

@@ -5,6 +5,7 @@ mod class;
 mod class_subject;
 mod class_timetable;
 mod database_status;
+mod education_year;
 mod events;
 mod join_school_request;
 mod main_class;
@@ -51,4 +52,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     template_subject::init(cfg);
     class_subject::init(cfg);
     class_timetable::init(cfg);
+    education_year::init(cfg);
 }

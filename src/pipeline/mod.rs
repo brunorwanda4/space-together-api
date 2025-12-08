@@ -1,3 +1,4 @@
+pub mod academic_year_pipeline;
 pub mod class_pipeline;
 pub mod class_subject_pipeline;
 pub mod join_school_request_pipeline;

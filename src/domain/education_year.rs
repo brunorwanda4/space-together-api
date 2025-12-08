@@ -1,4 +1,4 @@
-use crate::{helpers::object_id_helpers, make_partial};
+use crate::{domain::sector::Sector, helpers::object_id_helpers, make_partial};
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
@@ -43,5 +43,13 @@ make_partial! {
 
         #[serde(default)]
         pub updated_at: Option<DateTime<Utc>>,
-    } => AcademicYearPartial
+    } => EducationYearPartial
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EducationYearWithOthers {
+    #[serde(flatten)]
+    pub academic: EducationYear,
+
+    pub curriculum: Option<Sector>,
 }

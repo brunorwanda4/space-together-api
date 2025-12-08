@@ -1,3 +1,4 @@
+pub mod api_utils;
 pub mod bytes;
 pub mod class_utils;
 pub mod code;
