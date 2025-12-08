@@ -38,6 +38,14 @@ make_partial! {
 
         pub terms: Vec<Term>,             // Embedded terms
 
+        #[serde(
+            serialize_with = "object_id_helpers::serialize",
+            deserialize_with = "object_id_helpers::deserialize",
+            skip_serializing_if = "Option::is_none",
+            default
+        )]
+        pub created_by: Option<ObjectId>,
+
         #[serde(default)]
         pub created_at: Option<DateTime<Utc>>,
 

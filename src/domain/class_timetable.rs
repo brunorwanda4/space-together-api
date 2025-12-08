@@ -74,7 +74,12 @@ pub struct ClassTimetable {
     )]
     pub class_id: ObjectId,
 
-    pub academic_year: String,
+    #[serde(
+        serialize_with = "object_id_helpers::serialize_oid",
+        deserialize_with = "object_id_helpers::deserialize_oid"
+    )]
+    pub education_year_id: ObjectId,   // Reference to EducationYear
+    pub term_order: i32,
 
     pub weekly_schedule: Vec<WeekSchedule>,
     pub disabled: Option<bool>,

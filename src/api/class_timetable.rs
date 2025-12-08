@@ -56,51 +56,6 @@ async fn get_timetable_by_id(
 }
 
 /// --------------------------------------
-/// GET /class-timetables/class/{class_id}/year/{year}
-/// --------------------------------------
-#[get("/class/{class_id}/year/{year}")]
-async fn get_timetable_by_class_and_year(
-    path: web::Path<(String, String)>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let (class_id_str, year) = path.into_inner();
-
-    // Convert string to ObjectId
-    let class_oid = match IdType::to_object_id(&IdType::from_string(class_id_str)) {
-        Ok(oid) => oid,
-        Err(e) => return HttpResponse::BadRequest().json(e),
-    };
-
-    let service = ClassTimetableService::new(&state.db.main_db());
-
-    match service.find_by_class_and_year(&class_oid, &year).await {
-        Ok(timetable) => HttpResponse::Ok().json(timetable),
-        Err(message) => HttpResponse::NotFound().json(message),
-    }
-}
-
-/// --------------------------------------
-/// POST /class-timetables/structure-template
-/// Helper to get a blank JSON structure for the frontend form
-/// --------------------------------------
-#[post("/structure-template")]
-async fn get_structure_template(data: web::Json<GenerateStructureDto>) -> impl Responder {
-    // We only need to convert the ID here
-    let class_oid = match IdType::to_object_id(&IdType::from_string(data.class_id.clone())) {
-        Ok(oid) => oid,
-        Err(e) => return HttpResponse::BadRequest().json(e),
-    };
-
-    let structure = ClassTimetableService::generate_default_structure(
-        class_oid,
-        data.academic_year.clone(),
-        &data.start_time,
-    );
-
-    HttpResponse::Ok().json(structure)
-}
-
-/// --------------------------------------
 /// POST /class-timetables
 /// --------------------------------------
 #[post("")]
@@ -246,8 +201,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/class-timetables")
             .service(get_all_timetables) // GET /class-timetables
-            .service(get_structure_template) // POST /class-timetables/structure-template (Helper)
-            .service(get_timetable_by_class_and_year) // GET /class-timetables/class/{cid}/year/{y}
             .service(get_timetable_by_id) // GET /class-timetables/{id}
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware) // Protect write routes
             .service(create_timetable) // POST /class-timetables

@@ -31,13 +31,13 @@ impl ClassTimetableService {
     pub async fn create(&self, dto: ClassTimetable) -> Result<ClassTimetable, AppError> {
         // 1. Check if a timetable already exists for this class and year
         if let Ok(_) = self
-            .find_by_class_and_year(&dto.class_id, &dto.academic_year)
+            .find_by_class_and_year(&dto.class_id, &dto.education_year_id)
             .await
         {
             return Err(AppError {
                 message: format!(
                     "Timetable for class {} in year {} already exists",
-                    dto.class_id, dto.academic_year
+                    dto.class_id, dto.education_year_id
                 ),
             });
         }
@@ -83,13 +83,13 @@ impl ClassTimetableService {
     pub async fn find_by_class_and_year(
         &self,
         class_id: &ObjectId,
-        academic_year: &str,
+        education_year_id: &ObjectId,
     ) -> Result<ClassTimetable, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let filter = doc! {
             "class_id": class_id,
-            "academic_year": academic_year
+            "education_year_id": education_year_id
         };
 
         let item = repo.find_one::<ClassTimetable>(filter, None).await?;
@@ -136,7 +136,7 @@ impl ClassTimetableService {
         let obj_id = IdType::to_object_id(id)?;
 
         // Ensure we aren't updating to a class/year combo that already exists elsewhere
-        if let (Some(cid), Some(year)) = (update.class_id, &update.academic_year) {
+        if let (Some(cid), Some(year)) = (update.class_id, &update.education_year_id) {
             if let Ok(existing) = self.find_by_class_and_year(&cid, year).await {
                 if existing.id != Some(obj_id) {
                     return Err(AppError {
@@ -181,39 +181,5 @@ impl ClassTimetableService {
         let item = self.find_one_by_id(id).await?; // Fetch first to return it
         base_repo.delete_one(id).await?;
         Ok(item)
-    }
-
-    // -------------------------------------------------------------------------
-    // 5. Specialized: Generate Empty Structure
-    // -------------------------------------------------------------------------
-    /// Helper to initialize a default Mon-Fri structure that the frontend can then fill
-    pub fn generate_default_structure(
-        class_id: ObjectId,
-        year: String,
-        start_time: &str,
-    ) -> ClassTimetable {
-        use chrono::Weekday::*;
-
-        let days = vec![Mon, Tue, Wed, Thu, Fri];
-        let mut weekly_schedule = Vec::new();
-
-        for day in days {
-            weekly_schedule.push(WeekSchedule {
-                day,
-                is_holiday: false,
-                start_on: Some(start_time.to_string()),
-                periods: vec![], // Empty initially
-            });
-        }
-
-        ClassTimetable {
-            id: None,
-            class_id,
-            academic_year: year,
-            weekly_schedule,
-            created_at: None,
-            updated_at: None,
-            disabled: None,
-        }
     }
 }
