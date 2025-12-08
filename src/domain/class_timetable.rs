@@ -1,6 +1,5 @@
 use crate::{helpers::object_id_helpers, make_partial};
-use chrono::Weekday;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Weekday};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +22,7 @@ pub struct Period {
 
     pub r#type: PeriodType,
 
-    pub order: i32,                       // non-negative in Zod
+    pub order: i32,
     pub title: Option<String>,
     pub description: Option<String>,
 
@@ -34,14 +33,6 @@ pub struct Period {
         default
     )]
     pub subject_id: Option<ObjectId>,
-
-    #[serde(
-        serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize",
-        skip_serializing_if = "Option::is_none",
-        default
-    )]
-    pub teacher_id: Option<ObjectId>,
 
     pub start_offset: i32,                // minutes from day start
     pub duration_minutes: i32,            // positive
@@ -86,6 +77,7 @@ pub struct ClassTimetable {
     pub academic_year: String,
 
     pub weekly_schedule: Vec<WeekSchedule>,
+    pub disabled: Option<bool>,
 
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default)]
@@ -115,11 +107,6 @@ impl Period {
             return Err("subject_id is required for subject periods".into());
         }
 
-        // Optional: check teacher_id for subject periods
-        if matches!(self.r#type, PeriodType::Subject) && self.teacher_id.is_none() {
-            return Err("teacher_id is required for subject periods".into());
-        }
-
         Ok(())
     }
 }
@@ -143,8 +130,4 @@ impl WeekSchedule {
 
         Ok(())
     }
-}
-
-impl ClassTimetable {
-    // pub fn new
 }

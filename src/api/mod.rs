@@ -3,6 +3,7 @@ use actix_web::web;
 mod auth;
 mod class;
 mod class_subject;
+mod class_timetable;
 mod database_status;
 mod events;
 mod join_school_request;
@@ -49,4 +50,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     school_collections::school_class_subject::init(cfg);
     template_subject::init(cfg);
     class_subject::init(cfg);
+    class_timetable::init(cfg);
 }
