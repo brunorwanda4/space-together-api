@@ -1,4 +1,4 @@
-use crate::{helpers::object_id_helpers, make_partial, models::default_model::default_true};
+use crate::{helpers::object_id_helpers, make_partial, models::default_model::default_true, utils::time_utils::is_valid_hhmm};
 use chrono::{DateTime, Utc, Weekday};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
@@ -140,4 +140,25 @@ pub struct SchoolTimetable {
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
 } => SchoolTimetablePartial
+}
+
+impl TimeBlock {
+    pub fn validate(&self) -> Result<(), String> {
+        // Ensure title is not empty
+        if self.title.trim().is_empty() {
+            return Err("TimeBlock.title cannot be empty".into());
+        }
+
+        // Validate HH:MM format
+
+        if !is_valid_hhmm(&self.start_time) {
+                  return Err("start_time must be HH:MM format".into());
+              }
+
+              if !is_valid_hhmm(&self.end_time) {
+                      return Err("end_time must be HH:MM format".into());
+                  }
+
+        Ok(())
+    }
 }

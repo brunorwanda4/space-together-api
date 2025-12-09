@@ -1,4 +1,4 @@
-use crate::{helpers::object_id_helpers, make_partial};
+use crate::{helpers::object_id_helpers, make_partial, utils::time_utils::is_valid_hhmm};
 use chrono::{DateTime, Utc, Weekday};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
@@ -123,8 +123,7 @@ impl WeekSchedule {
                 return Err("start_on is required for non-holiday days".into());
             };
 
-            let valid = regex::Regex::new(r"^([01]\d|2[0-3]):([0-5]\d)$").unwrap();
-            if !valid.is_match(time) {
+            if !is_valid_hhmm(time) {
                 return Err("start_on must be HH:MM 24-hour format".into());
             }
         }
