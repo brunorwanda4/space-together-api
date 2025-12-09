@@ -199,24 +199,6 @@ impl DailySchoolSchedule {
     }
 }
 
-impl DailySchoolSchedulePartial {
-    pub fn validate(&self) -> Result<(), String> {
-        if let Some(breaks) = &self.breaks {
-            for b in breaks {
-                b.validate()?;
-            }
-        }
-
-        if let Some(activities) = &self.activities {
-            for a in activities {
-                a.validate()?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
 
 impl TimetableOverride {
     pub fn validate(&self) -> Result<(), String> {
@@ -251,50 +233,6 @@ impl SchoolEvent {
         Ok(())
     }
 }
-
-impl SchoolEventPartial {
-    pub fn validate(&self) -> Result<(), String> {
-        if let Some(title) = &self.title {
-            if title.trim().is_empty() {
-                return Err("Event.title cannot be empty".into());
-            }
-        }
-
-        if let Some(end) = self.end_date {
-            if end < self.start_date {
-                return Err("event end_date cannot be earlier than start_date".into());
-            }
-        }
-        Ok(())
-    }
-}
-
-
-
-impl TimetableOverridePartial {
-    pub fn validate(&self) -> Result<(), String> {
-        // applies_to is optional in partial updates, validate only when present
-        if let Some(list) = &self.applies_to {
-            if list.is_empty() {
-                return Err("applies_to cannot be empty".into());
-            }
-        }
-
-        if let Some(weekly) = &self.weekly_schedule {
-            if weekly.is_empty() {
-                return Err("weekly_schedule must contain at least 1 day".into());
-            }
-
-            for day in weekly {
-                day.validate()?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-
 
 impl SchoolTimetable {
     pub fn validate(&self) -> Result<(), String> {

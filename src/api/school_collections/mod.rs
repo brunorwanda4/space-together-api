@@ -5,3 +5,4 @@ pub mod school_staff;
 pub mod school_student;
 pub mod school_subject;
 pub mod school_teacher;
+pub mod school_timetable;

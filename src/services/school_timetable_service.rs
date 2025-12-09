@@ -136,7 +136,7 @@ impl SchoolTimetableService {
     ) -> Result<SchoolTimetable, AppError> {
         let obj_id = IdType::to_object_id(id)?;
 
-        // Check for (school_id + academic_year_id) conflict
+        // Conflict check logic stays the same...
         if let (Some(sid), Some(ayid)) = (dto.school_id, &dto.academic_year_id) {
             if let Ok(existing) = self.find_by_school_and_academic_year(&sid, ayid).await {
                 if existing.id != Some(obj_id) {
@@ -146,21 +146,9 @@ impl SchoolTimetableService {
                 }
             }
         }
-
-        // Validate nested schedule updates
-        if let Some(weekly) = &dto.default_weekly_schedule {
-            for day in weekly {
-                if let Err(e) = day.validate() {
-                    return Err(AppError {
-                        message: format!("Invalid weekly schedule update: {}", e),
-                    });
-                }
-            }
-        }
-
-
-
-        // Convert partial → bson
+        // -----------------------------------------
+        // Continue with update
+        // -----------------------------------------
         let base = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
         let dto_clone = dto.clone();
         let doc = bson::to_document(&dto_clone).map_err(|e| AppError {
@@ -172,6 +160,7 @@ impl SchoolTimetableService {
         base.update_one_and_fetch::<SchoolTimetable>(id, update_doc)
             .await
     }
+
 
     // -------------------------------------------------------------------------
     // 4. DELETE
@@ -209,10 +198,10 @@ impl SchoolTimetableService {
             weekly.push(DailySchoolSchedule {
                 day: d,
                 is_school_day: true,
-                school_start_time: "08:00".into(),
-                school_end_time: "16:00".into(),
-                study_start_time: "08:30".into(),
-                study_end_time: "15:30".into(),
+                school_start_time: "08:30".into(),
+                school_end_time: "17:00".into(),
+                study_start_time: "09:30".into(),
+                study_end_time: "17:00".into(),
                 breaks: vec![],
                 lunch: None,
                 activities: vec![],
