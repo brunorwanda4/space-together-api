@@ -162,3 +162,165 @@ impl TimeBlock {
         Ok(())
     }
 }
+
+
+impl DailySchoolSchedule {
+    pub fn validate(&self) -> Result<(), String> {
+
+        let required_times = [
+            (&self.school_start_time, "school_start_time"),
+            (&self.school_end_time, "school_end_time"),
+            (&self.study_start_time, "study_start_time"),
+            (&self.study_end_time, "study_end_time"),
+        ];
+
+        for (value, field) in required_times {
+            if !is_valid_hhmm(value) {
+                return Err(format!("{field} must be HH:MM format"));
+            }
+        }
+
+        // Validate breaks
+        for b in &self.breaks {
+            b.validate()?;
+        }
+
+        // Validate lunch (if exists)
+        if let Some(lunch) = &self.lunch {
+            lunch.validate()?;
+        }
+
+        // Validate activities
+        for a in &self.activities {
+            a.validate()?;
+        }
+
+        Ok(())
+    }
+}
+
+impl DailySchoolSchedulePartial {
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(breaks) = &self.breaks {
+            for b in breaks {
+                b.validate()?;
+            }
+        }
+
+        if let Some(activities) = &self.activities {
+            for a in activities {
+                a.validate()?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+
+impl TimetableOverride {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.applies_to.is_empty() {
+            return Err("applies_to cannot be empty".into());
+        }
+
+        if self.weekly_schedule.is_empty() {
+            return Err("weekly_schedule must contain at least 1 day".into());
+        }
+
+        for day in &self.weekly_schedule {
+            day.validate()?;
+        }
+
+        Ok(())
+    }
+}
+
+impl SchoolEvent {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.title.trim().is_empty() {
+            return Err("Event.title cannot be empty".into());
+        }
+
+        if let Some(end) = self.end_date {
+            if end < self.start_date {
+                return Err("event end_date cannot be earlier than start_date".into());
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl SchoolEventPartial {
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(title) = &self.title {
+            if title.trim().is_empty() {
+                return Err("Event.title cannot be empty".into());
+            }
+        }
+
+        if let Some(end) = self.end_date {
+            if end < self.start_date {
+                return Err("event end_date cannot be earlier than start_date".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+
+
+impl TimetableOverridePartial {
+    pub fn validate(&self) -> Result<(), String> {
+        // applies_to is optional in partial updates, validate only when present
+        if let Some(list) = &self.applies_to {
+            if list.is_empty() {
+                return Err("applies_to cannot be empty".into());
+            }
+        }
+
+        if let Some(weekly) = &self.weekly_schedule {
+            if weekly.is_empty() {
+                return Err("weekly_schedule must contain at least 1 day".into());
+            }
+
+            for day in weekly {
+                day.validate()?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+
+
+impl SchoolTimetable {
+    pub fn validate(&self) -> Result<(), String> {
+        // Must have base weekly schedule
+        if self.default_weekly_schedule.is_empty() {
+            return Err("default_weekly_schedule cannot be empty".into());
+        }
+
+        for day in &self.default_weekly_schedule {
+            day.validate()?;
+        }
+
+        // Validate overrides if present
+        if let Some(overrides) = &self.overrides {
+            for o in overrides {
+                o.validate()?;
+            }
+        }
+
+        // Validate events if present
+        if let Some(events) = &self.events {
+            for e in events {
+                e.validate()?;
+            }
+        }
+
+        Ok(())
+    }
+}
