@@ -4,7 +4,7 @@ use rand::prelude::IndexedMutRandom;
 use chrono::Weekday;
 use mongodb::bson::oid::ObjectId;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::rng;
 
 // Import your structs
 use crate::domain::{
@@ -62,7 +62,7 @@ pub fn auto_generate_schedule(
 
     // 4. BALANCING THE DECK
     // If rounding caused us to have too few or too many subjects, fix it.
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     // Fill if short
     while subject_deck.len() < total_weekly_capacity {

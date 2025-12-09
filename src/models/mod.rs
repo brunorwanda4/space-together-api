@@ -3,3 +3,4 @@ pub mod id_model;
 pub mod mongo_model;
 pub mod request_error_model;
 pub mod school_token_model;
+pub mod default_model;
