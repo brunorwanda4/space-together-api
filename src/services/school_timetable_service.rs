@@ -6,12 +6,10 @@ use mongodb::{
 
 use crate::{
     domain::school_timetable::{
-        SchoolTimetable,
-        SchoolTimetablePartial,
-        DailySchoolSchedule,
+        DailySchoolSchedule, SchoolTimetable, SchoolTimetablePartial, TimeBlock,
     },
     errors::AppError,
-    models::{id_model::IdType, },
+    models::id_model::IdType,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
 };
@@ -106,17 +104,14 @@ impl SchoolTimetableService {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<
-        crate::domain::common_details::Paginated<SchoolTimetable>,
-        AppError,
-    > {
+    ) -> Result<crate::domain::common_details::Paginated<SchoolTimetable>, AppError> {
         let base = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let searchable = ["academic_year"];
 
-        let (data, total, total_pages, current_page) =
-            base.get_all::<SchoolTimetable>(filter, &searchable, limit, skip, None)
-                .await?;
+        let (data, total, total_pages, current_page) = base
+            .get_all::<SchoolTimetable>(filter, &searchable, limit, skip, None)
+            .await?;
 
         Ok(crate::domain::common_details::Paginated {
             data,
@@ -161,7 +156,6 @@ impl SchoolTimetableService {
             .await
     }
 
-
     // -------------------------------------------------------------------------
     // 4. DELETE
     // -------------------------------------------------------------------------
@@ -202,8 +196,26 @@ impl SchoolTimetableService {
                 school_end_time: "17:00".into(),
                 study_start_time: "09:30".into(),
                 study_end_time: "17:00".into(),
-                breaks: vec![],
-                lunch: None,
+                breaks: vec![
+                    TimeBlock {
+                        start_time: "10:20".into(),
+                        end_time: "10:40".into(),
+                        description: Some("Morning break".into()),
+                        title: "Break".into(),
+                    },
+                    TimeBlock {
+                        start_time: "15:20".into(),
+                        end_time: "15:40".into(),
+                        description: Some("Afternoon break".into()),
+                        title: "Break".into(),
+                    },
+                ],
+                lunch: Some(TimeBlock {
+                    start_time: "13:00".into(),
+                    end_time: "14:00".into(),
+                    description: Some("Time for lunch".into()),
+                    title: "Lunch".into(),
+                }),
                 activities: vec![],
                 special_type: crate::domain::school_timetable::DaySpecialType::Normal,
             });

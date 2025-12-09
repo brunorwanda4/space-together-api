@@ -1,13 +1,14 @@
-use actix_web::{
-    delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder,
-};
+use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use mongodb::bson::doc;
 
 use crate::{
     config::state::AppState,
     domain::school_timetable::{SchoolTimetable, SchoolTimetablePartial},
     models::{api_request_model::RequestQuery, id_model::IdType, school_token_model::SchoolToken},
-    services::{event_service::EventService, school_timetable_service::SchoolTimetableService},
+    services::{
+        education_year_service::EducationYearService, event_service::EventService,
+        school_timetable_service::SchoolTimetableService,
+    },
     utils::api_utils::build_extra_match,
 };
 
@@ -72,12 +73,10 @@ async fn get_all_timetables_with_others(
         .get_all(query.filter.clone(), query.limit, query.skip)
         .await
     {
-        Ok(data) => {
-            HttpResponse::Ok().json(serde_json::json!({
-                "data": data,
-                "extra": extra_match
-            }))
-        }
+        Ok(data) => HttpResponse::Ok().json(serde_json::json!({
+            "data": data,
+            "extra": extra_match
+        })),
         Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
@@ -285,6 +284,62 @@ async fn delete_timetable(
     }
 }
 
+/// --------------------------------------
+/// POST /school/class-timetables/generate
+/// --------------------------------------
+#[post("/generate")]
+async fn generate_timetable(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> Result<impl Responder, actix_web::Error> {
+    let school_claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return Ok(HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            })));
+        }
+    };
+
+    let service = SchoolTimetableService::new(&state.db.main_db());
+    let education_year_service = EducationYearService::new(&state.db.main_db());
+
+    let (education_year, _term_info) = education_year_service
+        .get_current_year_and_term(None)
+        .await
+        .map_err(|e| actix_web::error::ErrorBadRequest(e))?;
+
+    let education_year_id = IdType::from_object_id(education_year.id.unwrap());
+    let school_id = IdType::from_string(school_claims.id);
+
+    let generate = service
+        .generate_default(&school_id, &education_year_id)
+        .await;
+
+    match generate {
+        Ok(timetable) => {
+            // broadcast event async
+            let timetable_clone = timetable.clone();
+            let state_clone = state.clone();
+
+            actix_rt::spawn(async move {
+                if let Some(id) = timetable_clone.id {
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "class_timetable",
+                        &id.to_hex(),
+                        &timetable_clone,
+                    )
+                    .await;
+                }
+            });
+
+            Ok(HttpResponse::Created().json(timetable))
+        }
+        Err(message) => Ok(HttpResponse::BadRequest().json(message)),
+    }
+}
+
 /// ==========================================================================
 /// REGISTER ROUTES
 /// ==========================================================================
@@ -297,6 +352,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_timetable_by_id)
             .service(get_by_school_and_academic_year)
             .service(create_timetable)
+            .service(generate_timetable)
             .service(update_timetable)
             .service(delete_timetable),
     );
