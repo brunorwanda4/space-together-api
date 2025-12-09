@@ -136,3 +136,63 @@ impl WeekSchedule {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DayStructureConfig {
+    pub period_type: PeriodType,
+    pub duration_minutes: i32,
+    pub title: Option<String>, // e.g., "Morning Break", "Lunch"
+}
+
+// Helper to create a standard school day layout
+impl DayStructureConfig {
+    pub fn standard_day() -> Vec<Self> {
+        vec![
+            // Morning Session: 2 periods
+            DayStructureConfig {
+                period_type: PeriodType::Subject,
+                duration_minutes: 40,
+                title: None,
+            },
+            DayStructureConfig {
+                period_type: PeriodType::Subject,
+                duration_minutes: 40,
+                title: None,
+            },
+            // Break
+            DayStructureConfig {
+                period_type: PeriodType::Break,
+                duration_minutes: 20,
+                title: Some("Morning Break".into()),
+            },
+            // Mid Session: 2 periods
+            DayStructureConfig {
+                period_type: PeriodType::Subject,
+                duration_minutes: 40,
+                title: None,
+            },
+            DayStructureConfig {
+                period_type: PeriodType::Subject,
+                duration_minutes: 40,
+                title: None,
+            },
+            // Lunch
+            DayStructureConfig {
+                period_type: PeriodType::Lunch,
+                duration_minutes: 60,
+                title: Some("Lunch".into()),
+            },
+            // Afternoon: 2 periods
+            DayStructureConfig {
+                period_type: PeriodType::Subject,
+                duration_minutes: 40,
+                title: None,
+            },
+            DayStructureConfig {
+                period_type: PeriodType::Subject,
+                duration_minutes: 40,
+                title: None,
+            },
+        ]
+    }
+}

@@ -49,6 +49,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     school_collections::school_student::init(cfg);
     school_collections::school_teacher::init(cfg);
     school_collections::school_class_subject::init(cfg);
+    school_collections::school_class_timetable::init(cfg);
     template_subject::init(cfg);
     class_subject::init(cfg);
     class_timetable::init(cfg);

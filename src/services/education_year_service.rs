@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
     Collection, Database,
@@ -6,7 +7,7 @@ use mongodb::{
 use crate::{
     domain::{
         common_details::Paginated,
-        education_year::{EducationYear, EducationYearPartial, EducationYearWithOthers},
+        education_year::{EducationYear, EducationYearPartial, EducationYearWithOthers, Term},
     },
     errors::AppError,
     models::{id_model::IdType, mongo_model::IndexDef},
@@ -235,5 +236,40 @@ impl EducationYearService {
                 message: "Academic year not found".to_string(),
             }),
         }
+    }
+
+    pub async fn get_current_year_and_term(
+        &self,
+        date: Option<DateTime<Utc>>,
+    ) -> Result<(EducationYear, Option<Term>), AppError> {
+        let target_date = date.unwrap_or_else(Utc::now);
+
+        // 1. Find year
+        let match_doc = doc! {
+            "start_date": { "$lte": bson::to_bson(&target_date).unwrap() },
+            "end_date": { "$gte": bson::to_bson(&target_date).unwrap() }
+        };
+
+        let year_paginated = self
+            .get_all(None, Some(1), Some(0), Some(match_doc))
+            .await?;
+
+        let year = match year_paginated.data.into_iter().next() {
+            Some(y) => y,
+            None => {
+                return Err(AppError {
+                    message: "No active education year found for this date".to_string(),
+                })
+            }
+        };
+
+        // 2. Find term within the year
+        let current_term = year
+            .terms
+            .iter()
+            .find(|term| term.start_date <= target_date && term.end_date >= target_date)
+            .cloned();
+
+        Ok((year, current_term))
     }
 }

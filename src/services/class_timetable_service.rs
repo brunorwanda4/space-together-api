@@ -1,16 +1,23 @@
+use actix_web::web;
+use chrono::Weekday;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
     Collection, Database,
 };
 
 use crate::{
+    config::state::AppState,
     domain::{
-        class_timetable::{ClassTimetable, ClassTimetablePartial, WeekSchedule},
+        class_timetable::{ClassTimetable, ClassTimetablePartial},
         common_details::Paginated,
     },
     errors::AppError,
-    models::id_model::IdType,
+    handler::class_timetable_handler::{auto_generate_schedule, DayStructureConfig},
+    models::{id_model::IdType, school_token_model::SchoolToken},
     repositories::base_repo::BaseRepository,
+    services::{
+        class_subject_service::ClassSubjectService, education_year_service::EducationYearService,
+    },
     utils::mongo_utils::extract_valid_fields,
 };
 
@@ -181,5 +188,60 @@ impl ClassTimetableService {
         let item = self.find_one_by_id(id).await?; // Fetch first to return it
         base_repo.delete_one(id).await?;
         Ok(item)
+    }
+
+    pub async fn generate_timetable(
+        &self,
+        class_id: &IdType,
+        state: &web::Data<AppState>,
+        school_claims: &Option<SchoolToken>,
+    ) -> Result<ClassTimetable, AppError> {
+        let main_db = state.db.main_db();
+        let mut school_db = state.db.main_db();
+
+        if let Some(claims) = school_claims {
+            school_db = state.db.get_db(&claims.database_name);
+        }
+
+        let education_service = EducationYearService::new(&main_db);
+        let subject_service = ClassSubjectService::new(&school_db);
+
+        let (education_year, term_info) = education_service.get_current_year_and_term(None).await?;
+        let education_year_id = education_year.id;
+
+        let mut term_order = 1;
+        if let Some(term) = term_info {
+            term_order = term.order;
+        }
+
+        let class_subjects = subject_service.find_many_by_class_id(class_id).await?;
+        let class_id_obj = IdType::to_object_id(class_id)?;
+
+        let start_time_str = "08:00".to_string();
+        let days_to_schedule = vec![
+            Weekday::Mon,
+            Weekday::Tue,
+            Weekday::Wed,
+            Weekday::Thu,
+            Weekday::Fri,
+        ];
+
+        let day_template = DayStructureConfig::standard_day();
+
+        let timetable = auto_generate_schedule(
+            class_id_obj,
+            education_year_id.unwrap(),
+            term_order,
+            class_subjects,
+            start_time_str,
+            days_to_schedule,
+            day_template,
+        )
+        .map_err(|err| AppError {
+            message: err.into(),
+        })?;
+
+        let saved = self.create(timetable).await?;
+        Ok(saved)
     }
 }

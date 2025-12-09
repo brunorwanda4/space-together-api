@@ -1,5 +1,4 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
-use serde::Deserialize;
 
 use crate::{
     config::state::AppState,
@@ -10,14 +9,6 @@ use crate::{
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{class_timetable_service::ClassTimetableService, event_service::EventService},
 };
-
-// DTO for generating a blank structure
-#[derive(Deserialize)]
-pub struct GenerateStructureDto {
-    pub class_id: String,
-    pub academic_year: String,
-    pub start_time: String,
-}
 
 /// --------------------------------------
 /// GET /class-timetables
