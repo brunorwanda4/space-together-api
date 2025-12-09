@@ -1,5 +1,5 @@
-use crate::domain::class_timetable::PeriodType;
-use serde::{Deserialize, Serialize};
+use crate::domain::class_timetable::{DayStructureConfig, PeriodType};
+use rand::prelude::IndexedMutRandom;
 
 use chrono::Weekday;
 use mongodb::bson::oid::ObjectId;
@@ -16,7 +16,7 @@ pub fn auto_generate_schedule(
     class_id: ObjectId,
     education_year_id: ObjectId,
     term_order: i32,
-    subjects: Vec<ClassSubject>,
+    mut subjects: Vec<ClassSubject>,
     start_time_str: String,                // e.g. "08:00"
     days_to_schedule: Vec<Weekday>,        // e.g. [Mon, Tue, Wed, Thu, Fri]
     day_template: Vec<DayStructureConfig>, // The structure from step 1

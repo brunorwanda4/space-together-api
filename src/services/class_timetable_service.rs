@@ -8,11 +8,11 @@ use mongodb::{
 use crate::{
     config::state::AppState,
     domain::{
-        class_timetable::{ClassTimetable, ClassTimetablePartial},
+        class_timetable::{ClassTimetable, ClassTimetablePartial, DayStructureConfig},
         common_details::Paginated,
     },
     errors::AppError,
-    handler::class_timetable_handler::{auto_generate_schedule, DayStructureConfig},
+    handler::class_timetable_handler::auto_generate_schedule,
     models::{id_model::IdType, school_token_model::SchoolToken},
     repositories::base_repo::BaseRepository,
     services::{
