@@ -1,8 +1,10 @@
-use crate::{helpers::object_id_helpers, make_partial, models::default_model::default_true, utils::time_utils::is_valid_hhmm};
+use crate::{
+    helpers::object_id_helpers, make_partial, models::default_model::default_true,
+    utils::time_utils::is_valid_hhmm,
+};
 use chrono::{DateTime, Utc, Weekday};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
-
 
 make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -14,7 +16,6 @@ pub struct TimeBlock {
     pub description: Option<String>,
 } => TimeBlockPartial
 }
-
 
 make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,7 +46,6 @@ pub struct DailySchoolSchedule {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
 pub enum DaySpecialType {
     Normal,
     HalfDay,
@@ -57,12 +57,10 @@ fn default_normal_type() -> DaySpecialType {
     DaySpecialType::Normal
 }
 
-
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum TimetableOverrideType {
     Trade,
-    Sector
+    Sector,
 }
 
 make_partial! {
@@ -85,7 +83,6 @@ pub struct TimetableOverride {
 } => TimetableOverridePartial
 }
 
-
 make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SchoolEvent {
@@ -100,7 +97,6 @@ pub struct SchoolEvent {
     pub end_date: Option<DateTime<Utc>>,
 } => SchoolEventPartial
 }
-
 
 make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -152,21 +148,19 @@ impl TimeBlock {
         // Validate HH:MM format
 
         if !is_valid_hhmm(&self.start_time) {
-                  return Err("start_time must be HH:MM format".into());
-              }
+            return Err("start_time must be HH:MM format".into());
+        }
 
-              if !is_valid_hhmm(&self.end_time) {
-                      return Err("end_time must be HH:MM format".into());
-                  }
+        if !is_valid_hhmm(&self.end_time) {
+            return Err("end_time must be HH:MM format".into());
+        }
 
         Ok(())
     }
 }
 
-
 impl DailySchoolSchedule {
     pub fn validate(&self) -> Result<(), String> {
-
         let required_times = [
             (&self.school_start_time, "school_start_time"),
             (&self.school_end_time, "school_end_time"),
@@ -198,7 +192,6 @@ impl DailySchoolSchedule {
         Ok(())
     }
 }
-
 
 impl TimetableOverride {
     pub fn validate(&self) -> Result<(), String> {
