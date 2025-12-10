@@ -94,11 +94,26 @@ impl SchoolTimetableService {
     // -------------------------------------------------------------------------
     // 2. READ
     // -------------------------------------------------------------------------
-    pub async fn find_one_by_id(&self, id: &IdType) -> Result<SchoolTimetable, AppError> {
-        let obj = IdType::to_object_id(id)?;
+    pub async fn find_one(
+        &self,
+        id: Option<&IdType>,
+        extra_filter: Option<Document>,
+    ) -> Result<SchoolTimetable, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let filter = doc! { "_id": obj };
+        let mut filter = Document::new();
+
+        if let Some(id_value) = id {
+            let obj = IdType::to_object_id(id_value)?;
+            filter.insert("_id", obj);
+        }
+
+        if let Some(extra) = extra_filter {
+            for (k, v) in extra.into_iter() {
+                filter.insert(k, v);
+            }
+        }
+
         let item = repo.find_one::<SchoolTimetable>(filter, None).await?;
 
         match item {
@@ -193,7 +208,7 @@ impl SchoolTimetableService {
     // -------------------------------------------------------------------------
     pub async fn delete_timetable(&self, id: &IdType) -> Result<SchoolTimetable, AppError> {
         let base = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        let existing = self.find_one_by_id(id).await?;
+        let existing = self.find_one(Some(&id), None).await?;
         base.delete_one(id).await?;
         Ok(existing)
     }

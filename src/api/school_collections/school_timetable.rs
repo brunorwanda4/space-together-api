@@ -11,6 +11,7 @@ use crate::{
         education_year_service::EducationYearService, event_service::EventService,
         school_timetable_service::SchoolTimetableService,
     },
+    utils::api_utils::build_extra_match,
 };
 
 /// ==========================================================================
@@ -66,7 +67,40 @@ async fn get_timetable_by_id(
     let service = SchoolTimetableService::new(&db);
 
     let id = IdType::from_string(path.into_inner());
-    match service.find_one_by_id(&id).await {
+
+    match service.find_one(Some(&id), None).await {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+/// ==========================================================================
+/// GET /school-timetables/flied
+/// ==========================================================================
+#[get("/flied")]
+async fn get_timetable_by_flied(
+    state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
+    req: HttpRequest,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(cl) => cl.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let db = state.db.get_db(&claims.database_name);
+    let service = SchoolTimetableService::new(&db);
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service.find_one(None, extra_match).await {
         Ok(data) => HttpResponse::Ok().json(data),
         Err(err) => HttpResponse::NotFound().json(err),
     }
@@ -263,7 +297,7 @@ async fn delete_timetable(
     let service = SchoolTimetableService::new(&db);
 
     let id = IdType::from_string(path.into_inner());
-    let before = service.find_one_by_id(&id).await.ok();
+    let before = service.find_one(Some(&id), None).await.ok();
 
     match service.delete_timetable(&id).await {
         Ok(res) => {
@@ -355,6 +389,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/school/timetables")
             .wrap(crate::middleware::school_token_middleware::SchoolTokenMiddleware)
             .service(get_all_timetables)
+            .service(get_current_timetable)
+            .service(get_timetable_by_flied)
             .service(get_timetable_by_id)
             .service(get_by_school_and_academic_year)
             .service(create_timetable)
