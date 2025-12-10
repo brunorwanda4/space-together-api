@@ -388,9 +388,9 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/school/timetables")
             .wrap(crate::middleware::school_token_middleware::SchoolTokenMiddleware)
+            .service(get_timetable_by_flied)
             .service(get_all_timetables)
             .service(get_current_timetable)
-            .service(get_timetable_by_flied)
             .service(get_timetable_by_id)
             .service(get_by_school_and_academic_year)
             .service(create_timetable)
