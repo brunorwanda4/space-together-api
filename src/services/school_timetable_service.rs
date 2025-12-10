@@ -9,7 +9,7 @@ use crate::{
         DailySchoolSchedule, SchoolTimetable, SchoolTimetablePartial, TimeBlock,
     },
     errors::AppError,
-    models::id_model::IdType,
+    models::{id_model::IdType, mongo_model::IndexDef},
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
 };
@@ -25,10 +25,42 @@ impl SchoolTimetableService {
         }
     }
 
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let indexes = vec![
+            // Core timetable identifiers
+            IndexDef::compound(
+                vec![("school_id", 1), ("academic_year_id", 1)],
+                true, // unique: one timetable per school per year
+            ),
+            IndexDef::single("school_id", false),
+            IndexDef::single("academic_year_id", false),
+            // Overrides
+            IndexDef::single("overrides.r#type", false),
+            IndexDef::single("overrides.applies_to", false), // multikey
+            IndexDef::compound(
+                vec![("overrides.r#type", 1), ("overrides.applies_to", 1)],
+                false,
+            ),
+            // Events
+            IndexDef::single("events.event_id", true), // unique
+            IndexDef::compound(
+                vec![("events.start_date", 1), ("events.end_date", 1)],
+                false,
+            ),
+        ];
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        let _ = repo.ensure_indexes(&indexes).await?;
+
+        Ok(())
+    }
+
     // -------------------------------------------------------------------------
     // 1. CREATE
     // -------------------------------------------------------------------------
     pub async fn create(&self, dto: SchoolTimetable) -> Result<SchoolTimetable, AppError> {
+        self.ensure_indexes().await?;
+
         // Check uniqueness for (school_id + academic_year_id)
         if let Ok(_) = self
             .find_by_school_and_academic_year(&dto.school_id, &dto.academic_year_id)

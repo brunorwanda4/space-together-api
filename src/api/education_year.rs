@@ -38,6 +38,21 @@ async fn get_all_education_years(
 }
 
 /// ------------------------------------------------------
+/// GET /education-years/current
+/// ------------------------------------------------------
+#[get("/current")]
+async fn get_current_education_years(state: web::Data<AppState>) -> impl Responder {
+    let service = EducationYearService::new(&state.db.main_db());
+
+    let req_result = service.get_current_year_and_term(None).await;
+
+    match req_result {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
 /// GET /education-years/others
 /// ------------------------------------------------------
 #[get("/others")]
@@ -240,6 +255,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/education-years")
             .service(get_all_education_years)
             .service(get_all_education_years_with_relations)
+            .service(get_current_education_years)
             .service(get_education_year_by_id)
             .service(get_education_year_by_id_with_relations)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

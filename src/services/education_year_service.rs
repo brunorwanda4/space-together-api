@@ -244,30 +244,23 @@ impl EducationYearService {
     ) -> Result<(EducationYear, Option<Term>), AppError> {
         let target_date = date.unwrap_or_else(Utc::now);
 
-        // 1. Find year
         let match_doc = doc! {
             "start_date": { "$lte": bson::to_bson(&target_date).unwrap() },
-            "end_date": { "$gte": bson::to_bson(&target_date).unwrap() }
+            "end_date":   { "$gte": bson::to_bson(&target_date).unwrap() }
         };
 
         let year_paginated = self
             .get_all(None, Some(1), Some(0), Some(match_doc))
             .await?;
 
-        let year = match year_paginated.data.into_iter().next() {
-            Some(y) => y,
-            None => {
-                return Err(AppError {
-                    message: "No active education year found for this date".to_string(),
-                })
-            }
-        };
+        let year = year_paginated.data.into_iter().next().ok_or(AppError {
+            message: "No active education year found for this date".to_string(),
+        })?;
 
-        // 2. Find term within the year
         let current_term = year
             .terms
             .iter()
-            .find(|term| term.start_date <= target_date && term.end_date >= target_date)
+            .find(|t| t.start_date <= target_date && t.end_date >= target_date)
             .cloned();
 
         Ok((year, current_term))

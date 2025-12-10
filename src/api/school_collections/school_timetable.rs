@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
-use mongodb::bson::doc;
+use mongodb::bson::{doc, oid::ObjectId};
 
 use crate::{
     config::state::AppState,
@@ -9,7 +11,6 @@ use crate::{
         education_year_service::EducationYearService, event_service::EventService,
         school_timetable_service::SchoolTimetableService,
     },
-    utils::api_utils::build_extra_match,
 };
 
 /// ==========================================================================
@@ -39,44 +40,6 @@ async fn get_all_timetables(
         .await
     {
         Ok(data) => HttpResponse::Ok().json(data),
-        Err(err) => HttpResponse::BadRequest().json(err),
-    }
-}
-
-/// ==========================================================================
-/// GET /school-timetables/others
-/// ==========================================================================
-#[get("/others")]
-async fn get_all_timetables_with_others(
-    query: web::Query<RequestQuery>,
-    state: web::Data<AppState>,
-    req: HttpRequest,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(c) => c.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let db = state.db.get_db(&claims.database_name);
-    let service = SchoolTimetableService::new(&db);
-
-    let extra_match = match build_extra_match(&query.field, &query.value) {
-        Ok(doc) => doc,
-        Err(err) => return err,
-    };
-
-    match service
-        .get_all(query.filter.clone(), query.limit, query.skip)
-        .await
-    {
-        Ok(data) => HttpResponse::Ok().json(serde_json::json!({
-            "data": data,
-            "extra": extra_match
-        })),
         Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
@@ -143,6 +106,48 @@ async fn get_by_school_and_academic_year(
         HttpResponse::BadRequest().json(serde_json::json!({
             "message": "Invalid IDs provided"
         }))
+    }
+}
+
+/// ==========================================================================
+/// GET /school/timetables/current
+/// ==========================================================================
+#[get("/current")]
+async fn get_current_timetable(state: web::Data<AppState>, req: HttpRequest) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(c) => c.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    let db = state.db.get_db(&claims.database_name);
+    let service = SchoolTimetableService::new(&db);
+    let education_year_service = EducationYearService::new(&state.db.main_db());
+
+    // FIX 2: No `?` with HttpResponse
+    let (education_year, _term_info) =
+        match education_year_service.get_current_year_and_term(None).await {
+            Ok(v) => v,
+            Err(e) => return HttpResponse::BadRequest().json(e),
+        };
+
+    // FIX 1: Convert IdType -> ObjectId
+    let school_id = match ObjectId::from_str(&claims.id) {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().json("Invalid school ID"),
+    };
+
+    let education_year_id = education_year.id.unwrap();
+
+    match service
+        .find_by_school_and_academic_year(&school_id, &education_year_id)
+        .await
+    {
+        Ok(timetable) => HttpResponse::Ok().json(timetable),
+        Err(err) => HttpResponse::NotFound().json(err),
     }
 }
 
@@ -301,13 +306,15 @@ async fn generate_timetable(
         }
     };
 
-    let service = SchoolTimetableService::new(&state.db.main_db());
+    let school_db = state.db.get_db(&school_claims.database_name);
+    let service = SchoolTimetableService::new(&school_db);
     let education_year_service = EducationYearService::new(&state.db.main_db());
 
-    let (education_year, _term_info) = education_year_service
-        .get_current_year_and_term(None)
-        .await
-        .map_err(|e| actix_web::error::ErrorBadRequest(e))?;
+    let (education_year, _term_info) =
+        match education_year_service.get_current_year_and_term(None).await {
+            Ok(v) => v,
+            Err(e) => return Ok(HttpResponse::BadRequest().json(e)),
+        };
 
     let education_year_id = IdType::from_object_id(education_year.id.unwrap());
     let school_id = IdType::from_string(school_claims.id);
@@ -348,7 +355,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
         web::scope("/school/timetables")
             .wrap(crate::middleware::school_token_middleware::SchoolTokenMiddleware)
             .service(get_all_timetables)
-            .service(get_all_timetables_with_others)
             .service(get_timetable_by_id)
             .service(get_by_school_and_academic_year)
             .service(create_timetable)
