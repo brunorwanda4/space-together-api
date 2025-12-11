@@ -67,10 +67,7 @@ impl SchoolTimetableService {
             .await
         {
             return Err(AppError {
-                message: format!(
-                    "School timetable for academic year {} already exists",
-                    dto.academic_year_id
-                ),
+                message: format!("School timetable for academic year  already exists"),
             });
         }
 
@@ -127,7 +124,7 @@ impl SchoolTimetableService {
     pub async fn find_by_school_and_academic_year(
         &self,
         school_id: &ObjectId,
-        academic_year_id: &ObjectId,
+        academic_year_id: &Option<ObjectId>,
     ) -> Result<SchoolTimetable, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
@@ -179,8 +176,10 @@ impl SchoolTimetableService {
         let obj_id = IdType::to_object_id(id)?;
 
         // Conflict check logic stays the same...
-        if let (Some(sid), Some(ayid)) = (dto.school_id, &dto.academic_year_id) {
-            if let Ok(existing) = self.find_by_school_and_academic_year(&sid, ayid).await {
+        if let (Some(sid), Some(ayid)) = (dto.school_id.as_ref(), dto.academic_year_id.as_ref()) {
+            // sid: &ObjectId
+            // ayid: &ObjectId
+            if let Ok(existing) = self.find_by_school_and_academic_year(sid, ayid).await {
                 if existing.id != Some(obj_id) {
                     return Err(AppError {
                         message: "Timetable for this academic year already exists".into(),
@@ -188,6 +187,7 @@ impl SchoolTimetableService {
                 }
             }
         }
+
         // -----------------------------------------
         // Continue with update
         // -----------------------------------------
@@ -271,7 +271,7 @@ impl SchoolTimetableService {
         let timetable = SchoolTimetable {
             id: None,
             school_id: school_obj,
-            academic_year_id: year_obj,
+            academic_year_id: Some(year_obj),
             default_weekly_schedule: weekly,
             overrides: Some(vec![]),
             events: Some(vec![]),

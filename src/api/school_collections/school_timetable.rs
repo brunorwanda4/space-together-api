@@ -132,7 +132,10 @@ async fn get_by_school_and_academic_year(
     let academic_year_id = IdType::to_object_id(&IdType::from_string(year_id_str));
 
     if let (Ok(sid), Ok(ayid)) = (school_id, academic_year_id) {
-        match service.find_by_school_and_academic_year(&sid, &ayid).await {
+        match service
+            .find_by_school_and_academic_year(&sid, &Some(ayid))
+            .await
+        {
             Ok(data) => HttpResponse::Ok().json(data),
             Err(err) => HttpResponse::NotFound().json(err),
         }
@@ -174,10 +177,8 @@ async fn get_current_timetable(state: web::Data<AppState>, req: HttpRequest) -> 
         Err(_) => return HttpResponse::BadRequest().json("Invalid school ID"),
     };
 
-    let education_year_id = education_year.id.unwrap();
-
     match service
-        .find_by_school_and_academic_year(&school_id, &education_year_id)
+        .find_by_school_and_academic_year(&school_id, &education_year.id)
         .await
     {
         Ok(timetable) => HttpResponse::Ok().json(timetable),

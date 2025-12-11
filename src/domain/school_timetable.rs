@@ -118,10 +118,12 @@ pub struct SchoolTimetable {
     pub school_id: ObjectId,
 
     #[serde(
-        serialize_with = "object_id_helpers::serialize_oid",
-        deserialize_with = "object_id_helpers::deserialize_oid"
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
     )]
-    pub academic_year_id: ObjectId,
+    pub academic_year_id: Option<ObjectId>,
 
     pub default_weekly_schedule: Vec<DailySchoolSchedule>,
 
