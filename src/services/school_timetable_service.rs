@@ -241,7 +241,7 @@ impl SchoolTimetableService {
                 is_school_day: true,
                 school_start_time: "08:30".into(),
                 school_end_time: "17:00".into(),
-                study_start_time: "09:30".into(),
+                study_start_time: "09:00".into(),
                 study_end_time: "17:00".into(),
                 breaks: vec![
                     TimeBlock {
