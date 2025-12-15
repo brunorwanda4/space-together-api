@@ -6,6 +6,7 @@ use std::fmt;
 use crate::{
     domain::{class::Class, common_details::Gender, school::School, subject::Subject, user::User},
     helpers::object_id_helpers,
+    make_partial,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -16,7 +17,7 @@ pub enum TeacherType {
     SubjectTeacher, // Handles specific subjects
     Deputy,         // Assistant or deputy teacher
 }
-
+make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Teacher {
     #[serde(
@@ -89,22 +90,7 @@ pub struct Teacher {
 
     #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize, Default, Serialize, Clone)]
-pub struct UpdateTeacher {
-    pub name: Option<String>,
-    pub user_id: Option<ObjectId>,
-    pub email: Option<String>,
-    pub phone: Option<String>,
-    pub image: Option<String>,
-    pub image_id: Option<String>,
-    pub gender: Option<Gender>,
-    pub r#type: Option<TeacherType>,
-    pub class_ids: Option<Vec<ObjectId>>,
-    pub subject_ids: Option<Vec<ObjectId>>,
-    pub is_active: Option<bool>,
-    pub tags: Option<Vec<String>>,
+} =>UpdateTeacher
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

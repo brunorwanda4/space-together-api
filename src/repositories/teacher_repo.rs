@@ -5,18 +5,18 @@ use crate::domain::teacher::{
 };
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
-use crate::helpers::repo_helpers::safe_create_index;
 use crate::models::id_model::IdType;
+use crate::models::mongo_model::IndexDef;
 use crate::pipeline::teacher_pipeline::teacher_with_relations_pipeline;
 use crate::repositories::base_repo::BaseRepository;
+use crate::utils::mongo_utils::extract_valid_fields;
 use crate::utils::object_id::parse_object_id;
 
 use chrono::Utc;
 use futures::StreamExt;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
-    options::IndexOptions,
-    Collection, Database, IndexModel,
+    Collection, Database,
 };
 
 pub struct TeacherRepo {
@@ -324,88 +324,29 @@ impl TeacherRepo {
     }
 
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
-        // Define all indexes
-        let email_index = IndexModel::builder()
-            .keys(doc! { "email": 1 })
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
+        let indexes = vec![
+            IndexDef::single("email", true),
+            IndexDef::single("user_id", true),
+            IndexDef::single("school_id", false),
+            IndexDef::single("class_ids", false),
+            IndexDef::single("subject_ids", false),
+            IndexDef::single("creator_id", false),
+            IndexDef::single("type", false),
+            IndexDef::single("is_active", false),
+            /* --------------------------------
+               Compound indexes
+            ----------------------------------*/
+            // school + type
+            IndexDef::compound(vec![("school_id", 1), ("type", 1)], false),
+            // school + is_active
+            IndexDef::compound(vec![("school_id", 1), ("is_active", 1)], false),
+            // class_ids + subject_ids
+            IndexDef::compound(vec![("class_ids", 1), ("subject_ids", 1)], false),
+        ];
 
-        let user_id_index = IndexModel::builder()
-            .keys(doc! { "user_id": 1 })
-            .options(
-                IndexOptions::builder()
-                    .unique(true)
-                    // ✅ FIX: remove unsupported $ne:null
-                    .partial_filter_expression(doc! { "user_id": { "$type": "objectId" } })
-                    .build(),
-            )
-            .build();
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let school_index = IndexModel::builder()
-            .keys(doc! { "school_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let class_ids_index = IndexModel::builder()
-            .keys(doc! { "class_ids": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let subject_ids_index = IndexModel::builder()
-            .keys(doc! { "subject_ids": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let creator_index = IndexModel::builder()
-            .keys(doc! { "creator_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let type_index = IndexModel::builder()
-            .keys(doc! { "type": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let is_active_index = IndexModel::builder()
-            .keys(doc! { "is_active": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let school_type_index = IndexModel::builder()
-            .keys(doc! { "school_id": 1, "type": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let school_active_index = IndexModel::builder()
-            .keys(doc! { "school_id": 1, "is_active": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let class_subject_index = IndexModel::builder()
-            .keys(doc! { "class_ids": 1, "subject_ids": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        // Create a collection handle with type Document
-        let doc_collection = self.collection.clone_with_type::<Document>();
-
-        // Create all indexes safely
-        safe_create_index(&doc_collection, email_index, "email").await?;
-        safe_create_index(&doc_collection, user_id_index, "user_id").await?;
-        safe_create_index(&doc_collection, school_index, "school_id").await?;
-        safe_create_index(&doc_collection, class_ids_index, "class_ids").await?;
-        safe_create_index(&doc_collection, subject_ids_index, "subject_ids").await?;
-        safe_create_index(&doc_collection, creator_index, "creator_id").await?;
-        safe_create_index(&doc_collection, type_index, "type").await?;
-        safe_create_index(&doc_collection, is_active_index, "is_active").await?;
-        safe_create_index(&doc_collection, school_type_index, "school_id+type").await?;
-        safe_create_index(&doc_collection, school_active_index, "school_id+is_active").await?;
-        safe_create_index(
-            &doc_collection,
-            class_subject_index,
-            "class_ids+subject_ids",
-        )
-        .await?;
+        repo.ensure_indexes(&indexes).await?;
 
         Ok(())
     }
@@ -418,7 +359,15 @@ impl TeacherRepo {
         extra_filter: Option<Document>, // Additional conditions like is_active
     ) -> Result<PaginatedTeachers, AppError> {
         let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        let searchable_fields = ["name", "email", "phone", "tags", "gender"];
+        let searchable_fields = [
+            "name",
+            "email",
+            "phone",
+            "tags",
+            "gender",
+            "_id",
+            "school_id",
+        ];
 
         let (teachers, total, total_pages, current_page) = base_repo
             .get_all::<Teacher>(filter, &searchable_fields, limit, skip, extra_filter)
@@ -454,85 +403,21 @@ impl TeacherRepo {
         id: &IdType,
         update: &UpdateTeacher,
     ) -> Result<Teacher, AppError> {
-        let obj_id = parse_object_id(id)?;
+        let full_doc = bson::to_document(update).map_err(|e| AppError {
+            message: format!("Failed to serialize update: {}", e),
+        })?;
 
         // Create update document manually to handle Option fields
-        let mut update_doc = Document::new();
+        let update_doc = extract_valid_fields(full_doc);
 
-        if let Some(name) = &update.name {
-            update_doc.insert("name", name);
-        }
-        if let Some(email) = &update.email {
-            update_doc.insert("email", email);
-        }
-        if let Some(phone) = &update.phone {
-            update_doc.insert("phone", phone);
-        }
-        if let Some(gender) = &update.gender {
-            update_doc.insert("gender", gender.to_string());
-        }
-        if let Some(image) = &update.image {
-            update_doc.insert("image", image.to_string());
-        }
-        if let Some(image_id) = &update.image_id {
-            update_doc.insert("image_id", image_id.to_string());
-        }
-        if let Some(teacher_type) = &update.r#type {
-            update_doc.insert(
-                "type",
-                bson::to_bson(teacher_type).map_err(|e| AppError {
-                    message: format!("Failed to serialize teacher type: {}", e),
-                })?,
-            );
-        }
-        if let Some(class_ids) = &update.class_ids {
-            update_doc.insert("class_ids", class_ids);
-        }
-        if let Some(subject_ids) = &update.subject_ids {
-            update_doc.insert("subject_ids", subject_ids);
-        }
-        if let Some(is_active) = update.is_active {
-            update_doc.insert("is_active", is_active);
-        }
-        if let Some(tags) = &update.tags {
-            update_doc.insert("tags", tags);
-        }
-        if let Some(user_id) = &update.user_id {
-            update_doc.insert("user_id", user_id);
-        }
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
-
-        let update_doc = doc! { "$set": update_doc };
-
-        self.collection
-            .update_one(doc! { "_id": obj_id }, update_doc)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to update teacher: {}", e),
-            })?;
-
-        self.find_by_id(id).await?.ok_or(AppError {
-            message: "Teacher not found after update".to_string(),
-        })
+        repo.update_one_and_fetch::<Teacher>(id, update_doc).await
     }
 
     pub async fn delete_teacher(&self, id: &IdType) -> Result<(), AppError> {
-        let obj_id = parse_object_id(id)?;
-        let result = self
-            .collection
-            .delete_one(doc! { "_id": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to delete teacher: {}", e),
-            })?;
-
-        if result.deleted_count == 0 {
-            return Err(AppError {
-                message: "No teacher deleted; it may not exist".to_string(),
-            });
-        }
-        Ok(())
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.delete_one(id).await
     }
 
     pub async fn count_by_school_id(

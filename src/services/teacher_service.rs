@@ -7,15 +7,16 @@ use crate::{
             PrepareTeacherRequest, Teacher, TeacherType, TeacherWithRelations, UpdateTeacher,
         },
     },
+    errors::AppError,
     helpers::object_id_helpers::parse_object_id,
-    models::id_model::IdType,
-    repositories::teacher_repo::TeacherRepo,
+    models::{id_model::IdType, mongo_model::CountDoc},
+    repositories::{base_repo::BaseRepository, teacher_repo::TeacherRepo},
     services::{cloudinary_service::CloudinaryService, event_service::EventService},
     utils::{email::is_valid_email, names::is_valid_name},
 };
 use actix_web::web;
 use chrono::Utc;
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{oid::ObjectId, Document};
 
 pub struct TeacherService<'a> {
     repo: &'a TeacherRepo,
@@ -305,16 +306,17 @@ impl<'a> TeacherService<'a> {
 
         // ☁️ Replace profile image
         if let Some(new_image_data) = updated_data.image.clone() {
-            if Some(new_image_data.clone()) != existing_teacher.image {
+            if Some(new_image_data.clone()) != Some(existing_teacher.image) {
                 if let Some(old_image_id) = existing_teacher.image_id.clone() {
                     CloudinaryService::delete_from_cloudinary(&old_image_id)
                         .await
                         .ok();
                 }
-
-                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data).await?;
-                updated_data.image_id = Some(cloud_res.public_id);
-                updated_data.image = Some(cloud_res.secure_url);
+                if let Some(new_img_data) = new_image_data {
+                    let cloud_res = CloudinaryService::upload_to_cloudinary(&new_img_data).await?;
+                    updated_data.image_id = Some(Some(cloud_res.public_id));
+                    updated_data.image = Some(Some(cloud_res.secure_url));
+                }
             }
         }
 
@@ -781,5 +783,28 @@ impl<'a> TeacherService<'a> {
         }
 
         Ok(stats)
+    }
+
+    pub async fn count_teachers(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let base_repo =
+            BaseRepository::new(self.repo.collection.clone().clone_with_type::<Document>());
+
+        let searchable = [
+            "name",
+            "email",
+            "phone",
+            "tags",
+            "gender",
+            "_id",
+            "school_id",
+        ];
+
+        let total = base_repo.count(filter, &searchable, extra_match).await?;
+
+        Ok(total)
     }
 }

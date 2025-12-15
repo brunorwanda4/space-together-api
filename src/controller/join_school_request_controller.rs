@@ -500,23 +500,23 @@ impl<'a> JoinSchoolRequestController<'a> {
                                 },
                                 email: None,
                                 phone: if existing_teacher.phone.is_none() {
-                                    user.phone.clone()
+                                    Some(user.phone.clone())
                                 } else {
                                     None
                                 },
                                 image: if existing_teacher.image.is_none() {
-                                    user.image.clone()
+                                    Some(user.image.clone())
                                 } else {
                                     None
                                 },
                                 image_id: if existing_teacher.image_id.is_none() {
-                                    user.image_id.clone()
+                                    Some(user.image_id.clone())
                                 } else {
                                     None
                                 },
-                                user_id: user.id,
+                                user_id: Some(user.id),
                                 gender: if existing_teacher.gender.is_none() {
-                                    user.gender.clone()
+                                    Some(user.gender.clone())
                                 } else {
                                     None
                                 },
@@ -528,6 +528,11 @@ impl<'a> JoinSchoolRequestController<'a> {
                                 class_ids: None,
                                 subject_ids: None,
                                 is_active: None,
+                                id: None,
+                                school_id: None,
+                                creator_id: None,
+                                created_at: None,
+                                updated_at: None,
                                 tags: if existing_teacher.tags.is_empty() {
                                     Some(vec!["join-request".to_string()])
                                 } else {

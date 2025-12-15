@@ -775,7 +775,16 @@ impl<'a> StudentService<'a> {
         let base_repo =
             BaseRepository::new(self.repo.collection.clone().clone_with_type::<Document>());
 
-        let searchable = ["first_name", "last_name", "email", "student_code", "_id"];
+        let searchable = [
+            "name",
+            "email",
+            "registration_number",
+            "tags",
+            "gender",
+            "school_id",
+            "class_id",
+            "national_id",
+        ];
 
         let total = base_repo.count(filter, &searchable, extra_match).await?;
 

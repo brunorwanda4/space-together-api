@@ -30,6 +30,7 @@ use crate::{
         subject_service::SubjectService, teacher_service::TeacherService,
         user_service::UserService,
     },
+    utils::api_utils::build_extra_match,
 };
 
 // Helper function to create TeacherController
@@ -1493,6 +1494,42 @@ async fn update_many_teachers(
     }
 }
 
+#[get("/count")]
+async fn count_teachers_fields(
+    req: actix_web::HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    // ===== SCHOOL DB =====
+    let school_db = state.db.get_db(&claims.database_name);
+    let repo = TeacherRepo::new(&school_db);
+    let service = TeacherService::new(&repo);
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .count_teachers(query.filter.clone(), extra_match)
+        .await
+    {
+        Ok(total) => HttpResponse::Ok().json(serde_json::json!({
+            "total": total
+        })),
+        Err(message) => HttpResponse::BadRequest().json(message),
+    }
+}
+
 // Single-database operations (keep using TeacherService)
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -1510,6 +1547,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_teachers_by_class_id) // GET    /school/teachers/class/{class_id} - Get teachers by class ID
             .service(get_teachers_by_subject_id) // GET    /school/teachers/subject/{subject_id} - Get teachers by subject ID
             // Teacher Listing & Retrieval (Cross Database - with relations)
+            .service(count_teachers_fields) // GET    /school/teachers/count - Count teachers with optional filters
             .service(get_all_teachers_with_relations) // GET    /school/teachers/with-relations - Get all teachers with user/school relations
             .service(get_teacher_by_id_with_relations) // GET    /school/teachers/{id}/with-relations - Get teacher by ID with full relations
             .service(get_teacher_by_user_id_with_relations) // GET    /school/teachers/user/{user_id}/with-relations - Get teacher by user ID with relations
