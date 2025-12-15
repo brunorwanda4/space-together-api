@@ -10,7 +10,7 @@ use crate::{
         auth_user::AuthUserDto,
         class::{Class, ClassLevelType, ClassType},
         class_subject::ClassSubject,
-        school::{SchoolAcademicRequest, SchoolAcademicResponse},
+        school::{SchoolAcademicRequest, SchoolAcademicResponse, UpdateSchool},
     },
     models::id_model::IdType,
     repositories::{
@@ -53,9 +53,39 @@ impl<'a> SchoolController<'a> {
         state: web::Data<AppState>,
         logged_user: AuthUserDto,
     ) -> Result<SchoolAcademicResponse, String> {
+        let school_data = UpdateSchool {
+            curriculum: req.sector_ids.clone(),
+            education_level: req.trade_ids.clone(),
+            username: None,
+            logo: None,
+            logo_id: None,
+            name: None,
+            code: None,
+            description: None,
+            school_type: None,
+            accreditation_number: None,
+            affiliation: None,
+            school_members: None,
+            address: None,
+            contact: None,
+            website: None,
+            social_media: None,
+            student_capacity: None,
+            uniform_required: None,
+            attendance_system: None,
+            scholarship_available: None,
+            classrooms: None,
+            library: None,
+            labs: None,
+            sports_extracurricular: None,
+            online_classes: None,
+            database_name: None,
+            is_active: None,
+            updated_at: None,
+        };
         // Init school service
         let school_service = SchoolService::new(self.school_repo);
-        let school = school_service.get_school_by_id(school_id).await?;
+        let school = school_service.update_school(school_id, school_data).await?;
 
         // Validate DB
         let school_db_name = school

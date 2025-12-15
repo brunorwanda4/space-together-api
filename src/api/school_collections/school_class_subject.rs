@@ -30,8 +30,13 @@ async fn get_all_class_subjects(
 
     let service = ClassSubjectService::new(&school_db);
 
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
     match service
-        .get_all(query.filter.clone(), query.limit, query.skip, None)
+        .get_all(query.filter.clone(), query.limit, query.skip, extra_match)
         .await
     {
         Ok(data) => HttpResponse::Ok().json(data),

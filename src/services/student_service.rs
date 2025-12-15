@@ -3,19 +3,20 @@ use crate::{
     domain::{
         common_details::Gender,
         student::{
-            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PaginatedStudents, Student,
-            StudentStatus, StudentWithRelations, UpdateStudent,
+            BulkStudentIds, BulkUpdateStudentStatus, PaginatedStudents, Student, StudentStatus,
+            StudentWithRelations, UpdateStudent,
         },
     },
+    errors::AppError,
     helpers::object_id_helpers::parse_object_id,
-    models::id_model::IdType,
-    repositories::student_repo::StudentRepo,
+    models::{id_model::IdType, mongo_model::CountDoc},
+    repositories::{base_repo::BaseRepository, student_repo::StudentRepo},
     services::{cloudinary_service::CloudinaryService, event_service::EventService},
     utils::{email::is_valid_email, names::is_valid_name},
 };
 use actix_web::web;
 use chrono::Utc;
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{oid::ObjectId, Document};
 
 pub struct StudentService<'a> {
     repo: &'a StudentRepo,
@@ -554,31 +555,6 @@ impl<'a> StudentService<'a> {
         Ok(updated_students)
     }
 
-    /// Bulk add tags to multiple students
-    pub async fn bulk_add_tags(&self, request: &BulkStudentTags) -> Result<Vec<Student>, String> {
-        let updated_students = self
-            .repo
-            .bulk_add_tags(request)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(updated_students)
-    }
-
-    /// Bulk remove tags from multiple students
-    pub async fn bulk_remove_tags(
-        &self,
-        request: &BulkStudentTags,
-    ) -> Result<Vec<Student>, String> {
-        let updated_students = self
-            .repo
-            .bulk_remove_tags(request)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(updated_students)
-    }
-
     /// Delete multiple students
     pub async fn delete_many_students(&self, request: &BulkStudentIds) -> Result<u64, String> {
         self.repo
@@ -789,5 +765,20 @@ impl<'a> StudentService<'a> {
         }
 
         Ok(stats)
+    }
+
+    pub async fn count_students(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let base_repo =
+            BaseRepository::new(self.repo.collection.clone().clone_with_type::<Document>());
+
+        let searchable = ["first_name", "last_name", "email", "student_code", "_id"];
+
+        let total = base_repo.count(filter, &searchable, extra_match).await?;
+
+        Ok(total)
     }
 }

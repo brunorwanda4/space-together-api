@@ -137,12 +137,6 @@ pub struct BulkUpdateStudentStatus {
     pub status: StudentStatus,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BulkStudentTags {
-    pub ids: Vec<String>,
-    pub tags: Vec<String>,
-}
-
 #[derive(Deserialize)]
 pub struct StudentCountQuery {
     pub gender: Option<Gender>,

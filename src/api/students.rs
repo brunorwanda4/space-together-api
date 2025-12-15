@@ -5,8 +5,8 @@ use crate::{
     domain::{
         auth_user::AuthUserDto,
         student::{
-            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, Student, StudentCountQuery,
-            StudentStatus, UpdateStudent,
+            BulkStudentIds, BulkUpdateStudentStatus, Student, StudentCountQuery, StudentStatus,
+            UpdateStudent,
         },
     },
     guards::role_guard,
@@ -646,88 +646,6 @@ async fn bulk_update_student_status(
     }
 }
 
-/// Bulk add tags to multiple students
-#[put("/bulk/add-tags")]
-async fn bulk_add_tags_to_students(
-    user: web::ReqData<AuthUserDto>,
-    data: web::Json<BulkStudentTags>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let logged_user = user.into_inner();
-
-    if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
-        return HttpResponse::Forbidden().json(serde_json::json!({ "message": err.to_string() }));
-    }
-
-    let repo = StudentRepo::new(&state.db.main_db());
-    let service = StudentService::new(&repo);
-
-    match service.bulk_add_tags(&data.into_inner()).await {
-        Ok(students) => {
-            let state_clone = state.clone();
-            let students_for_spawn = students.clone();
-
-            actix_rt::spawn(async move {
-                for student in &students_for_spawn {
-                    if let Some(id) = student.id {
-                        EventService::broadcast_updated(
-                            &state_clone,
-                            "student",
-                            &id.to_hex(),
-                            student,
-                        )
-                        .await;
-                    }
-                }
-            });
-
-            HttpResponse::Ok().json(students)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Bulk remove tags from multiple students
-#[put("/bulk/remove-tags")]
-async fn bulk_remove_tags_from_students(
-    user: web::ReqData<AuthUserDto>,
-    data: web::Json<BulkStudentTags>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let logged_user = user.into_inner();
-
-    if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
-        return HttpResponse::Forbidden().json(serde_json::json!({ "message": err.to_string() }));
-    }
-
-    let repo = StudentRepo::new(&state.db.main_db());
-    let service = StudentService::new(&repo);
-
-    match service.bulk_remove_tags(&data.into_inner()).await {
-        Ok(students) => {
-            let state_clone = state.clone();
-            let students_for_spawn = students.clone();
-
-            actix_rt::spawn(async move {
-                for student in &students_for_spawn {
-                    if let Some(id) = student.id {
-                        EventService::broadcast_updated(
-                            &state_clone,
-                            "student",
-                            &id.to_hex(),
-                            student,
-                        )
-                        .await;
-                    }
-                }
-            });
-
-            HttpResponse::Ok().json(students)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 /// Delete multiple students
 #[delete("/bulk")]
 async fn delete_many_students(
@@ -1036,8 +954,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(create_many_students) // POST /students/bulk - Create multiple students
             .service(update_many_students) // PUT /students/bulk - Update multiple students
             .service(bulk_update_student_status) // PUT /students/bulk/status - Bulk update status for multiple students
-            .service(bulk_add_tags_to_students) // PUT /students/bulk/add-tags - Bulk add tags to multiple students
-            .service(bulk_remove_tags_from_students) // PUT /students/bulk/remove-tags - Bulk remove tags from multiple students
             .service(transfer_students_to_class) // PUT /students/bulk/transfer-class - Transfer students to another class
             .service(delete_many_students), // DELETE /students/bulk - Delete multiple students by IDs
     );

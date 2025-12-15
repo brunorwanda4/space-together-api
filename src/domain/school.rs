@@ -77,7 +77,7 @@ pub struct School {
         deserialize_with = "object_id_helpers::deserialize_opt_vec",
         default
     )]
-    pub education_level: Option<Vec<ObjectId>>, // e.g. primary, secondary, university
+    pub education_level: Option<Vec<ObjectId>>, // e.g. primary, secondary,
     pub accreditation_number: Option<String>,
     pub affiliation: Option<AffiliationType>,
 

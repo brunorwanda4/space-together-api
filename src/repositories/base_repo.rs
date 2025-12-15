@@ -2,7 +2,10 @@ use crate::{
     domain::common_details::Paginated,
     errors::AppError,
     helpers::repo_helpers::debug_deserialize_error,
-    models::{id_model::IdType, mongo_model::IndexDef},
+    models::{
+        id_model::IdType,
+        mongo_model::{CountDoc, IndexDef},
+    },
 };
 use futures::TryStreamExt;
 use mongodb::{
@@ -534,5 +537,52 @@ impl BaseRepository {
         } else {
             Ok(None)
         }
+    }
+
+    /// Count total documents matching filters
+    pub async fn count(
+        &self,
+        filter: Option<String>,
+        searchable_fields: &[&str],
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        // ===== BUILD MATCH =====
+        let mut match_stage = if let Some(f) = filter {
+            let regex = doc! {
+                "$regex": f,
+                "$options": "i"
+            };
+
+            let or_conditions: Vec<Document> = searchable_fields
+                .iter()
+                .map(|field| doc! { *field: &regex })
+                .collect();
+
+            doc! { "$or": or_conditions }
+        } else {
+            doc! {}
+        };
+
+        // ===== MERGE EXTRA MATCH =====
+        if let Some(extra) = extra_match {
+            if !extra.is_empty() {
+                match_stage = if match_stage.is_empty() {
+                    extra
+                } else {
+                    doc! { "$and": [match_stage, extra] }
+                };
+            }
+        }
+
+        // ===== EXECUTE COUNT =====
+        let total = self
+            .collection
+            .count_documents(match_stage)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to count documents: {}", e),
+            })?;
+
+        Ok(CountDoc { count: total })
     }
 }

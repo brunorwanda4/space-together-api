@@ -1,7 +1,8 @@
 use crate::{
     domain::school::{School, SchoolStats, UpdateSchool},
+    errors::AppError,
     mappers::school_mapper::to_school_school_token,
-    models::id_model::IdType,
+    models::{id_model::IdType, mongo_model::MongoFields},
     repositories::school_repo::SchoolRepo,
     services::cloudinary_service::CloudinaryService,
     utils::{
@@ -12,7 +13,7 @@ use crate::{
     },
 };
 use chrono::Utc;
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{doc, oid::ObjectId, Document};
 
 pub struct SchoolService<'a> {
     repo: &'a SchoolRepo,
@@ -173,14 +174,16 @@ impl<'a> SchoolService<'a> {
 
         // Handle logo update if provided
         if let Some(ref new_logo) = updated_data.logo {
-            if let Some(old_logo_id) = merged_school.logo_id.clone() {
-                CloudinaryService::delete_from_cloudinary(&old_logo_id)
-                    .await
-                    .ok();
+            if Some(new_logo.clone()) != merged_school.logo {
+                if let Some(old_logo_id) = merged_school.logo_id.clone() {
+                    CloudinaryService::delete_from_cloudinary(&old_logo_id)
+                        .await
+                        .ok();
+                }
+                let cloud_res = CloudinaryService::upload_to_cloudinary(new_logo).await?;
+                merged_school.logo_id = Some(cloud_res.public_id);
+                merged_school.logo = Some(cloud_res.secure_url);
             }
-            let cloud_res = CloudinaryService::upload_to_cloudinary(new_logo).await?;
-            merged_school.logo_id = Some(cloud_res.public_id);
-            merged_school.logo = Some(cloud_res.secure_url);
         }
 
         // Update only the fields that are provided in updated_data
@@ -383,5 +386,33 @@ impl<'a> SchoolService<'a> {
         let _ = self.get_school_by_id(parse_school_id).await?;
         let id = IdType::to_object_id(parse_school_id).map_err(|e| e.message)?;
         Ok(id)
+    }
+
+    pub async fn get_school_by_id_only_fields(
+        &self,
+        id: &IdType,
+        fields: &MongoFields,
+    ) -> Result<School, AppError> {
+        let obj_id = IdType::to_object_id(&id)?;
+
+        // Build projection document
+        let mut projection = Document::new();
+        for field in &fields.fields {
+            projection.insert(field, 1);
+        }
+
+        // Perform the query with projection in driver 3.x
+        let doc = self
+            .repo
+            .collection
+            .find_one(doc! { "_id": obj_id })
+            .projection(projection)
+            .await?
+            .ok_or_else(|| AppError {
+                message: "School not found".into(),
+            })?;
+
+        // doc is already T
+        Ok(doc)
     }
 }

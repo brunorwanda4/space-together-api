@@ -13,8 +13,8 @@ use crate::{
     domain::{
         auth_user::AuthUserDto,
         student::{
-            BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, Student, StudentCountQuery,
-            StudentStatus, UpdateStudent,
+            BulkStudentIds, BulkUpdateStudentStatus, Student, StudentCountQuery, StudentStatus,
+            UpdateStudent,
         },
     },
     models::{
@@ -29,6 +29,7 @@ use crate::{
         class_service::ClassService, event_service::EventService, school_service::SchoolService,
         student_service::StudentService, user_service::UserService,
     },
+    utils::api_utils::build_extra_match,
 };
 
 fn create_student_controller(
@@ -760,96 +761,6 @@ async fn bulk_update_student_status(
     }
 }
 
-/// Bulk add tags to multiple students
-#[put("/bulk/add-tags")]
-async fn bulk_add_tags_to_students(
-    req: actix_web::HttpRequest,
-    data: web::Json<BulkStudentTags>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = StudentRepo::new(&school_db);
-    let service = StudentService::new(&repo);
-
-    match service.bulk_add_tags(&data.into_inner()).await {
-        Ok(students) => {
-            let state_clone = state.clone();
-            let students_for_spawn = students.clone();
-
-            actix_rt::spawn(async move {
-                for student in &students_for_spawn {
-                    if let Some(id) = student.id {
-                        EventService::broadcast_updated(
-                            &state_clone,
-                            "student",
-                            &id.to_hex(),
-                            student,
-                        )
-                        .await;
-                    }
-                }
-            });
-
-            HttpResponse::Ok().json(students)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Bulk remove tags from multiple students
-#[put("/bulk/remove-tags")]
-async fn bulk_remove_tags_from_students(
-    req: actix_web::HttpRequest,
-    data: web::Json<BulkStudentTags>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = StudentRepo::new(&school_db);
-    let service = StudentService::new(&repo);
-
-    match service.bulk_remove_tags(&data.into_inner()).await {
-        Ok(students) => {
-            let state_clone = state.clone();
-            let students_for_spawn = students.clone();
-
-            actix_rt::spawn(async move {
-                for student in &students_for_spawn {
-                    if let Some(id) = student.id {
-                        EventService::broadcast_updated(
-                            &state_clone,
-                            "student",
-                            &id.to_hex(),
-                            student,
-                        )
-                        .await;
-                    }
-                }
-            });
-
-            HttpResponse::Ok().json(students)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 /// Delete multiple students
 #[delete("/bulk")]
 async fn delete_many_students(
@@ -1277,6 +1188,42 @@ async fn get_school_students_by_status(
     }
 }
 
+#[get("/count")]
+async fn count_students_fields(
+    req: actix_web::HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    // ===== SCHOOL DB =====
+    let school_db = state.db.get_db(&claims.database_name);
+    let repo = StudentRepo::new(&school_db);
+    let service = StudentService::new(&repo);
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .count_students(query.filter.clone(), extra_match)
+        .await
+    {
+        Ok(total) => HttpResponse::Ok().json(serde_json::json!({
+            "total": total
+        })),
+        Err(message) => HttpResponse::BadRequest().json(message),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/school/students")
@@ -1285,6 +1232,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             // PUBLIC ROUTES (READ-ONLY)
             // =============================================
             // Student Listing & Retrieval
+            .service(count_students_fields) // GET    /school/students/count - Get total count of students by fields
             .service(get_all_students) // GET    /school/students - Get all students with optional filtering and pagination
             .service(get_all_students_with_details) // GET    /school/students/with-details - Get all students with user, school, and class relations
             .service(get_active_students) // GET    /school/students/active - Get only active students
@@ -1327,8 +1275,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             // Bulk Updates
             .service(update_many_students) // PUT    /school/students/bulk-update - Update multiple students in single request
             .service(bulk_update_student_status) // PUT    /school/students/bulk/status - Bulk update status for multiple students
-            .service(bulk_add_tags_to_students) // PUT    /school/students/bulk/add-tags - Bulk add tags to multiple students
-            .service(bulk_remove_tags_from_students) // PUT    /school/students/bulk/remove-tags - Bulk remove tags from multiple students
             .service(transfer_students_to_class) // PUT    /school/students/bulk/transfer-class - Transfer students to another class
             // Bulk Deletion
             .service(delete_many_students), // DELETE /school/students/bulk - Delete multiple students by IDs

@@ -1,7 +1,7 @@
 use crate::domain::common_details::Gender;
 use crate::domain::student::{
-    BulkStudentIds, BulkStudentTags, BulkUpdateStudentStatus, PaginatedStudents, Student,
-    StudentStatus, StudentWithRelations, UpdateStudent,
+    BulkStudentIds, BulkUpdateStudentStatus, PaginatedStudents, Student, StudentStatus,
+    StudentWithRelations, UpdateStudent,
 };
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
@@ -341,6 +341,8 @@ impl StudentRepo {
             "registration_number",
             "tags",
             "gender",
+            "school_id",
+            "class_id",
             "national_id",
         ];
 
@@ -635,97 +637,6 @@ impl StudentRepo {
         let mut cursor = self
             .collection
             .find(doc! { "_id": { "$in": object_ids } })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch updated students: {}", e),
-            })?;
-
-        let mut updated_students = Vec::new();
-        while let Some(student) = cursor.next().await {
-            updated_students.push(student.map_err(|e| AppError {
-                message: format!("Failed to process student: {}", e),
-            })?);
-        }
-
-        Ok(updated_students)
-    }
-
-    pub async fn bulk_add_tags(&self, request: &BulkStudentTags) -> Result<Vec<Student>, AppError> {
-        let ids: Result<Vec<ObjectId>, AppError> = request
-            .ids
-            .iter()
-            .map(|id| parse_object_id(&IdType::String(id.clone())))
-            .collect();
-
-        let object_ids = ids?;
-
-        let update_doc = doc! {
-            "$addToSet": {
-                "tags": { "$each": &request.tags }
-            },
-            "$set": {
-                "updated_at": bson::to_bson(&Utc::now()).unwrap()
-            }
-        };
-
-        self.collection
-            .update_many(doc! { "_id": { "$in": &object_ids } }, update_doc)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to bulk add tags: {}", e),
-            })?;
-
-        // Return updated students
-        let mut cursor = self
-            .collection
-            .find(doc! { "_id": { "$in": object_ids } })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch updated students: {}", e),
-            })?;
-
-        let mut updated_students = Vec::new();
-        while let Some(student) = cursor.next().await {
-            updated_students.push(student.map_err(|e| AppError {
-                message: format!("Failed to process student: {}", e),
-            })?);
-        }
-
-        Ok(updated_students)
-    }
-
-    pub async fn bulk_remove_tags(
-        &self,
-        request: &BulkStudentTags,
-    ) -> Result<Vec<Student>, AppError> {
-        let ids: Result<Vec<ObjectId>, AppError> = request
-            .ids
-            .iter()
-            .map(|id| parse_object_id(&IdType::String(id.clone())))
-            .collect();
-
-        let object_ids = ids?;
-
-        let update_doc = doc! {
-            "$pullAll": {
-                "tags": &request.tags
-            },
-            "$set": {
-                "updated_at": bson::to_bson(&Utc::now()).unwrap()
-            }
-        };
-
-        self.collection
-            .update_many(doc! { "_id": { "$in": &object_ids } }, update_doc)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to bulk remove tags: {}", e),
-            })?;
-
-        // Return updated students
-        let mut cursor = self
-            .collection
-            .find(doc! { "_id": { "$in": &object_ids } })
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to fetch updated students: {}", e),

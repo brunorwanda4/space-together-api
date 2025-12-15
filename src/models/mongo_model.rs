@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 #[derive(Clone, Debug)]
 pub struct IndexDef {
     pub fields: Vec<(String, i32)>, // field name + sort order (1=asc, -1=desc)
@@ -23,4 +25,15 @@ impl IndexDef {
             unique,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MongoFields {
+    pub fields: Vec<String>,
+}
+
+// count doc
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CountDoc {
+    pub count: u64,
 }

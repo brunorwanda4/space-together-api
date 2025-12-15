@@ -7,7 +7,10 @@ use crate::{
         auth_user::AuthUserDto,
         school::{School, SchoolAcademicRequest, UpdateSchool},
     },
-    models::{api_request_model::RequestQuery, id_model::IdType, request_error_model::ReqErrModel},
+    models::{
+        api_request_model::RequestQuery, id_model::IdType, mongo_model::MongoFields,
+        request_error_model::ReqErrModel,
+    },
     repositories::{
         main_class_repo::MainClassRepo, school_repo::SchoolRepo, trade_repo::TradeRepo,
         user_repo::UserRepo,
@@ -57,6 +60,26 @@ async fn get_school_by_id(path: web::Path<String>, state: web::Data<AppState>) -
     match service.get_school_by_id(&school_id).await {
         Ok(school) => HttpResponse::Ok().json(school),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
+    }
+}
+
+#[post("/only-fields/{id}")]
+async fn get_school_by_id_only_fields(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+    data: web::Json<MongoFields>,
+) -> impl Responder {
+    let repo = SchoolRepo::new(&state.db.main_db());
+    let service = SchoolService::new(&repo);
+
+    let school_id = IdType::from_string(path.into_inner());
+
+    match service
+        .get_school_by_id_only_fields(&school_id, &data.into_inner())
+        .await
+    {
+        Ok(school) => HttpResponse::Ok().json(school),
+        Err(err) => HttpResponse::NotFound().json(err),
     }
 }
 
@@ -497,6 +520,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/schools")
             // Public routes (read-only)
+            .service(get_school_by_id_only_fields) // GET /schools/only-fields/{id} - Get school by id only fields
             .service(get_school_stats) // GET /schools/stats - Get school statistics and analytics
             .service(get_school_by_username) // GET /schools/username/{username} - Get school by username
             .service(get_school_by_code) // GET /schools/code/{code} - Get school by institutional code
