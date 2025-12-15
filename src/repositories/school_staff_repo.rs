@@ -1,3 +1,4 @@
+use crate::domain::common_details::Paginated;
 use crate::domain::school_staff::{
     BulkIdsRequest, BulkTagsRequest, BulkUpdateActiveStatusRequest, SchoolStaff, SchoolStaffType,
     SchoolStaffWithRelations, UpdateSchoolStaff,
@@ -5,15 +6,16 @@ use crate::domain::school_staff::{
 use crate::errors::AppError;
 use crate::helpers::aggregate_helpers::{aggregate_many, aggregate_single};
 use crate::models::id_model::IdType;
+use crate::models::mongo_model::IndexDef;
 use crate::pipeline::school_staff_pipeline::school_staff_with_relations_pipeline;
+use crate::repositories::base_repo::BaseRepository;
 use crate::utils::object_id::parse_object_id;
 
 use chrono::Utc;
-use futures::{StreamExt, TryStreamExt};
+use futures::StreamExt;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
-    options::IndexOptions,
-    Collection, Database, IndexModel,
+    Collection, Database,
 };
 
 pub struct SchoolStaffRepo {
@@ -122,28 +124,6 @@ impl SchoolStaffRepo {
             })
     }
 
-    pub async fn find_by_school_id(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Vec<SchoolStaff>, AppError> {
-        let obj_id = parse_object_id(school_id)?;
-        let mut cursor = self
-            .collection
-            .find(doc! { "school_id": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find school staff by school_id: {}", e),
-            })?;
-
-        let mut staff_members = Vec::new();
-        while let Some(staff) = cursor.next().await {
-            staff_members.push(staff.map_err(|e| AppError {
-                message: format!("Failed to process school staff: {}", e),
-            })?);
-        }
-        Ok(staff_members)
-    }
-
     pub async fn find_by_creator_id(
         &self,
         creator_id: &IdType,
@@ -155,59 +135,6 @@ impl SchoolStaffRepo {
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to find school staff by creator_id: {}", e),
-            })?;
-
-        let mut staff_members = Vec::new();
-        while let Some(staff) = cursor.next().await {
-            staff_members.push(staff.map_err(|e| AppError {
-                message: format!("Failed to process school staff: {}", e),
-            })?);
-        }
-        Ok(staff_members)
-    }
-
-    pub async fn find_by_type(
-        &self,
-        staff_type: SchoolStaffType,
-    ) -> Result<Vec<SchoolStaff>, AppError> {
-        let mut cursor = self
-            .collection
-            .find(
-                doc! { "type": bson::to_bson(&staff_type).map_err(|e| AppError {
-                    message: format!("Failed to serialize staff type: {}", e),
-                })? },
-            )
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find school staff by type: {}", e),
-            })?;
-
-        let mut staff_members = Vec::new();
-        while let Some(staff) = cursor.next().await {
-            staff_members.push(staff.map_err(|e| AppError {
-                message: format!("Failed to process school staff: {}", e),
-            })?);
-        }
-        Ok(staff_members)
-    }
-
-    pub async fn find_by_school_and_type(
-        &self,
-        school_id: &IdType,
-        staff_type: SchoolStaffType,
-    ) -> Result<Vec<SchoolStaff>, AppError> {
-        let obj_id = parse_object_id(school_id)?;
-        let mut cursor = self
-            .collection
-            .find(doc! {
-                "school_id": obj_id,
-                "type": bson::to_bson(&staff_type).map_err(|e| AppError {
-                    message: format!("Failed to serialize staff type: {}", e),
-                })?
-            })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to find school staff by school_id and type: {}", e),
             })?;
 
         let mut staff_members = Vec::new();
@@ -250,71 +177,36 @@ impl SchoolStaffRepo {
             })
     }
 
-    async fn ensure_indexes(&self) -> Result<(), AppError> {
-        let email_index = IndexModel::builder()
-            .keys(doc! { "email": 1 })
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let indexes = vec![
+            /* --------------------------------
+               Single-field indexes
+            ----------------------------------*/
+            // email (unique)
+            IndexDef::single("email", true),
+            // user_id (unique)
+            IndexDef::single("user_id", true),
+            // normal lookups
+            IndexDef::single("school_id", false),
+            IndexDef::single("creator_id", false),
+            IndexDef::single("type", false),
+            IndexDef::single("is_active", false),
+            /* --------------------------------
+               Compound indexes
+            ----------------------------------*/
+            // school + type
+            IndexDef::compound(vec![("school_id", 1), ("type", 1)], false),
+            IndexDef::single_with_partial(
+                "school_id",
+                true,
+                doc! { "type": "Director" },
+                Some("unique_director_per_school"),
+            ),
+        ];
 
-        let user_id_index = IndexModel::builder()
-            .keys(doc! { "user_id": 1 })
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let school_index = IndexModel::builder()
-            .keys(doc! { "school_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let creator_index = IndexModel::builder()
-            .keys(doc! { "creator_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let type_index = IndexModel::builder()
-            .keys(doc! { "type": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let is_active_index = IndexModel::builder()
-            .keys(doc! { "is_active": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let school_type_index = IndexModel::builder()
-            .keys(doc! { "school_id": 1, "type": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        // ✅ One Director per school
-        let one_director_per_school_index = IndexModel::builder()
-            .keys(doc! { "school_id": 1 })
-            .options(
-                IndexOptions::builder()
-                    .unique(true)
-                    .partial_filter_expression(doc! { "type": "Director" })
-                    .name(Some("unique_director_per_school".to_string()))
-                    .build(),
-            )
-            .build();
-
-        for index in [
-            email_index,
-            user_id_index,
-            school_index,
-            creator_index,
-            type_index,
-            is_active_index,
-            school_type_index,
-            one_director_per_school_index,
-        ] {
-            self.collection
-                .create_index(index)
-                .await
-                .map_err(|e| AppError {
-                    message: format!("Failed to create index: {}", e),
-                })?;
-        }
+        repo.ensure_indexes(&indexes).await?;
 
         Ok(())
     }
@@ -324,61 +216,22 @@ impl SchoolStaffRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<SchoolStaff>, AppError> {
-        let mut pipeline = vec![];
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<SchoolStaff>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        // Add search/filter functionality
-        if let Some(f) = filter {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i"  // case insensitive
-            };
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        { "name": &regex },
-                        { "email": &regex },
-                        { "tags": &regex },
-                    ]
-                }
-            });
-        }
+        let searchable = ["name", "_id", "user_id", "tags", "email", "phone"];
 
-        // Add sorting by updated_at (most recent first)
-        pipeline.push(doc! { "$sort": { "updated_at": -1 } });
+        let (data, total, total_pages, current_page) = repo
+            .get_all::<SchoolStaff>(filter, &searchable, limit, skip, extra_match)
+            .await?;
 
-        // Add pagination
-        if let Some(s) = skip {
-            pipeline.push(doc! { "$skip": s });
-        }
-
-        if let Some(l) = limit {
-            pipeline.push(doc! { "$limit": l });
-        } else {
-            // Default limit if none provided
-            pipeline.push(doc! { "$limit": 50 });
-        }
-
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch school staff: {}", e),
-            })?;
-
-        let mut staff_members = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate school staff: {}", e),
-        })? {
-            let staff: SchoolStaff =
-                mongodb::bson::from_document(result).map_err(|e| AppError {
-                    message: format!("Failed to deserialize school staff: {}", e),
-                })?;
-            staff_members.push(staff);
-        }
-
-        Ok(staff_members)
+        Ok(Paginated {
+            data,
+            total,
+            total_pages,
+            current_page,
+        })
     }
 
     pub async fn get_active_school_staff(&self) -> Result<Vec<SchoolStaff>, AppError> {

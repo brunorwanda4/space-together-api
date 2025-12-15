@@ -1,18 +1,22 @@
 use crate::{
     config::state::AppState,
-    domain::school_staff::{
-        BulkIdsRequest, BulkTagsRequest, BulkUpdateActiveStatusRequest, SchoolStaff,
-        SchoolStaffType, SchoolStaffWithRelations, UpdateSchoolStaff,
+    domain::{
+        common_details::Paginated,
+        school_staff::{
+            BulkIdsRequest, BulkTagsRequest, BulkUpdateActiveStatusRequest, SchoolStaff,
+            SchoolStaffType, SchoolStaffWithRelations, UpdateSchoolStaff,
+        },
     },
+    errors::AppError,
     helpers::object_id_helpers::parse_object_id,
-    models::id_model::IdType,
-    repositories::school_staff_repo::SchoolStaffRepo,
+    models::{id_model::IdType, mongo_model::CountDoc},
+    repositories::{base_repo::BaseRepository, school_staff_repo::SchoolStaffRepo},
     services::event_service::EventService,
     utils::{email::is_valid_email, names::is_valid_name},
 };
 use actix_web::web;
 use chrono::Utc;
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{oid::ObjectId, Document};
 
 pub struct SchoolStaffService<'a> {
     repo: &'a SchoolStaffRepo,
@@ -33,13 +37,11 @@ impl<'a> SchoolStaffService<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<SchoolStaff>, String> {
-        let staff_members = self
-            .repo
-            .get_all_school_staff(filter, limit, skip)
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<SchoolStaff>, AppError> {
+        self.repo
+            .get_all_school_staff(filter, limit, skip, extra_match)
             .await
-            .map_err(|e| e.message)?;
-        Ok(staff_members)
     }
 
     /// Get all school staff members with relations
@@ -198,19 +200,6 @@ impl<'a> SchoolStaffService<'a> {
         Ok(staff)
     }
 
-    /// Get school staff by school ID
-    pub async fn get_school_staff_by_school_id(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Vec<SchoolStaff>, String> {
-        let staff_members = self
-            .repo
-            .find_by_school_id(school_id)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(staff_members)
-    }
-
     /// Get school staff by creator ID
     pub async fn get_school_staff_by_creator_id(
         &self,
@@ -219,33 +208,6 @@ impl<'a> SchoolStaffService<'a> {
         let staff_members = self
             .repo
             .find_by_creator_id(creator_id)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(staff_members)
-    }
-
-    /// Get school staff by type
-    pub async fn get_school_staff_by_type(
-        &self,
-        staff_type: SchoolStaffType,
-    ) -> Result<Vec<SchoolStaff>, String> {
-        let staff_members = self
-            .repo
-            .find_by_type(staff_type)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(staff_members)
-    }
-
-    /// Get school staff by school ID and type
-    pub async fn get_school_staff_by_school_and_type(
-        &self,
-        school_id: &IdType,
-        staff_type: SchoolStaffType,
-    ) -> Result<Vec<SchoolStaff>, String> {
-        let staff_members = self
-            .repo
-            .find_by_school_and_type(school_id, staff_type)
             .await
             .map_err(|e| e.message)?;
         Ok(staff_members)
@@ -756,36 +718,6 @@ impl<'a> SchoolStaffService<'a> {
         Ok(prepared_staff)
     }
 
-    /// Get director for a school
-    pub async fn get_school_director(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Option<SchoolStaff>, String> {
-        let directors = self
-            .repo
-            .find_by_school_and_type(school_id, SchoolStaffType::Director)
-            .await
-            .map_err(|e| e.message)?;
-
-        // Return the first director found (assuming one director per school)
-        Ok(directors.into_iter().next())
-    }
-
-    /// Get head of studies for a school
-    pub async fn get_head_of_studies(
-        &self,
-        school_id: &IdType,
-    ) -> Result<Option<SchoolStaff>, String> {
-        let heads = self
-            .repo
-            .find_by_school_and_type(school_id, SchoolStaffType::HeadOfStudies)
-            .await
-            .map_err(|e| e.message)?;
-
-        // Return the first head of studies found
-        Ok(heads.into_iter().next())
-    }
-
     /// Check if a user is staff member of a specific school
     pub async fn is_user_school_staff(
         &self,
@@ -834,5 +766,28 @@ impl<'a> SchoolStaffService<'a> {
         }
 
         Ok(false)
+    }
+
+    pub async fn count_school_staff(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let base_repo =
+            BaseRepository::new(self.repo.collection.clone().clone_with_type::<Document>());
+
+        let searchable = [
+            "name",
+            "email",
+            "phone",
+            "tags",
+            "gender",
+            "_id",
+            "school_id",
+        ];
+
+        let total = base_repo.count(filter, &searchable, extra_match).await?;
+
+        Ok(total)
     }
 }

@@ -1523,9 +1523,7 @@ async fn count_teachers_fields(
         .count_teachers(query.filter.clone(), extra_match)
         .await
     {
-        Ok(total) => HttpResponse::Ok().json(serde_json::json!({
-            "total": total
-        })),
+        Ok(total) => HttpResponse::Ok().json(serde_json::json!(total)),
         Err(message) => HttpResponse::BadRequest().json(message),
     }
 }

@@ -16,6 +16,7 @@ use crate::{
     },
     repositories::school_staff_repo::SchoolStaffRepo,
     services::{event_service::EventService, school_staff_service::SchoolStaffService},
+    utils::api_utils::build_extra_match,
 };
 
 #[get("")]
@@ -39,12 +40,17 @@ async fn get_all_school_staff(
     let repo = SchoolStaffRepo::new(&school_db);
     let service = SchoolStaffService::new(&repo);
 
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
     match service
-        .get_all_school_staff(query.filter.clone(), query.limit, query.skip)
+        .get_all_school_staff(query.filter.clone(), query.limit, query.skip, extra_match)
         .await
     {
         Ok(staff_members) => HttpResponse::Ok().json(staff_members),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(message) => HttpResponse::BadRequest().json(message),
     }
 }
 
@@ -371,83 +377,6 @@ async fn get_school_staff_by_creator_id(
     let service = SchoolStaffService::new(&repo);
 
     match service.get_school_staff_by_creator_id(&creator_id).await {
-        Ok(staff_members) => HttpResponse::Ok().json(staff_members),
-        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
-    }
-}
-
-#[get("/type/{staff_type}")]
-async fn get_school_staff_by_type(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let staff_type_str = path.into_inner();
-    let staff_type = match staff_type_str.as_str() {
-        "director" => SchoolStaffType::Director,
-        "head_of_studies" => SchoolStaffType::HeadOfStudies,
-        _ => {
-            return HttpResponse::BadRequest().json(ReqErrModel {
-                message: "Invalid staff type. Must be 'director' or 'head_of_studies'".to_string(),
-            })
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = SchoolStaffRepo::new(&school_db);
-    let service = SchoolStaffService::new(&repo);
-
-    match service.get_school_staff_by_type(staff_type).await {
-        Ok(staff_members) => HttpResponse::Ok().json(staff_members),
-        Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
-    }
-}
-
-#[get("/school/{school_id}/type/{staff_type}")]
-async fn get_school_staff_by_school_and_type(
-    req: actix_web::HttpRequest,
-    path: web::Path<(String, String)>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let (school_id_str, staff_type_str) = path.into_inner();
-    let school_id = IdType::from_string(school_id_str);
-
-    let staff_type = match staff_type_str.as_str() {
-        "director" => SchoolStaffType::Director,
-        "head_of_studies" => SchoolStaffType::HeadOfStudies,
-        _ => {
-            return HttpResponse::BadRequest().json(ReqErrModel {
-                message: "Invalid staff type. Must be 'director' or 'head_of_studies'".to_string(),
-            })
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = SchoolStaffRepo::new(&school_db);
-    let service = SchoolStaffService::new(&repo);
-
-    match service
-        .get_school_staff_by_school_and_type(&school_id, staff_type)
-        .await
-    {
         Ok(staff_members) => HttpResponse::Ok().json(staff_members),
         Err(message) => HttpResponse::NotFound().json(ReqErrModel { message }),
     }
@@ -834,68 +763,6 @@ async fn delete_many_school_staff(
     }
 }
 
-/// Get school director
-#[get("/director")]
-async fn get_school_director(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = SchoolStaffRepo::new(&school_db);
-    let service = SchoolStaffService::new(&repo);
-
-    match service
-        .get_school_director(&IdType::from_string(claims.id.clone()))
-        .await
-    {
-        Ok(Some(director)) => HttpResponse::Ok().json(director),
-        Ok(None) => HttpResponse::NotFound().json(ReqErrModel {
-            message: "Director not found for this school".to_string(),
-        }),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Get head of studies
-#[get("/head-of-studies")]
-async fn get_head_of_studies(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = SchoolStaffRepo::new(&school_db);
-    let service = SchoolStaffService::new(&repo);
-
-    match service
-        .get_head_of_studies(&IdType::from_string(claims.id.clone()))
-        .await
-    {
-        Ok(Some(head)) => HttpResponse::Ok().json(head),
-        Ok(None) => HttpResponse::NotFound().json(ReqErrModel {
-            message: "Head of studies not found for this school".to_string(),
-        }),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 /// Check if user is staff member of this school
 #[get("/check/{user_id}")]
 async fn is_user_school_staff(
@@ -1079,106 +946,6 @@ async fn update_many_school_staff(
     }
 }
 
-/// Get all staff members for a specific school
-#[get("/school/{school_id}")]
-async fn get_school_staff_by_school_id(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_id_str = path.into_inner();
-    let school_id = IdType::from_string(school_id_str);
-
-    // Verify that the school ID in the path matches the token's school ID
-    if school_id.as_string() != claims.id {
-        return HttpResponse::Forbidden().json(ReqErrModel {
-            message: "Cannot access staff for different school".to_string(),
-        });
-    }
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = SchoolStaffRepo::new(&school_db);
-    let service = SchoolStaffService::new(&repo);
-
-    match service.get_school_staff_by_school_id(&school_id).await {
-        Ok(staff_members) => HttpResponse::Ok().json(staff_members),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-/// Get all staff members for a specific school with pagination and filtering
-#[get("/school/{school_id}/filtered")]
-async fn get_school_staff_by_school_id_filtered(
-    req: actix_web::HttpRequest,
-    path: web::Path<String>,
-    query: web::Query<RequestQuery>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let school_id_str = path.into_inner();
-    let school_id = IdType::from_string(school_id_str);
-
-    // Verify that the school ID in the path matches the token's school ID
-    if school_id.as_string() != claims.id {
-        return HttpResponse::Forbidden().json(ReqErrModel {
-            message: "Cannot access staff for different school".to_string(),
-        });
-    }
-
-    let school_db = state.db.get_db(&claims.database_name);
-    let repo = SchoolStaffRepo::new(&school_db);
-    let service = SchoolStaffService::new(&repo);
-
-    // First get all staff for the school, then apply filtering
-    match service.get_school_staff_by_school_id(&school_id).await {
-        Ok(staff_members) => {
-            // Apply client-side filtering if needed, or use repository filtering
-            let filtered_staff = if let Some(filter) = &query.filter {
-                staff_members
-                    .into_iter()
-                    .filter(|staff| {
-                        staff.name.to_lowercase().contains(&filter.to_lowercase())
-                            || staff.email.to_lowercase().contains(&filter.to_lowercase())
-                            || staff
-                                .tags
-                                .iter()
-                                .any(|tag| tag.to_lowercase().contains(&filter.to_lowercase()))
-                    })
-                    .collect()
-            } else {
-                staff_members
-            };
-
-            // Apply pagination
-            let skip = query.skip.unwrap_or(0) as usize;
-            let limit = query.limit.unwrap_or(50) as usize;
-
-            let paginated_staff: Vec<SchoolStaff> =
-                filtered_staff.into_iter().skip(skip).take(limit).collect();
-
-            HttpResponse::Ok().json(paginated_staff)
-        }
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
 /// Prepare school staff members for bulk creation
 /// This endpoint prepares staff data by setting school_id and creator_id without saving to database
 #[post("/bulk/prepare")]
@@ -1337,6 +1104,40 @@ async fn prepare_school_staff_for_bulk_creation_custom(
     }
 }
 
+#[get("/count")]
+async fn count_school_staff_fields(
+    req: actix_web::HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let claims = match req.extensions().get::<SchoolToken>() {
+        Some(claims) => claims.clone(),
+        None => {
+            return HttpResponse::Unauthorized().json(serde_json::json!({
+                "message": "School token required"
+            }))
+        }
+    };
+
+    // ===== SCHOOL DB =====
+    let school_db = state.db.get_db(&claims.database_name);
+    let repo = SchoolStaffRepo::new(&school_db);
+    let service = SchoolStaffService::new(&repo);
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .count_school_staff(query.filter.clone(), extra_match)
+        .await
+    {
+        Ok(total) => HttpResponse::Ok().json(serde_json::json!(total)),
+        Err(message) => HttpResponse::BadRequest().json(message),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/school/staff")
@@ -1345,6 +1146,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             // PUBLIC ROUTES (READ-ONLY)
             // =============================================
             // Staff Listing & Retrieval
+            .service(count_school_staff_fields) // GET    /school/staff/stats/count - Get total count of staff members in school
             .service(get_all_school_staff) // GET    /school/staff - Get all staff members with optional filtering and pagination
             .service(get_all_school_staff_with_details) // GET    /school/staff/with-details - Get all staff members with user and school relations
             .service(get_active_school_staff) // GET    /school/staff/active - Get only active staff members
@@ -1353,13 +1155,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_school_staff_by_user_id) // GET    /school/staff/user/{user_id} - Get staff member by associated user ID
             .service(get_school_staff_by_email) // GET    /school/staff/email/{email} - Get staff member by email address
             .service(get_school_staff_by_creator_id) // GET    /school/staff/creator/{creator_id} - Get staff members created by specific user
-            .service(get_school_staff_by_type) // GET    /school/staff/type/{staff_type} - Get staff members by type (director/head_of_studies)
-            .service(get_school_staff_by_school_and_type) // GET    /school/staff/school/{school_id}/type/{staff_type} - Get staff by school and type combination
-            .service(get_school_staff_by_school_id) // GET    /school/staff/school/{school_id} - Get all staff members for specific school
-            .service(get_school_staff_by_school_id_filtered) // GET    /school/staff/school/{school_id}/filtered - Get staff for school with filtering & pagination
-            // Role-based Access
-            .service(get_school_director) // GET    /school/staff/director - Get the director for current school
-            .service(get_head_of_studies) // GET    /school/staff/head-of-studies - Get head of studies for current school
             // Permission Checking
             .service(is_user_school_staff) // GET    /school/staff/check/{user_id} - Check if user is staff member of current school
             .service(has_staff_type) // GET    /school/staff/check/{user_id}/type/{staff_type} - Check if user has specific staff role in school
