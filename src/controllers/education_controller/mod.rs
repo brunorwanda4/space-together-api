@@ -1,1 +1,0 @@
-pub mod education_controller_controller;
