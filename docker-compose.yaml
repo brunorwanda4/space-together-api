@@ -1,22 +1,17 @@
-version: "3.9"
-
 services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: space-together-api
     ports:
       - "4646:4646"
     env_file:
       - .env
     environment:
-      - RUST_LOG=info
-      - PORT=4646
-      - MONGO_URI=mongodb://mongo:27017/space_together_db
+      RUST_LOG: info
+      PORT: 4646
+      MONGO_URI: mongodb://mongo:27017/main_database
     volumes:
       - .:/app
-    command: cargo watch -x run
     depends_on:
       - mongo
     restart: unless-stopped
@@ -24,11 +19,11 @@ services:
   mongo:
     image: mongo:7
     container_name: space-together-mongo
-    restart: always
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    restart: always
 
 volumes:
   mongo_data:
