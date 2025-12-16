@@ -1,1 +1,26 @@
+<<<<<<< HEAD
 pub mod subject_services;
+=======
+pub mod auth_service;
+pub mod class_service;
+pub mod class_subject_service;
+pub mod class_timetable_service;
+pub mod cloudinary_service;
+pub mod database_status_service;
+pub mod education_year_service;
+pub mod event_bus;
+pub mod event_service;
+pub mod main_class_service;
+pub mod school_service;
+pub mod school_staff_service;
+pub mod sector_service;
+pub mod student_service;
+pub mod subject_service;
+pub mod subjects;
+pub mod teacher_service;
+pub mod template_subject_service;
+pub mod tenant_service;
+pub mod trade_service;
+pub mod user_service;
+pub mod school_timetable_service;
+>>>>>>> happy/main

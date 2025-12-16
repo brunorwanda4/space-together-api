@@ -1,0 +1,176 @@
+use chrono::{DateTime, Utc};
+use mongodb::bson::oid::ObjectId;
+use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use crate::{
+    domain::common_details::{Age, Gender},
+    helpers::object_id_helpers,
+};
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum StudentStatus {
+    #[default]
+    Active,
+    Suspended,
+    Graduated,
+    Left,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Student {
+    #[serde(
+        rename = "_id",
+        alias = "id",
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub id: Option<ObjectId>,
+
+    // Connected user
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        default
+    )]
+    pub user_id: Option<ObjectId>,
+
+    // Connected school
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        default
+    )]
+    pub school_id: Option<ObjectId>,
+
+    // Connected class
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        default
+    )]
+    pub class_id: Option<ObjectId>,
+
+    // ✅ NEW: If student belongs to a subclass specifically
+    // Example: Primary 1 A (subclass of Primary 1)
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub subclass_id: Option<ObjectId>,
+
+    // Creator (school admin or system)
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        default
+    )]
+    pub creator_id: Option<ObjectId>,
+
+    pub name: String,
+    pub email: String,
+    pub phone: Option<String>,
+    pub gender: Option<Gender>,
+    pub image: Option<String>,
+    pub image_id: Option<String>,
+    pub date_of_birth: Option<Age>, // You can change to DateTime<Utc> if you prefer
+
+    pub registration_number: Option<String>,
+    pub admission_year: Option<i32>,
+
+    #[serde(default)]
+    pub status: StudentStatus,
+
+    #[serde(default)]
+    pub is_active: bool,
+
+    #[serde(default)]
+    pub tags: Vec<String>,
+
+    #[serde(default = "Utc::now")]
+    pub created_at: DateTime<Utc>,
+
+    #[serde(default = "Utc::now")]
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Default, Serialize, Clone)]
+pub struct UpdateStudent {
+    pub name: Option<String>,
+    pub user_id: Option<ObjectId>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub image: Option<String>,
+    pub image_id: Option<String>,
+    pub gender: Option<Gender>,
+    pub date_of_birth: Option<Age>, // You can change to DateTime<Utc> if you prefer
+    pub registration_number: Option<String>,
+    pub admission_year: Option<i32>,
+    pub status: Option<StudentStatus>,
+    pub is_active: Option<bool>,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StudentWithRelations {
+    #[serde(flatten)]
+    pub student: Student,
+
+    pub user: Option<crate::domain::user::User>,
+    pub creator: Option<crate::domain::user::User>,
+    pub school: Option<crate::domain::school::School>,
+    pub class: Option<crate::domain::class::Class>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkStudentIds {
+    pub ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BulkUpdateStudentStatus {
+    pub ids: Vec<String>,
+    pub status: StudentStatus,
+}
+
+#[derive(Deserialize)]
+pub struct StudentCountQuery {
+    pub gender: Option<Gender>,
+    pub status: Option<StudentStatus>,
+}
+
+impl fmt::Display for StudentStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                StudentStatus::Active => "Active",
+                StudentStatus::Suspended => "Suspended",
+                StudentStatus::Graduated => "Graduated",
+                StudentStatus::Left => "Left",
+            }
+        )
+    }
+}
+
+// get class with pages
+#[derive(Serialize)]
+pub struct PaginatedStudents {
+    pub students: Vec<Student>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}
+
+#[derive(Serialize)]
+pub struct PaginatedStudentsWithOthers {
+    pub students: Vec<StudentWithRelations>,
+    pub total: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}

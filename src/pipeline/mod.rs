@@ -1,0 +1,13 @@
+pub mod academic_year_pipeline;
+pub mod class_pipeline;
+pub mod class_subject_pipeline;
+pub mod join_school_request_pipeline;
+pub mod learning_outcome_pipeline;
+pub mod main_class_pipeline;
+pub mod main_subject_pipeline;
+pub mod school_staff_pipeline;
+pub mod student_pipeline;
+pub mod subject_pipeline;
+pub mod teacher_pipeline;
+pub mod template_subject_pipeline;
+pub mod trade_pipeline;

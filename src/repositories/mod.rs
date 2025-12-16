@@ -1,0 +1,13 @@
+pub mod base_repo;
+pub mod class_repo;
+pub mod join_school_request_repo;
+pub mod main_class_repo;
+pub mod school_repo;
+pub mod school_staff_repo;
+pub mod sector_repo;
+pub mod student_repo;
+pub mod subject_repo;
+pub mod subjects;
+pub mod teacher_repo;
+pub mod trade_repo;
+pub mod user_repo;

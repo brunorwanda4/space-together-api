@@ -1,0 +1,97 @@
+use chrono::{DateTime, Utc};
+use mongodb::bson::oid::ObjectId;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    domain::subjects::subject_learning_material::SubjectLearningMaterial,
+    helpers::object_id_helpers,
+};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SubjectTopic {
+    #[serde(
+        rename = "_id",
+        alias = "id",
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub id: Option<ObjectId>, // Better than string
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub learning_outcome_id: Option<ObjectId>, // Reference to parent LO
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub parent_topic_id: Option<ObjectId>, // For sub-topics (2.3.1 under 2.3)
+    pub title: String,
+    pub description: Option<String>,
+    pub order: f32,
+
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub created_by: Option<ObjectId>,
+
+    #[serde(default)]
+    pub created_at: Option<DateTime<Utc>>,
+
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UpdateSubjectTopic {
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub learning_outcome_id: Option<ObjectId>,
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub parent_topic_id: Option<ObjectId>,
+
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub order: Option<f32>,
+    #[serde(
+        serialize_with = "object_id_helpers::serialize",
+        deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub created_by: Option<ObjectId>,
+
+    #[serde(default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SubjectTopicWithOthers {
+    #[serde(flatten)]
+    pub topic: SubjectTopic, // merge fields of SubjectTopic at top level
+
+    pub sub_topics: Option<Vec<SubjectTopicWithOthers>>, // nested array, do NOT flatten
+
+    #[serde(default)]
+    pub learning_materials: Option<Vec<SubjectLearningMaterial>>,
+}

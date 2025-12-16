@@ -1,7 +1,17 @@
 {
+<<<<<<< HEAD
     "cSpell.words": [
         "insertoneresult",
         "itertools",
         "serde"
     ]
 }
+=======
+  "cSpell.words": [
+    "bson",
+    "BSON",
+    "chrono",
+    "insertoneresult"
+  ]
+}
+>>>>>>> happy/main

@@ -1,0 +1,222 @@
+[33mcommit 2e8b87fd17b0d96c8080a19acd6b7a5f664d5420[m[33m ([m[1;31mhappy/main[m[33m, [m[1;31mhappy/HEAD[m[33m)[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Mon Dec 15 11:46:52 2025 +0200
+
+    add count school staff fun
+
+[33mcommit f9ea0d5fdc2ee8d4c67b56107da43e909735c5e1[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Mon Dec 15 09:07:54 2025 +0200
+
+    Make count school teachers
+
+[33mcommit 48e9b4df320e69fd50cdc08a6779ba2f2df3297f[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Mon Dec 15 07:58:36 2025 +0200
+
+    Make count document in base repo and use it on students service
+
+[33mcommit d6dffcbf409e431e57b784eedf7dfc9db0172500[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Thu Dec 11 06:08:20 2025 +0200
+
+    add option academic year
+
+[33mcommit e6820d9e86fb3d26cfa9bed7b68f6700a48066d2[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Thu Dec 11 05:19:00 2025 +0200
+
+    change deault when school start
+
+[33mcommit 8baffab56aa47ec8efbefaaa445fb17b4f1c13f2[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Wed Dec 10 10:57:06 2025 +0200
+
+    fix bug
+
+[33mcommit 83b3b4d528a54baec310b7458c110144b0d5ed41[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Wed Dec 10 10:23:13 2025 +0200
+
+    Add get school time table by flied
+
+[33mcommit 8ee0d3e18ba958d3eac39e8a1ed64cdf9ab643a6[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Wed Dec 10 05:03:34 2025 +0200
+
+    remover snake case
+
+[33mcommit 5785ba8f42d2c6050c62d3d3245bfd7b179c7d71[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Wed Dec 10 04:39:43 2025 +0200
+
+    add get current school timtable also fix get current education year we
+    are
+
+[33mcommit b61b47721e927d0c8f0a26638f2db278c087aee1[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Tue Dec 9 17:48:17 2025 +0200
+
+    add generate school timetable API
+
+[33mcommit 1280e459e6d139e43e5b29afb03d3ccaea73ff42[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Tue Dec 9 16:37:08 2025 +0200
+
+    add school timetable API
+
+[33mcommit c50721ba2a734c239d32571c1f3134527e49a4c2[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Tue Dec 9 16:09:18 2025 +0200
+
+    make school timetable validation and also school timetable service
+
+[33mcommit 93184b355d76cf1bbf2d4a7f32491debbe4c61c9[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Tue Dec 9 15:30:58 2025 +0200
+
+    Add time vaidation also school timetable
+
+[33mcommit 1e1cedc64eff3f8c797034e60bd942f72d757b59[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Tue Dec 9 14:33:30 2025 +0200
+
+    make school timetable schema
+
+[33mcommit a9be3bfb03f209d788106f4422df1949d91eb8ea[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Tue Dec 9 13:48:07 2025 +0200
+
+    c
+
+[33mcommit 31f1246fe2b357c775da9e815cd9a31f96a76c9f[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Tue Dec 9 10:40:57 2025 +0200
+
+    Make class timetable generate
+
+[33mcommit 3b44bab0c16599e64db3c5d55f7596ff0c707bb5[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Mon Dec 8 22:48:35 2025 +0200
+
+    Add education year and remove some function which not needed in class
+    timetable
+
+[33mcommit 755ac7df2ea8fb31fe1a77ec7a0ff2cc92c32af1[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Mon Dec 8 05:59:11 2025 +0200
+
+    Refactor Trade model and repository for partial updates
+    
+    - Introduce a macro to create partial representations of the Trade model.
+    - Remove the UpdateTrade struct and integrate its fields into the Trade model.
+    - Update the TradeRepo to utilize the new partial update mechanism for inserting and updating trades.
+    - Enhance the TradeService to streamline trade updates and ensure sector and parent trade validations are handled correctly.
+
+[33mcommit 15d14d10447b12eb99e8a76e067ebed3c59c8787[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Mon Dec 8 03:49:12 2025 +0200
+
+    Add education year module and integrate into API
+    
+    - Introduce the education year module to manage academic years.
+    - Update API routes to include education year initialization.
+    - Refactor class_subject service to utilize new utility functions for query handling.
+    - Remove deprecated academic_year module and related code.
+    - Enhance code organization by adding new service and utility modules.
+
+[33mcommit 2b4148e7a2722068e516320f563a5708409919f7[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Mon Dec 8 02:28:27 2025 +0200
+
+    Add class timetable API and service
+    
+    - Implement endpoints for managing class timetables, including CRUD operations.
+    - Introduce a service layer for handling business logic related to class timetables.
+    - Add a DTO for generating a blank timetable structure.
+    - Ensure role-based access control for creating, updating, and deleting timetables.
+    - Integrate event broadcasting for create, update, and delete actions.
+    - Update domain models to include new fields and validation logic.
+
+[33mcommit 5ffabe0f6ef17a8dee0262c7a748aa1bf1fa79d0[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Mon Dec 8 00:02:59 2025 +0200
+
+    Make class time table schema
+
+[33mcommit 16afc9e5995fdf237a38053e498e09a85380b06c[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Sun Dec 7 06:38:06 2025 +0200
+
+    Add dynamic field filtering for class_subjects
+
+[33mcommit 5dab63210e14f4c3239aba2d9169b39de5976bf9[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Sat Dec 6 08:59:25 2025 +0200
+
+    Update dependencies and enhance class-subject API
+    
+    - Upgrade actix-web to version 4.12.1 and mongodb to version 3.4.1
+    - Add new endpoints to fetch class subjects by class ID and related data
+    - Refactor existing class subject retrieval methods to support additional filtering
+    - Implement index management for class subjects to improve query performance
+    - Enhance error handling during JSON deserialization in repository methods
+    - Update the IndexDef model to support compound indexes
+    - Clean up unused dependencies and improve code readability
+
+[33mcommit 766df0cb01dd97c2d92f661515fb15bbeadffc93[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Fri Dec 5 06:37:15 2025 +0200
+
+    Add class-subjects API with template subjects
+    
+    - Introduce new class-subjects API module and route
+    - Migrate class-subject creation flow to use TemplateSubjectService
+    - Add TemplateSubjectService integration and remove main-subject repo
+      usage
+    - Implement bulk insert support (create_many) in repos and services
+    - Extend ClassSubject domain with optional fields and disable flag
+    - Update partial macro to support updates via to_partial and optional
+      fields
+    - Wire up new module in API and adjust SchoolController to use template
+      subjects
+    - Emit events on create, update and delete
+
+[33mcommit f8e23f519d7069761d380b9cb3fb0824fed958c0[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Thu Dec 4 23:02:03 2025 +0200
+
+    Add class_subject API, service and pipeline
+
+[33mcommit 300ce001722df42c9e7117353d644b59dd24fdb3[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Thu Dec 4 21:28:51 2025 +0200
+
+    Add prereq template subject routes
+
+[33mcommit de12ad86e99c2d57e45b82c4976e19383f94e449[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Thu Dec 4 14:26:52 2025 +0200
+
+    Add endpoint to fetch template subjects by prerequisite
+
+[33mcommit 4f7d1f4183f5860db274903c636378f58d561998[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Thu Dec 4 13:20:24 2025 +0200
+
+    Expose template-subject endpoints and relations
+
+[33mcommit 1bbcd2ea252f11bbb7163ae103f27f3b6b02ebca[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Wed Dec 3 10:27:56 2025 +0200
+
+    🔨🔨 add endpoint to retrieve template subjects with associated data; enhance service for pagination and filtering of results
+
+[33mcommit c60dd805adf5c1c9a4bfea1086797a03caa00fda[m
+Author: brunorwanda4 <brunorwanda4@gmail.com>
+Date:   Wed Dec 3 08:01:59 2025 +0200
+
+    Add ClassSubjectPartial domain model and module
+
+[33mcommit d52b57b0a0dc3b0db87a63ae5bbfdd9fe957a5da[m
+Author: brunorwanda4 <br
