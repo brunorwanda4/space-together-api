@@ -1,6 +1,6 @@
 services:
   api:
-    build: .
+    image: brunorwanda/space-together-api:latest
     container_name: space-together-api
     ports:
       - "4646:4646"
@@ -10,8 +10,6 @@ services:
       RUST_LOG: info
       PORT: 4646
       MONGO_URI: mongodb://mongo:27017/main_database
-    volumes:
-      - .:/app
     depends_on:
       - mongo
     restart: unless-stopped
