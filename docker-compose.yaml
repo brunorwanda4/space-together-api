@@ -1,5 +1,6 @@
 services:
   api:
+    build: .
     image: brunorwanda/space-together-api:latest
     container_name: space-together-api
     ports:
