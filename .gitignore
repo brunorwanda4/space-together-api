@@ -39,7 +39,7 @@ yarn-error.log*
 next-env.d.ts
 
 # -- Base
-.*
+# .*
 !.gitignore
 
 *.lock
@@ -83,7 +83,9 @@ _*
 !src/**/_*
 
 # Allows .env (make sure only dev info)
-# !.env # Commented by default
+# Commented by default
+.env
+.env.production
 
 # Allow vscode
 # !.vscode # Commented by default
