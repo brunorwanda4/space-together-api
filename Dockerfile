@@ -1,6 +1,14 @@
-FROM rust:1.90 AS builder
+FROM rust:1.90 AS chef
+
+RUN cargo install cargo-chef
 
 WORKDIR /app
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
