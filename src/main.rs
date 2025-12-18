@@ -24,7 +24,7 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     config::logger::init();
 
-    let port = env::var("PORT").expect("PORT must be set");
+    let port = env::var("PORT").unwrap_or_else(|_| "4646".to_string());
     let address = format!("0.0.0.0:{port}");
 
     let mongo_manager = config::db::init_mongo_manager().await;

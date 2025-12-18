@@ -22,11 +22,12 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/space-together-api /app/space-together-api
 
+# Render ignores EXPOSE, but it's good for documentation
 EXPOSE 4646
-
 
 CMD ["./space-together-api"]
