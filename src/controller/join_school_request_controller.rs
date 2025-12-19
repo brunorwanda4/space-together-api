@@ -5,10 +5,12 @@ use mongodb::bson::oid::ObjectId;
 use crate::{
     config::state::AppState,
     domain::{
+        auth_user::AuthUserDto,
         join_school_request::{
             BulkCreateJoinSchoolRequest, BulkRespondRequest, CreateJoinSchoolRequest,
-            JoinRequestQuery, JoinRequestWithToken, JoinRole, JoinSchoolRequest, JoinStatus,
-            RespondToJoinRequest, UpdateRequestExpiration,
+            JoinRequestQuery, JoinRequestWithToken, JoinRole, JoinSchoolByCode, JoinSchoolRequest,
+            JoinSchoolRequestResponseToken, JoinStatus, RespondToJoinRequest,
+            UpdateRequestExpiration,
         },
         school::School,
         school_staff::{parse_staff_type, SchoolStaff, SchoolStaffType},
@@ -21,7 +23,8 @@ use crate::{
     models::id_model::IdType,
     repositories::{
         class_repo::ClassRepo, join_school_request_repo::JoinSchoolRequestRepo,
-        school_staff_repo::SchoolStaffRepo, student_repo::StudentRepo, teacher_repo::TeacherRepo,
+        school_repo::SchoolRepo, school_staff_repo::SchoolStaffRepo, student_repo::StudentRepo,
+        teacher_repo::TeacherRepo,
     },
     services::{
         class_service::ClassService, school_service::SchoolService,
@@ -800,5 +803,80 @@ impl<'a> JoinSchoolRequestController<'a> {
             .find_by_school_and_status(school_id, JoinStatus::Pending)
             .await?;
         Ok(requests)
+    }
+
+    pub async fn join_school_by_code(
+        &self,
+        request: &JoinSchoolByCode,
+        auth_user: &AuthUserDto,
+        state: web::Data<AppState>,
+    ) -> Result<JoinSchoolRequestResponseToken, AppError> {
+        // 1. Load authenticated user
+        let user = self
+            .user_service
+            .get_user_by_email(&auth_user.email)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find user: {}", e),
+            })?;
+
+        let user_id = user.id.clone().ok_or_else(|| AppError {
+            message: "User ID not found".into(),
+        })?;
+
+        let school_repo = SchoolRepo::new(&state.db.main_db());
+
+        let school = school_repo
+            .find_by_code(&request.code)
+            .await?
+            .ok_or_else(|| AppError {
+                message: "Failed to find school with code".to_string(),
+            })?;
+
+        let school_id = school.id.clone().ok_or_else(|| AppError {
+            message: "School ID not found".into(),
+        })?;
+
+        // 3. Validate school code
+        let school_code = school.code.as_ref().ok_or_else(|| AppError {
+            message: "Invalid school code".into(),
+        })?;
+
+        if school_code != &request.code {
+            return Err(AppError {
+                message: "Your school code does not match".into(),
+            });
+        }
+
+        // 4. Resolve school database
+        let school_db_name = school.database_name.as_ref().ok_or_else(|| AppError {
+            message: "School database not configured".into(),
+        })?;
+
+        let school_db = state.db.get_db(school_db_name);
+
+        // 5. Create join request and role in school database
+        let join_request = JoinSchoolRequest::new(&user, &school_id, &user_id);
+
+        self.create_role_entity_school_db(&join_request, &user, &school, &school_db)
+            .await?;
+
+        // 6. Attach school to user
+        self.user_service
+            .add_school_to_user(
+                &IdType::ObjectId(user_id),
+                &IdType::from_object_id(school_id),
+            )
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        // 7. Generate school token
+        let school_token = self
+            .school_service
+            .create_school_token(&school)
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        Ok(JoinSchoolRequestResponseToken { school_token })
     }
 }

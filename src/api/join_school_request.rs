@@ -7,7 +7,7 @@ use crate::{
         auth_user::AuthUserDto,
         join_school_request::{
             BulkCreateJoinSchoolRequest, BulkRespondRequest, CreateJoinSchoolRequest,
-            JoinRequestQuery, RespondToJoinRequest, UpdateRequestExpiration,
+            JoinRequestQuery, JoinSchoolByCode, RespondToJoinRequest, UpdateRequestExpiration,
         },
     },
     guards::role_guard,
@@ -930,6 +930,36 @@ pub fn create_join_school_request_controller(
     }
 }
 
+#[post("/join-by-code")]
+async fn join_school_by_code(
+    user: web::ReqData<AuthUserDto>,
+    data: web::Json<JoinSchoolByCode>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let user = user.clone().into_inner();
+    let controller = create_join_school_request_controller(&state);
+
+    match controller
+        .join_school_by_code(&data.into_inner(), &user, state.clone())
+        .await
+    {
+        Ok(response) => {
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                EventService::broadcast_created(
+                    &state_clone,
+                    "join_school_request",
+                    "new",
+                    &serde_json::json!({ "action": "created", "by_user": user.id }),
+                )
+                .await;
+            });
+            HttpResponse::Ok().json(response)
+        }
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/join-school-requests")
@@ -952,6 +982,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_join_request_statistics) // GET /join-school-requests/stats/summary - Get join request statistics summary
             // Protected routes (require JWT)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
+            .service(join_school_by_code) // POST /join-school-requests/join-by-code - Join school by code
             .service(create_join_request) // POST /join-school-requests - Create new join request (Admin/Staff/Teacher only)
             .service(create_bulk_join_requests) // POST /join-school-requests/bulk - Create multiple join requests (Admin/Staff/Teacher only)
             .service(accept_join_request) // PUT /join-school-requests/{id}/accept - Accept a join request (User for own request or Admin/Staff)

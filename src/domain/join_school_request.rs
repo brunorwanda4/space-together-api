@@ -75,6 +75,29 @@ pub struct JoinSchoolRequest {
     pub updated_at: DateTime<Utc>,
 }
 
+impl JoinSchoolRequest {
+    pub fn new(user: &User, school_id: &ObjectId, sent_by: &ObjectId) -> Self {
+        let now = Utc::now();
+        Self {
+            id: None,
+            class_id: None,
+            school_id: *school_id,
+            invited_user_id: user.id,
+            role: JoinRole::Student,
+            email: user.email.clone(),
+            r#type: user.role.clone().unwrap().to_string(),
+            message: None,
+            status: JoinStatus::Pending,
+            sent_at: now,
+            responded_at: None,
+            expires_at: None,
+            sent_by: sent_by.clone(),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+}
+
 /// This is the DTO you already showed, but with `pub` fields so it's usable cross-crate if needed.
 /// (If you already have it in `domain/join_school_request.rs` you can skip redeclaring.)
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -194,4 +217,14 @@ impl fmt::Display for JoinRole {
             }
         )
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JoinSchoolByCode {
+    pub code: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JoinSchoolRequestResponseToken {
+    pub school_token: String,
 }

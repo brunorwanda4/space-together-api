@@ -11,6 +11,17 @@ pub enum UserRole {
     SCHOOLSTAFF,
 }
 
+impl UserRole {
+    pub fn to_string(&self) -> String {
+        match self {
+            UserRole::STUDENT => "STUDENT".to_string(),
+            UserRole::TEACHER => "TEACHER".to_string(),
+            UserRole::ADMIN => "ADMIN".to_string(),
+            UserRole::SCHOOLSTAFF => "SCHOOLSTAFF".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Address {
     pub country: String,
