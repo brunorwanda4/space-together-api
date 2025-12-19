@@ -58,10 +58,28 @@ pub fn is_valid_name(name: &str) -> Result<String, String> {
 pub fn generate_username(name: &str) -> String {
     let mut rng = rng();
 
-    let binding = name.to_lowercase();
-    let words: Vec<&str> = binding.split_whitespace().collect();
-    let mut possible_usernames = Vec::new();
+    // 1. Normalize and sanitize input
+    let cleaned = name
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == ' ' {
+                c
+            } else {
+                ' ' // replace punctuation like '.' with space
+            }
+        })
+        .collect::<String>();
 
+    // 2. Split into valid words
+    let words: Vec<&str> = cleaned.split_whitespace().collect();
+
+    // Fallback safety
+    if words.is_empty() {
+        return format!("user_{}", rand::random::<u16>());
+    }
+
+    let mut possible_usernames = Vec::new();
     for permutation in words.iter().permutations(words.len()) {
         let joined = permutation.into_iter().join("_");
         possible_usernames.push(joined.clone());
@@ -69,7 +87,6 @@ pub fn generate_username(name: &str) -> String {
     }
 
     possible_usernames.shuffle(&mut rng);
-
     let username = possible_usernames
         .first()
         .unwrap_or(&words.join("_"))
