@@ -1,5 +1,8 @@
 use crate::{
-    domain::school::{School, SchoolStats, UpdateSchool},
+    domain::{
+        common_details::Paginated,
+        school::{School, SchoolStats, UpdateSchool},
+    },
     errors::AppError,
     mappers::school_mapper::to_school_school_token,
     models::{id_model::IdType, mongo_model::MongoFields},
@@ -9,7 +12,7 @@ use crate::{
         code::generate_code,
         names::{is_valid_name, is_valid_username},
         school_token::{create_school_token, verify_school_token},
-        school_utils::{sanitize_school, sanitize_schools},
+        school_utils::sanitize_school,
     },
 };
 use chrono::Utc;
@@ -30,13 +33,11 @@ impl<'a> SchoolService<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<School>, String> {
-        let schools = self
-            .repo
-            .get_all_schools(filter, limit, skip)
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<School>, AppError> {
+        self.repo
+            .get_all_schools(filter, limit, skip, extra_match)
             .await
-            .map_err(|e| e.message)?;
-        Ok(sanitize_schools(schools))
     }
 
     /// Get school statistics

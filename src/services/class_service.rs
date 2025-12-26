@@ -247,12 +247,30 @@ impl<'a> ClassService<'a> {
             is_valid_username(username)?;
         }
 
-        let mut existing_class = self
+        let existing_class = self
             .repo
             .find_by_id(id)
             .await
             .map_err(|e| e.message.clone())?
             .ok_or_else(|| "Class not found".to_string())?;
+
+        let mut update_class = updated_data.clone();
+
+        if let Some(class_image) = updated_data.image {
+            if let Some(image) = class_image {
+                if existing_class.image != Some(image.clone()) {
+                    if let Some(old_image_id) = existing_class.image_id.clone() {
+                        let _ = CloudinaryService::delete_from_cloudinary(&old_image_id).await;
+                    }
+
+                    let cloud_res = CloudinaryService::upload_to_cloudinary(&image)
+                        .await
+                        .map_err(|e| format!("Cloud upload failed: {}", e))?;
+                    update_class.image_id = Some(Some(cloud_res.public_id));
+                    update_class.image = Some(Some(cloud_res.secure_url));
+                }
+            }
+        }
 
         // ✅ Unique username check
         if let Some(ref username) = updated_data.username {
@@ -276,100 +294,32 @@ impl<'a> ClassService<'a> {
             }
         }
 
-        // ✅ Merge fields
-        if let Some(v) = updated_data.name {
-            existing_class.name = v;
-        }
-        if let Some(v) = updated_data.username {
-            existing_class.username = v;
-        }
-        if let Some(v) = updated_data.code {
-            existing_class.code = v;
-        }
-        if let Some(v) = updated_data.school_id {
-            existing_class.school_id = v;
-        }
-        if let Some(v) = updated_data.r#type {
-            existing_class.r#type = v;
-        }
-        if let Some(v) = updated_data.is_active {
-            existing_class.is_active = v;
-        }
-        if let Some(v) = updated_data.description {
-            existing_class.description = v;
-        }
-        if let Some(v) = updated_data.capacity {
-            existing_class.capacity = Some(v);
-        }
-        if let Some(v) = updated_data.subject {
-            existing_class.subject = v;
-        }
-        if let Some(v) = updated_data.grade_level {
-            existing_class.grade_level = v;
-        }
-        if let Some(v) = updated_data.tags {
-            existing_class.tags = v;
-        }
-
-        // ✅ Handle image replacement
-        if let Some(new_image_data) = updated_data.image.clone() {
-            if existing_class.image != Some(new_image_data.clone()) {
-                if let Some(old_image_id) = existing_class.image_id.clone() {
-                    let _ = CloudinaryService::delete_from_cloudinary(&old_image_id).await;
-                }
-
-                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data)
-                    .await
-                    .map_err(|e| format!("Cloud upload failed: {}", e))?;
-                existing_class.image_id = Some(cloud_res.public_id);
-                existing_class.image = Some(cloud_res.secure_url);
-            }
-        }
-
         // ✅ Handle background images
         if let Some(new_backgrounds) = updated_data.background_images.clone() {
-            if let Some(old_bgs) = existing_class.background_images.clone() {
-                for bg in old_bgs {
-                    let _ = CloudinaryService::delete_from_cloudinary(&bg.id).await;
+            if let Some(bg_images) = new_backgrounds {
+                if let Some(old_bgs) = existing_class.background_images.clone() {
+                    for bg in old_bgs {
+                        let _ = CloudinaryService::delete_from_cloudinary(&bg.id).await;
+                    }
                 }
-            }
 
-            let mut uploaded_bgs = Vec::new();
-            for bg in new_backgrounds {
-                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url)
-                    .await
-                    .map_err(|e| format!("Failed to upload background image: {}", e))?;
-                uploaded_bgs.push(Image {
-                    id: cloud_res.public_id,
-                    url: cloud_res.secure_url,
-                });
+                let mut uploaded_bgs: Vec<Image> = Vec::new();
+                for bg in bg_images {
+                    let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url)
+                        .await
+                        .map_err(|e| format!("Failed to upload background image: {}", e))?;
+                    uploaded_bgs.push(Image {
+                        id: cloud_res.public_id,
+                        url: cloud_res.secure_url,
+                    });
+                }
+                update_class.background_images = Some(Some(uploaded_bgs));
             }
-            existing_class.background_images = Some(uploaded_bgs);
         }
-
-        existing_class.updated_at = Utc::now();
-
-        // ✅ Build final UpdateClass
-        let update_data = UpdateClass {
-            name: Some(existing_class.name),
-            username: Some(existing_class.username),
-            code: Some(existing_class.code),
-            school_id: Some(existing_class.school_id),
-            r#type: Some(existing_class.r#type),
-            is_active: Some(existing_class.is_active),
-            description: Some(existing_class.description),
-            capacity: existing_class.capacity,
-            subject: Some(existing_class.subject),
-            grade_level: Some(existing_class.grade_level),
-            tags: Some(existing_class.tags),
-            image: existing_class.image,
-            image_id: existing_class.image_id,
-            background_images: existing_class.background_images,
-        };
 
         let updated_class = self
             .repo
-            .update_class(id, &update_data)
+            .update_class(id, &update_class)
             .await
             .map_err(|e| e.message)?;
 

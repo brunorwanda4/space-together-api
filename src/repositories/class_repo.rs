@@ -6,8 +6,10 @@ use crate::domain::trade::Trade;
 use crate::domain::user::User;
 use crate::errors::AppError;
 use crate::models::id_model::IdType;
+use crate::models::mongo_model::IndexDef;
 use crate::pipeline::class_pipeline::class_with_others_pipeline;
 use crate::repositories::base_repo::BaseRepository;
+use crate::utils::mongo_utils::extract_valid_fields;
 use crate::utils::object_id::parse_object_id;
 use crate::utils::school_utils::sanitize_school;
 use crate::utils::user_utils::sanitize_user;
@@ -16,8 +18,7 @@ use chrono::Utc;
 use futures::{StreamExt, TryStreamExt};
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
-    options::IndexOptions,
-    Collection, Database, IndexModel,
+    Collection, Database,
 };
 
 pub struct ClassRepo {
@@ -349,78 +350,19 @@ impl ClassRepo {
             })
     }
 
-    async fn ensure_indexes(&self) -> Result<(), AppError> {
-        let username_index = IndexModel::builder()
-            .keys(doc! { "username": 1 })
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let indexes = vec![
+            IndexDef::single("username", true),
+            IndexDef::single("code", true),
+            IndexDef::single("school_id", false),
+            IndexDef::single("creator_id", false),
+            IndexDef::single("class_teacher_id", false),
+            IndexDef::single("main_class_id", false),
+        ];
 
-        let code_index = IndexModel::builder()
-            .keys(doc! { "code": 1 })
-            .options(IndexOptions::builder().unique(true).build())
-            .build();
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let school_index = IndexModel::builder()
-            .keys(doc! { "school_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let creator_index = IndexModel::builder()
-            .keys(doc! { "creator_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let class_teacher_index = IndexModel::builder()
-            .keys(doc! { "class_teacher_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        let main_class_index = IndexModel::builder()
-            .keys(doc! { "main_class_id": 1 })
-            .options(IndexOptions::builder().unique(false).build())
-            .build();
-
-        self.collection
-            .create_index(username_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create username index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(code_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create code index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(school_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create school_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(creator_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create creator_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(class_teacher_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create class_teacher_id index: {}", e),
-            })?;
-
-        self.collection
-            .create_index(main_class_index)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to create main_class_id index: {}", e),
-            })?;
+        repo.ensure_indexes(&indexes).await?;
 
         Ok(())
     }
@@ -430,7 +372,7 @@ impl ClassRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-        extra_match: Option<Document>, // 👈 extra filter support
+        extra_match: Option<Document>,
     ) -> Result<PaginatedClasses, AppError> {
         // ✅ Use BaseRepository with correct type (Document)
         let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
@@ -460,75 +402,20 @@ impl ClassRepo {
     }
 
     pub async fn update_class(&self, id: &IdType, update: &UpdateClass) -> Result<Class, AppError> {
-        let obj_id = parse_object_id(id)?;
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let mut update_doc = Document::new();
+        let partial_doc = bson::to_document(update).map_err(|e| AppError {
+            message: format!("Failed to serialize update: {}", e),
+        })?;
 
-        macro_rules! insert_if_some {
-            ($field:expr, $name:expr) => {
-                if let Some(value) = &$field {
-                    update_doc.insert(
-                        $name,
-                        bson::to_bson(value).map_err(|e| AppError {
-                            message: format!("Failed to serialize {}: {}", $name, e),
-                        })?,
-                    );
-                }
-            };
-        }
+        let update_doc = extract_valid_fields(partial_doc);
 
-        insert_if_some!(update.name, "name");
-        insert_if_some!(update.username, "username");
-        insert_if_some!(update.code, "code");
-        insert_if_some!(update.school_id, "school_id");
-        insert_if_some!(update.r#type, "type");
-        insert_if_some!(update.description, "description");
-        insert_if_some!(update.subject, "subject");
-        insert_if_some!(update.grade_level, "grade_level");
-        insert_if_some!(update.tags, "tags");
-        insert_if_some!(update.image_id, "image_id");
-        insert_if_some!(update.image, "image");
-        insert_if_some!(update.background_images, "background_images");
-
-        if let Some(is_active) = update.is_active {
-            update_doc.insert("is_active", is_active);
-        }
-        if let Some(capacity) = update.capacity {
-            update_doc.insert("capacity", capacity);
-        }
-
-        update_doc.insert("updated_at", bson::to_bson(&Utc::now()).unwrap());
-
-        let update_doc = doc! { "$set": update_doc };
-
-        self.collection
-            .update_one(doc! { "_id": obj_id }, update_doc)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to update class: {}", e),
-            })?;
-
-        self.find_by_id(id).await?.ok_or(AppError {
-            message: "Class not found after update".into(),
-        })
+        repo.update_one_and_fetch::<Class>(id, update_doc).await
     }
 
     pub async fn delete_class(&self, id: &IdType) -> Result<(), AppError> {
-        let obj_id = parse_object_id(id)?;
-        let result = self
-            .collection
-            .delete_one(doc! { "_id": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to delete class: {}", e),
-            })?;
-
-        if result.deleted_count == 0 {
-            return Err(AppError {
-                message: "No class deleted; it may not exist".to_string(),
-            });
-        }
-        Ok(())
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.delete_one(id).await
     }
 
     pub async fn count_by_creator_id(&self, creator_id: &IdType) -> Result<u64, AppError> {
@@ -543,49 +430,17 @@ impl ClassRepo {
 
     pub async fn create_many_classes(&self, classes: Vec<Class>) -> Result<Vec<Class>, AppError> {
         self.ensure_indexes().await?;
-
-        let mut classes_to_insert = Vec::with_capacity(classes.len());
-        let now = Utc::now();
-
-        for mut class in classes {
-            class.id = None;
-            class.created_at = now;
-            class.updated_at = now;
-            classes_to_insert.push(class);
-        }
-
-        // Insert all classes
-        let result = self
-            .collection
-            .insert_many(&classes_to_insert)
-            .await
+        let docs = classes
+            .into_iter()
+            .map(|dto| bson::to_document(&dto.to_partial()))
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError {
-                message: format!("Failed to insert multiple classes: {}", e),
+                message: format!("Failed to serialize DTO: {}", e),
             })?;
 
-        // ✅ Fix: use cloned() inside filter_map, not after
-        let inserted_ids: Vec<ObjectId> = result
-            .inserted_ids
-            .values()
-            .filter_map(|bson| bson.as_object_id())
-            .collect();
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        if inserted_ids.len() != classes_to_insert.len() {
-            return Err(AppError {
-                message: "Failed to get all inserted class IDs".to_string(),
-            });
-        }
-
-        // Fetch and return the inserted classes
-        let mut inserted_classes = Vec::with_capacity(inserted_ids.len());
-        for id in inserted_ids {
-            let class = self.find_by_id(&IdType::from_object_id(id)).await?;
-            if let Some(class) = class {
-                inserted_classes.push(class);
-            }
-        }
-
-        Ok(inserted_classes)
+        repo.create_many::<Class>(docs, None).await
     }
 
     /// Bulk update multiple classes
@@ -593,17 +448,38 @@ impl ClassRepo {
         &self,
         updates: Vec<(IdType, UpdateClass)>,
     ) -> Result<Vec<Class>, AppError> {
-        let mut updated_classes = Vec::with_capacity(updates.len());
-
-        for (id, update) in updates {
-            match self.update_class(&id, &update).await {
-                Ok(class) => updated_classes.push(class),
-                Err(e) => {
-                    // Log the error but continue with other updates
-                    eprintln!("Failed to update class {:?}: {}", id, e.message);
-                }
-            }
+        if updates.is_empty() {
+            return Ok(vec![]);
         }
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        // ===== BUILD FILTER FOR ALL IDs =====
+        let ids: Vec<_> = updates
+            .iter()
+            .map(|(id, _)| IdType::to_object_id(id))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let filter = doc! { "_id": { "$in": ids } };
+
+        // ===== MERGE ALL UPDATES INTO ONE DOCUMENT =====
+        // Here we assume all updates can be merged; adjust if different updates per class
+        let mut update_data = Document::new();
+        for (_, update) in updates {
+            let doc = bson::to_document(&update).map_err(|e| AppError {
+                message: format!("Failed to serialize UpdateClass: {}", e),
+            })?;
+            update_data.extend(doc);
+        }
+
+        if update_data.is_empty() {
+            return Err(AppError {
+                message: "No valid fields to update".into(),
+            });
+        }
+
+        // ===== CALL BULK UPDATE USING update_many_and_fetch =====
+        let updated_classes: Vec<Class> = repo.update_many_and_fetch(filter, update_data).await?;
 
         if updated_classes.is_empty() {
             return Err(AppError {

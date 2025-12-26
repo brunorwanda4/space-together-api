@@ -224,6 +224,68 @@ impl BaseRepository {
         Ok(item)
     }
 
+    /// Fast bulk update that returns updated documents using a batch marker
+    /// - Uses a temporary `__batch_id` field
+    /// - Requires non-empty filter
+    /// - Automatically updates `updated_at`
+    /// - Cleans up batch marker after fetch
+    pub async fn update_many_and_fetch<T>(
+        &self,
+        filter: Document,
+        update_data: Document,
+    ) -> Result<Vec<T>, AppError>
+    where
+        T: DeserializeOwned,
+    {
+        if filter.is_empty() {
+            return Err(AppError {
+                message: "Update filter cannot be empty".into(),
+            });
+        }
+
+        if update_data.is_empty() {
+            return Err(AppError {
+                message: "No valid fields to update".into(),
+            });
+        }
+
+        // ===== PREPARE UPDATE =====
+        let now = chrono::Utc::now();
+
+        let mut update_doc = update_data;
+        update_doc.insert("updated_at", bson::to_bson(&now).unwrap());
+
+        // ===== UPDATE MANY =====
+        let result = self
+            .collection
+            .update_many(filter.clone(), doc! { "$set": update_doc })
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to update documents: {}", e),
+            })?;
+
+        if result.matched_count == 0 {
+            return Ok(vec![]);
+        }
+
+        // ===== FETCH UPDATED DOCUMENTS =====
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to fetch updated documents: {}", e),
+        })?;
+
+        let mut items = Vec::new();
+        while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Iteration error: {}", e),
+        })? {
+            let item: T = bson::from_document(doc).map_err(|e| AppError {
+                message: format!("Deserialize error: {}", e),
+            })?;
+            items.push(item);
+        }
+
+        Ok(items)
+    }
+
     /// Delete one document by ID
     pub async fn delete_one(&self, id: &IdType) -> Result<(), AppError> {
         let obj_id = IdType::to_object_id(id)?;

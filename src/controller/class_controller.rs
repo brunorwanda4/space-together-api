@@ -308,6 +308,7 @@ impl<'a> ClassController<'a> {
                 tags: vec!["subclass".to_string()],
                 created_at: now,
                 updated_at: now,
+                settings: None,
             };
 
             subclasses.push(subclass);

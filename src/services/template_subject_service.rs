@@ -9,7 +9,7 @@ use crate::{
         template_subject::{TemplateSubject, TemplateSubjectPartial, TemplateSubjectWithOthers},
     },
     errors::AppError,
-    models::id_model::IdType,
+    models::{id_model::IdType, mongo_model::CountDoc},
     pipeline::template_subject_pipeline::template_subject_pipeline,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
@@ -242,5 +242,26 @@ impl TemplateSubjectService {
         let result = self.get_all(None, None, None, Some(extra_match)).await?;
 
         Ok(result.data)
+    }
+
+    pub async fn count_template_subjects(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        let searchable = [
+            "name",
+            "code",
+            "description",
+            "category",
+            "estimated_hours",
+            "credits",
+            "_id",
+        ];
+
+        let total = base_repo.count(filter, &searchable, extra_match).await?;
+
+        Ok(total)
     }
 }

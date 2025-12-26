@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 use crate::{
     domain::{
         common_details::Image, main_class::MainClass, school::School, teacher::Teacher,
         trade::Trade, user::User,
     },
     helpers::object_id_helpers,
+    make_partial,
 };
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
@@ -23,6 +26,7 @@ pub enum ClassLevelType {
     MainClass, // e.g., "Primary 1"
     SubClass, // e.g., "Primary 1 A"
 }
+make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Class {
     #[serde(
@@ -116,29 +120,13 @@ pub struct Class {
     #[serde(default)]
     pub tags: Vec<String>,
 
+    pub settings: Option<ClassSettings>,
     #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
 
     #[serde(default = "Utc::now")]
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Deserialize, Default, Serialize, Clone)]
-pub struct UpdateClass {
-    pub name: Option<String>,
-    pub username: Option<String>,
-    pub code: Option<Option<String>>, // Allows setting to None
-    pub image_id: Option<String>,
-    pub image: Option<String>,
-    pub background_images: Option<Vec<Image>>,
-    pub school_id: Option<Option<ObjectId>>,
-    pub r#type: Option<ClassType>,
-    pub is_active: Option<bool>,
-    pub description: Option<Option<String>>,
-    pub capacity: Option<u32>,
-    pub subject: Option<Option<String>>,
-    pub grade_level: Option<Option<String>>,
-    pub tags: Option<Vec<String>>,
+} => UpdateClass
 }
 
 // Add these to your existing class.rs file
@@ -207,4 +195,196 @@ pub struct PaginatedClassesWithOthers {
     pub total: i64,
     pub total_pages: i64,
     pub current_page: i64,
+}
+
+// ================= Class settings ==================================
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum StudentVisibility {
+    #[default]
+    All,
+    Limited,
+    None,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct StudentPermissions {
+    pub can_chat: bool,
+    pub can_upload_homework: bool,
+    pub can_comment: bool,
+    pub can_view_all_students: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct AttendanceRules {
+    pub late_after_minutes: u32,
+    pub required_attendance_percentage: f32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct ClassworkRules {
+    pub allow_resubmission: bool,
+    pub max_late_days: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct ClassStudentSettings {
+    pub auto_enroll_subclasses: bool,
+    pub student_visibility: StudentVisibility,
+    pub permissions: StudentPermissions,
+    pub attendance_rules: AttendanceRules,
+    pub classwork_rules: ClassworkRules,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct TeacherPermissions {
+    pub can_edit_marks: bool,
+    pub can_take_attendance: bool,
+    pub can_remove_students: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct ClassTeacherSettings {
+    pub permissions: TeacherPermissions,
+    pub visibility: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct AllowedActions {
+    pub can_edit_class_info: bool,
+    pub can_add_students: bool,
+    pub can_remove_students: bool,
+    pub can_manage_subjects: bool,
+    pub can_manage_timetable: bool,
+    pub can_approve_requests: bool,
+    pub can_assign_roles: bool,
+    pub can_send_parent_notifications: bool,
+    pub can_add_teachers: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct SecuritySettings {
+    pub require_two_person_approval_for_results: bool,
+    pub log_all_teacher_changes: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct ClassClassTeacherSettings {
+    pub allowed_actions: AllowedActions,
+    pub security: SecuritySettings,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct TimetablePeriod {
+    pub period: u32,
+    pub subject: String,
+    pub teacher_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct BreakTime {
+    pub start: String,
+    pub end: String,
+    pub label: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct ClashPrevention {
+    pub prevent_double_teacher_booking: bool,
+    pub prevent_duplicate_subject_same_day: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct ClassTimetableSettings {
+    pub period_length_minutes: u32,
+    pub periods_per_day: u32,
+
+    /// key = weekday (e.g. "monday")
+    pub weekly_timetable: HashMap<String, Vec<TimetablePeriod>>,
+
+    pub break_times: Vec<BreakTime>,
+    pub clash_prevention: ClashPrevention,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+pub struct ClassSettings {
+    pub students: ClassStudentSettings,
+    pub teachers: ClassTeacherSettings,
+    pub class_teacher: ClassClassTeacherSettings,
+    pub timetable: ClassTimetableSettings,
+}
+
+impl ClassSettings {
+    pub fn default() -> Self {
+        ClassSettings {
+            students: ClassStudentSettings {
+                auto_enroll_subclasses: false,
+                student_visibility: StudentVisibility::All,
+                permissions: StudentPermissions {
+                    can_chat: true,
+                    can_upload_homework: true,
+                    can_comment: true,
+                    can_view_all_students: false,
+                },
+                attendance_rules: AttendanceRules {
+                    late_after_minutes: 10,
+                    required_attendance_percentage: 75.0,
+                },
+                classwork_rules: ClassworkRules {
+                    allow_resubmission: true,
+                    max_late_days: "3".to_string(),
+                },
+            },
+
+            teachers: ClassTeacherSettings {
+                permissions: TeacherPermissions {
+                    can_edit_marks: true,
+                    can_take_attendance: true,
+                    can_remove_students: false,
+                },
+                visibility: true,
+            },
+
+            class_teacher: ClassClassTeacherSettings {
+                allowed_actions: AllowedActions {
+                    can_edit_class_info: true,
+                    can_add_students: true,
+                    can_remove_students: true,
+                    can_manage_subjects: true,
+                    can_manage_timetable: true,
+                    can_approve_requests: true,
+                    can_assign_roles: true,
+                    can_send_parent_notifications: true,
+                    can_add_teachers: true,
+                },
+                security: SecuritySettings {
+                    require_two_person_approval_for_results: false,
+                    log_all_teacher_changes: true,
+                },
+            },
+
+            timetable: ClassTimetableSettings {
+                period_length_minutes: 45,
+                periods_per_day: 8,
+                weekly_timetable: std::collections::HashMap::new(),
+                break_times: vec![
+                    BreakTime {
+                        start: "10:30".to_string(),
+                        end: "10:45".to_string(),
+                        label: "Morning Break".to_string(),
+                    },
+                    BreakTime {
+                        start: "13:00".to_string(),
+                        end: "14:00".to_string(),
+                        label: "Lunch Break".to_string(),
+                    },
+                ],
+                clash_prevention: ClashPrevention {
+                    prevent_double_teacher_booking: true,
+                    prevent_duplicate_subject_same_day: true,
+                },
+            },
+        }
+    }
 }

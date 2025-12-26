@@ -20,6 +20,7 @@ use crate::{
         template_subject_service::TemplateSubjectService, tenant_service::TenantService,
         user_service::UserService,
     },
+    utils::api_utils::build_extra_match,
 };
 
 #[get("")]
@@ -30,12 +31,16 @@ async fn get_all_schools(
     let repo = SchoolRepo::new(&state.db.main_db());
     let service = SchoolService::new(&repo);
 
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
     match service
-        .get_all_schools(query.filter.clone(), query.limit, query.skip)
+        .get_all_schools(query.filter.clone(), query.limit, query.skip, extra_match)
         .await
     {
         Ok(schools) => HttpResponse::Ok().json(schools),
-        Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
+        Err(message) => HttpResponse::BadRequest().json(message),
     }
 }
 

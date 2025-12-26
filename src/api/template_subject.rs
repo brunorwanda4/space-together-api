@@ -302,6 +302,27 @@ async fn delete_template_subject(
     }
 }
 
+#[get("/count")]
+async fn count_template_subjects(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = TemplateSubjectService::new(&state.db.main_db());
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .count_template_subjects(query.filter.clone(), extra_match)
+        .await
+    {
+        Ok(count) => HttpResponse::Ok().json(serde_json::json!(count)),
+        Err(message) => HttpResponse::BadRequest().json(message),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/template-subjects")
@@ -311,6 +332,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_template_subject_by_code_others) // GET /template-subjects/code/{id}/others
             .service(find_many_by_prerequisite_with_relations) // GET /template-subjects/prerequisite/{id}/others
             .service(find_many_by_prerequisite) // GET /template-subjects/prerequisite/{id}
+            .service(count_template_subjects) // GET /template-subjects/count
             .service(get_template_subject_by_id) // GET /template-subjects/{id}
             .service(get_template_subject_by_id_others) // GET /template-subjects/{id}/others
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

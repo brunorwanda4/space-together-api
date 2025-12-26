@@ -1,8 +1,10 @@
+use crate::domain::common_details::Paginated;
 use crate::domain::school::{School, SchoolStats, UpdateSchool};
 use crate::errors::AppError;
 use crate::models::id_model::IdType;
+use crate::repositories::base_repo::BaseRepository;
 use chrono::{Duration, Utc};
-use futures::TryStreamExt;
+use mongodb::bson::Document;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, DateTime as BsonDateTime},
     options::IndexOptions,
@@ -78,60 +80,35 @@ impl SchoolRepo {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<Vec<School>, AppError> {
-        let mut pipeline = vec![];
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<School>, AppError> {
+        let searchable = [
+            "name",
+            "code",
+            "description",
+            "school_type",
+            "username",
+            "accreditation_number",
+            "school_type",
+            "school_members",
+            "address",
+            "website",
+            "student_capacity",
+            "classrooms",
+            "affiliation",
+            "_id",
+        ];
 
-        if let Some(f) = filter {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i"
-            };
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        { "name": &regex },
-                        { "code": &regex },
-                        { "username": &regex },
-                        { "school_type": &regex },
-                        { "description": &regex },
-                        { "accreditation_number": &regex },
-                        { "affiliation": &regex },
-                    ]
-                }
-            });
-        }
-
-        pipeline.push(doc! {
-            "$addFields": {
-                "sort_date": { "$ifNull": [ "$updated_at", "$created_at" ] }
-            }
-        });
-        pipeline.push(doc! { "$sort": { "sort_date": -1 } });
-
-        if let Some(s) = skip {
-            pipeline.push(doc! { "$skip": s });
-        }
-        pipeline.push(doc! { "$limit": limit.unwrap_or(10) });
-
-        let mut cursor = self
-            .collection
-            .aggregate(pipeline)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch schools: {}", e),
-            })?;
-
-        let mut schools = Vec::new();
-        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
-            message: format!("Failed to iterate schools: {}", e),
-        })? {
-            let school: School = bson::from_document(result).map_err(|e| AppError {
-                message: format!("Failed to deserialize school: {}", e),
-            })?;
-            schools.push(school);
-        }
-
-        Ok(schools)
+        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        let (data, total, total_pages, current_page) = base_repo
+            .get_all::<School>(filter, &searchable, limit, skip, extra_match)
+            .await?;
+        Ok(Paginated {
+            data,
+            total,
+            total_pages,
+            current_page,
+        })
     }
 
     pub async fn insert_school(&self, school: &School) -> Result<School, AppError> {

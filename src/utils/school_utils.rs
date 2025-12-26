@@ -13,7 +13,7 @@ pub fn sanitize_school(mut school: School) -> School {
     school
 }
 
-/// Sanitize multiple schools
-pub fn sanitize_schools(schools: Vec<School>) -> Vec<School> {
-    schools.into_iter().map(sanitize_school).collect()
-}
+// Sanitize multiple schools
+// pub fn sanitize_schools(schools: Vec<School>) -> Vec<School> {
+//     schools.into_iter().map(sanitize_school).collect()
+// }
