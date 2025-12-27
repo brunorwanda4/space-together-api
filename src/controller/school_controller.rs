@@ -188,7 +188,7 @@ impl<'a> SchoolController<'a> {
                     subclass_ids: Some(vec![]),
                     parent_class_id: None,
                     level_type: Some(ClassLevelType::MainClass),
-                    settings: Some(ClassSettings::default()),
+                    settings: ClassSettings::default(),
                 };
 
                 class_trade_pairs.push((class, trade.r#type.clone()));

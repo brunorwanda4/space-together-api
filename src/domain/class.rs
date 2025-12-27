@@ -70,11 +70,9 @@ pub struct Class {
     #[serde(default)]
     pub r#type: ClassType, // (Private, School, Public)
 
-    /// 👇 NEW: Is this a MainClass or a SubClass?
     #[serde(default)]
     pub level_type: Option<ClassLevelType>,
 
-    /// 👇 NEW: If SubClass, reference to its main class (e.g., "Primary 1")
     #[serde(
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
@@ -83,7 +81,6 @@ pub struct Class {
     )]
     pub parent_class_id: Option<ObjectId>,
 
-    /// 👇 OPTIONAL: If this is a main class, list all its subclasses
     #[serde(
         serialize_with = "object_id_helpers::serialize_opt_vec",
         deserialize_with = "object_id_helpers::deserialize_opt_vec",
@@ -120,7 +117,7 @@ pub struct Class {
     #[serde(default)]
     pub tags: Vec<String>,
 
-    pub settings: Option<ClassSettings>,
+    pub settings: ClassSettings,
     #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
 
@@ -199,7 +196,7 @@ pub struct PaginatedClassesWithOthers {
 
 // ================= Class settings ==================================
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum StudentVisibility {
     #[default]
@@ -208,183 +205,180 @@ pub enum StudentVisibility {
     None,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StudentPermissions {
-    pub can_chat: bool,
-    pub can_upload_homework: bool,
-    pub can_comment: bool,
-    pub can_view_all_students: bool,
+    pub can_chat: Option<bool>,
+    pub can_upload_homework: Option<bool>,
+    pub can_comment: Option<bool>,
+    pub can_view_all_students: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AttendanceRules {
-    pub late_after_minutes: u32,
-    pub required_attendance_percentage: f32,
+    pub late_after_minutes: Option<u32>,
+    pub required_attendance_percentage: Option<f32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassworkRules {
-    pub allow_resubmission: bool,
-    pub max_late_days: String,
+    pub allow_resubmission: Option<bool>,
+    pub max_late_days: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassStudentSettings {
-    pub auto_enroll_subclasses: bool,
-    pub student_visibility: StudentVisibility,
-    pub permissions: StudentPermissions,
-    pub attendance_rules: AttendanceRules,
-    pub classwork_rules: ClassworkRules,
+    pub auto_enroll_subclasses: Option<bool>,
+    pub student_visibility: Option<StudentVisibility>,
+    pub permissions: Option<StudentPermissions>,
+    pub attendance_rules: Option<AttendanceRules>,
+    pub classwork_rules: Option<ClassworkRules>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TeacherPermissions {
-    pub can_edit_marks: bool,
-    pub can_take_attendance: bool,
-    pub can_remove_students: bool,
+    pub can_edit_marks: Option<bool>,
+    pub can_take_attendance: Option<bool>,
+    pub can_remove_students: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassTeacherSettings {
-    pub permissions: TeacherPermissions,
-    pub visibility: bool,
+    pub permissions: Option<TeacherPermissions>,
+    pub visibility: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AllowedActions {
-    pub can_edit_class_info: bool,
-    pub can_add_students: bool,
-    pub can_remove_students: bool,
-    pub can_manage_subjects: bool,
-    pub can_manage_timetable: bool,
-    pub can_approve_requests: bool,
-    pub can_assign_roles: bool,
-    pub can_send_parent_notifications: bool,
-    pub can_add_teachers: bool,
+    pub can_edit_class_info: Option<bool>,
+    pub can_add_students: Option<bool>,
+    pub can_remove_students: Option<bool>,
+    pub can_manage_subjects: Option<bool>,
+    pub can_manage_timetable: Option<bool>,
+    pub can_approve_requests: Option<bool>,
+    pub can_assign_roles: Option<bool>,
+    pub can_send_parent_notifications: Option<bool>,
+    pub can_add_teachers: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SecuritySettings {
-    pub require_two_person_approval_for_results: bool,
-    pub log_all_teacher_changes: bool,
+    pub require_two_person_approval_for_results: Option<bool>,
+    pub log_all_teacher_changes: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassClassTeacherSettings {
-    pub allowed_actions: AllowedActions,
-    pub security: SecuritySettings,
+    pub allowed_actions: Option<AllowedActions>,
+    pub security: Option<SecuritySettings>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TimetablePeriod {
-    pub period: u32,
-    pub subject: String,
+    pub period: Option<u32>,
+    pub subject: Option<String>,
     pub teacher_id: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BreakTime {
-    pub start: String,
-    pub end: String,
-    pub label: String,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub label: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClashPrevention {
-    pub prevent_double_teacher_booking: bool,
-    pub prevent_duplicate_subject_same_day: bool,
+    pub prevent_double_teacher_booking: Option<bool>,
+    pub prevent_duplicate_subject_same_day: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassTimetableSettings {
-    pub period_length_minutes: u32,
-    pub periods_per_day: u32,
-
-    /// key = weekday (e.g. "monday")
-    pub weekly_timetable: HashMap<String, Vec<TimetablePeriod>>,
-
-    pub break_times: Vec<BreakTime>,
-    pub clash_prevention: ClashPrevention,
+    pub period_length_minutes: Option<u32>,
+    pub periods_per_day: Option<u32>,
+    pub weekly_timetable: Option<HashMap<String, Vec<TimetablePeriod>>>,
+    pub break_times: Option<Vec<BreakTime>>,
+    pub clash_prevention: Option<ClashPrevention>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClassSettings {
-    pub students: ClassStudentSettings,
-    pub teachers: ClassTeacherSettings,
-    pub class_teacher: ClassClassTeacherSettings,
-    pub timetable: ClassTimetableSettings,
+    pub students: Option<ClassStudentSettings>,
+    pub teachers: Option<ClassTeacherSettings>,
+    pub class_teacher: Option<ClassClassTeacherSettings>,
+    pub timetable: Option<ClassTimetableSettings>,
 }
 
 impl ClassSettings {
     pub fn default() -> Self {
-        ClassSettings {
-            students: ClassStudentSettings {
-                auto_enroll_subclasses: false,
-                student_visibility: StudentVisibility::All,
-                permissions: StudentPermissions {
-                    can_chat: true,
-                    can_upload_homework: true,
-                    can_comment: true,
-                    can_view_all_students: false,
-                },
-                attendance_rules: AttendanceRules {
-                    late_after_minutes: 10,
-                    required_attendance_percentage: 75.0,
-                },
-                classwork_rules: ClassworkRules {
-                    allow_resubmission: true,
-                    max_late_days: "3".to_string(),
-                },
-            },
+        Self {
+            students: Some(ClassStudentSettings {
+                auto_enroll_subclasses: Some(false),
+                student_visibility: Some(StudentVisibility::All),
+                permissions: Some(StudentPermissions {
+                    can_chat: Some(true),
+                    can_upload_homework: Some(true),
+                    can_comment: Some(true),
+                    can_view_all_students: Some(false),
+                }),
+                attendance_rules: Some(AttendanceRules {
+                    late_after_minutes: Some(10),
+                    required_attendance_percentage: Some(75.0),
+                }),
+                classwork_rules: Some(ClassworkRules {
+                    allow_resubmission: Some(true),
+                    max_late_days: Some("3".to_string()),
+                }),
+            }),
 
-            teachers: ClassTeacherSettings {
-                permissions: TeacherPermissions {
-                    can_edit_marks: true,
-                    can_take_attendance: true,
-                    can_remove_students: false,
-                },
-                visibility: true,
-            },
+            teachers: Some(ClassTeacherSettings {
+                permissions: Some(TeacherPermissions {
+                    can_edit_marks: Some(true),
+                    can_take_attendance: Some(true),
+                    can_remove_students: Some(false),
+                }),
+                visibility: Some(true),
+            }),
 
-            class_teacher: ClassClassTeacherSettings {
-                allowed_actions: AllowedActions {
-                    can_edit_class_info: true,
-                    can_add_students: true,
-                    can_remove_students: true,
-                    can_manage_subjects: true,
-                    can_manage_timetable: true,
-                    can_approve_requests: true,
-                    can_assign_roles: true,
-                    can_send_parent_notifications: true,
-                    can_add_teachers: true,
-                },
-                security: SecuritySettings {
-                    require_two_person_approval_for_results: false,
-                    log_all_teacher_changes: true,
-                },
-            },
+            class_teacher: Some(ClassClassTeacherSettings {
+                allowed_actions: Some(AllowedActions {
+                    can_edit_class_info: Some(true),
+                    can_add_students: Some(true),
+                    can_remove_students: Some(true),
+                    can_manage_subjects: Some(true),
+                    can_manage_timetable: Some(true),
+                    can_approve_requests: Some(true),
+                    can_assign_roles: Some(true),
+                    can_send_parent_notifications: Some(true),
+                    can_add_teachers: Some(true),
+                }),
+                security: Some(SecuritySettings {
+                    require_two_person_approval_for_results: Some(false),
+                    log_all_teacher_changes: Some(true),
+                }),
+            }),
 
-            timetable: ClassTimetableSettings {
-                period_length_minutes: 45,
-                periods_per_day: 8,
-                weekly_timetable: std::collections::HashMap::new(),
-                break_times: vec![
+            timetable: Some(ClassTimetableSettings {
+                period_length_minutes: Some(45),
+                periods_per_day: Some(8),
+                weekly_timetable: Some(HashMap::new()),
+                break_times: Some(vec![
                     BreakTime {
-                        start: "10:30".to_string(),
-                        end: "10:45".to_string(),
-                        label: "Morning Break".to_string(),
+                        start: Some("10:30".into()),
+                        end: Some("10:45".into()),
+                        label: Some("Morning Break".into()),
                     },
                     BreakTime {
-                        start: "13:00".to_string(),
-                        end: "14:00".to_string(),
-                        label: "Lunch Break".to_string(),
+                        start: Some("13:00".into()),
+                        end: Some("14:00".into()),
+                        label: Some("Lunch Break".into()),
                     },
-                ],
-                clash_prevention: ClashPrevention {
-                    prevent_double_teacher_booking: true,
-                    prevent_duplicate_subject_same_day: true,
-                },
-            },
+                ]),
+                clash_prevention: Some(ClashPrevention {
+                    prevent_double_teacher_booking: Some(true),
+                    prevent_duplicate_subject_same_day: Some(true),
+                }),
+            }),
         }
     }
 }

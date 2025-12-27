@@ -39,7 +39,7 @@ impl EducationYearService {
         ];
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        let _ = repo.ensure_indexes(&indexes).await?;
+        repo.ensure_indexes(&indexes).await?;
 
         Ok(())
     }

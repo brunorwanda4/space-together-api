@@ -295,26 +295,24 @@ impl<'a> ClassService<'a> {
         }
 
         // ✅ Handle background images
-        if let Some(new_backgrounds) = updated_data.background_images.clone() {
-            if let Some(bg_images) = new_backgrounds {
-                if let Some(old_bgs) = existing_class.background_images.clone() {
-                    for bg in old_bgs {
-                        let _ = CloudinaryService::delete_from_cloudinary(&bg.id).await;
-                    }
+        if let Some(Some(bg_images)) = updated_data.background_images.clone() {
+            if let Some(old_bgs) = existing_class.background_images.clone() {
+                for bg in old_bgs {
+                    let _ = CloudinaryService::delete_from_cloudinary(&bg.id).await;
                 }
-
-                let mut uploaded_bgs: Vec<Image> = Vec::new();
-                for bg in bg_images {
-                    let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url)
-                        .await
-                        .map_err(|e| format!("Failed to upload background image: {}", e))?;
-                    uploaded_bgs.push(Image {
-                        id: cloud_res.public_id,
-                        url: cloud_res.secure_url,
-                    });
-                }
-                update_class.background_images = Some(Some(uploaded_bgs));
             }
+
+            let mut uploaded_bgs: Vec<Image> = Vec::new();
+            for bg in bg_images {
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url)
+                    .await
+                    .map_err(|e| format!("Failed to upload background image: {}", e))?;
+                uploaded_bgs.push(Image {
+                    id: cloud_res.public_id,
+                    url: cloud_res.secure_url,
+                });
+            }
+            update_class.background_images = Some(Some(uploaded_bgs));
         }
 
         let updated_class = self

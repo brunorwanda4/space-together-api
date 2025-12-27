@@ -3,8 +3,8 @@ use mongodb::bson::{doc, oid::ObjectId};
 
 use crate::{
     domain::class::{
-        Class, ClassLevelType, ClassWithOthers, MainClassHierarchy, MainClassWithSubclassCount,
-        MainClassWithSubclasses, PaginatedClassesWithOthers,
+        Class, ClassLevelType, ClassSettings, ClassWithOthers, MainClassHierarchy,
+        MainClassWithSubclassCount, MainClassWithSubclasses, PaginatedClassesWithOthers,
     },
     errors::AppError,
     helpers::object_id_helpers::parse_object_id,
@@ -308,7 +308,7 @@ impl<'a> ClassController<'a> {
                 tags: vec!["subclass".to_string()],
                 created_at: now,
                 updated_at: now,
-                settings: None,
+                settings: ClassSettings::default(),
             };
 
             subclasses.push(subclass);
