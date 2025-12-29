@@ -20,3 +20,4 @@ pub mod tenant_service;
 pub mod trade_service;
 pub mod user_service;
 pub mod school_timetable_service;
+pub mod announcement_service;

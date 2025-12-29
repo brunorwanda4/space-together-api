@@ -1,3 +1,4 @@
+pub mod announcement;
 pub mod auth;
 pub mod auth_user;
 pub mod class;
@@ -11,6 +12,7 @@ pub mod join_school_request;
 pub mod main_class;
 pub mod school;
 pub mod school_staff;
+pub mod school_timetable;
 pub mod sector;
 pub mod student;
 pub mod subject;
@@ -19,4 +21,3 @@ pub mod teacher;
 pub mod template_subject;
 pub mod trade;
 pub mod user;
-pub mod school_timetable;

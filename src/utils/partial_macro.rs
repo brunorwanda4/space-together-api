@@ -1,4 +1,14 @@
 #[macro_export]
+macro_rules! strip_option {
+    (Option<$inner:ty>) => {
+        $inner
+    };
+    ($other:ty) => {
+        $other
+    };
+}
+
+#[macro_export]
 macro_rules! make_partial {
     (
         $(#[$meta:meta])*
@@ -9,7 +19,7 @@ macro_rules! make_partial {
             ),* $(,)?
         } => $partial_name:ident
     ) => {
-        // --- 1. Original Struct (Keep as is for API/JSON) ---
+        // -------- Original Struct --------
         $(#[$meta])*
         $vis struct $name {
             $(
@@ -18,18 +28,17 @@ macro_rules! make_partial {
             ),*
         }
 
-        // --- 2. Partial Struct (For Updates AND Creates) ---
-        // We STRIP $(#[$field_meta])* intentionally to bypass object_id_helpers
-        // This ensures MongoDB saves them as actual ObjectIds.
+        // -------- Partial Struct --------
         #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
         $vis struct $partial_name {
             $(
                 #[serde(skip_serializing_if = "Option::is_none")]
-                pub $field_name : Option<$field_type>
+                #[serde(default)]
+                pub $field_name : Option<$crate::strip_option!($field_type)>
             ),*
         }
 
-        // --- 3. Implementation ---
+        // -------- Implementation --------
         impl $name {
             #[allow(dead_code)]
             pub fn merge(&mut self, partial: $partial_name) {
@@ -40,7 +49,6 @@ macro_rules! make_partial {
                 )*
             }
 
-            // NEW: Helper to convert Main to Partial for DB Saving
             #[allow(dead_code)]
             pub fn to_partial(&self) -> $partial_name {
                 $partial_name {
