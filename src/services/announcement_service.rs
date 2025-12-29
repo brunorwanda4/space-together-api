@@ -43,17 +43,24 @@ impl AnnouncementService {
     // =========================
     // FIND ONE
     // =========================
-    pub async fn find_one_by_id(&self, id: &IdType) -> Result<Announcement, AppError> {
-        let obj = IdType::to_object_id(id)?;
+    pub async fn find_one(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<Announcement, AppError> {
+        let mut filter = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            filter.insert("_id", IdType::to_object_id(id)?);
+        }
+
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let result = repo
-            .find_one::<Announcement>(doc! { "_id": obj }, None)
-            .await?;
-
-        result.ok_or(AppError {
-            message: "Announcement not found".into(),
-        })
+        repo.find_one::<Announcement>(filter, None)
+            .await?
+            .ok_or(AppError {
+                message: "Announcement not found".into(),
+            })
     }
 
     // =========================
@@ -106,9 +113,11 @@ impl AnnouncementService {
     // =========================
     pub async fn delete(&self, id: &IdType) -> Result<Announcement, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        let existing = self.find_one_by_id(id).await?;
+
+        let announcement = self.find_one(Some(id), None).await?;
         repo.delete_one(id).await?;
-        Ok(existing)
+
+        Ok(announcement)
     }
 
     // ======================================================
@@ -120,22 +129,19 @@ impl AnnouncementService {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-        class_id: Option<&IdType>,
+        extra_match: Option<Document>,
     ) -> Result<Paginated<AnnouncementWithRelations>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let mut match_stage = doc! {};
+        let mut match_stage = extra_match.unwrap_or_default();
 
         if let Some(f) = filter {
             match_stage.insert(
                 "$or",
-                vec![doc! { "content": { "$regex": &f, "$options": "i" } }],
+                vec![doc! {
+                    "content": { "$regex": &f, "$options": "i" }
+                }],
             );
-        }
-
-        if let Some(cid) = class_id {
-            let obj = IdType::to_object_id(cid)?;
-            match_stage.insert("class_id", obj);
         }
 
         let pipeline = announcement_pipeline(match_stage);
@@ -146,22 +152,21 @@ impl AnnouncementService {
 
     pub async fn find_one_with_relations(
         &self,
-        id: &IdType,
+        id: &Option<IdType>,
+        extra_match: Option<Document>,
     ) -> Result<AnnouncementWithRelations, AppError> {
-        let obj_id = IdType::to_object_id(id)?;
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            match_stage.insert("_id", IdType::to_object_id(id)?);
+        }
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let pipeline = announcement_pipeline(doc! {
-            "_id": obj_id
-        });
-
-        let result = repo
-            .aggregate_one::<AnnouncementWithRelations>(pipeline, None)
-            .await?;
-
-        result.ok_or(AppError {
-            message: "Announcement not found".into(),
-        })
+        repo.aggregate_one::<AnnouncementWithRelations>(announcement_pipeline(match_stage), None)
+            .await?
+            .ok_or(AppError {
+                message: "Announcement not found".into(),
+            })
     }
 }
