@@ -1,6 +1,6 @@
 use crate::{
     domain::{
-        class::{Class, ClassWithOthers, PaginatedClasses, UpdateClass},
+        class::{Class, ClassSettings, ClassWithOthers, PaginatedClasses, UpdateClass},
         common_details::Image,
     },
     models::id_model::IdType,
@@ -82,6 +82,10 @@ impl<'a> ClassService<'a> {
         // Generate class code if not provided
         if new_class.code.is_none() {
             new_class.code = Some(generate_code());
+        }
+
+        if new_class.settings.is_none() {
+            new_class.settings = Some(ClassSettings::default());
         }
 
         // Set timestamps
