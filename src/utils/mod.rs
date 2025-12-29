@@ -12,5 +12,5 @@ pub mod partial_macro;
 pub mod school_token;
 pub mod school_utils;
 pub mod subject_utils;
-pub mod user_utils;
 pub mod time_utils;
+pub mod user_utils;

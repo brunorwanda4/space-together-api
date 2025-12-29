@@ -1,26 +1,48 @@
 use mongodb::bson::{Bson, Document};
 
-pub fn extract_valid_fields(update: Document) -> Document {
-    let mut cleaned = Document::new();
+/// Recursively removes:
+/// - null values
+/// - empty strings
+/// - empty arrays
+/// - empty documents
+///
+/// Example output:
+/// /// { "settings.students.auto_enroll_subclasses": false }
+pub fn extract_valid_fields(doc: Document) -> Document {
+    let mut out = Document::new();
+    clean_document(None, doc, &mut out);
+    out
+}
 
-    for (k, v) in update {
-        match &v {
-            // Skip null values
-            Bson::Null => continue,
-
-            // Skip empty strings: ""
-            Bson::String(s) if s.trim().is_empty() => continue,
-
-            // Skip empty arrays: []
-            Bson::Array(a) if a.is_empty() => continue,
-
-            // Skip empty documents: {}
-            Bson::Document(d) if d.is_empty() => continue,
-
-            // Otherwise, keep the field
-            _ => cleaned.insert(k, v),
+fn clean_document(prefix: Option<String>, doc: Document, out: &mut Document) {
+    for (key, value) in doc {
+        let full_key = match &prefix {
+            Some(p) => format!("{}.{}", p, key),
+            None => key,
         };
-    }
 
-    cleaned
+        match value {
+            // ❌ remove nulls
+            Bson::Null => {}
+
+            // ❌ empty string
+            Bson::String(ref s) if s.trim().is_empty() => {}
+
+            // ❌ empty array
+            Bson::Array(ref a) if a.is_empty() => {}
+
+            // ❌ empty document
+            Bson::Document(ref d) if d.is_empty() => {}
+
+            // 🔁 recurse into sub-documents
+            Bson::Document(d) => {
+                clean_document(Some(full_key), d, out);
+            }
+
+            // ✅ keep valid values
+            other => {
+                out.insert(full_key, other);
+            }
+        }
+    }
 }
