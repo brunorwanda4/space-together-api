@@ -359,7 +359,7 @@ impl ClassSettings {
             }),
 
             timetable: Some(ClassTimetableSettings {
-                period_length_minutes: Some(45),
+                period_length_minutes: Some(30),
                 periods_per_day: Some(8),
                 weekly_timetable: Some(HashMap::new()),
                 break_times: Some(vec![
