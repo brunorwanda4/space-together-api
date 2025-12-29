@@ -308,7 +308,7 @@ impl<'a> ClassController<'a> {
                 tags: vec!["subclass".to_string()],
                 created_at: now,
                 updated_at: now,
-                settings: ClassSettings::default(),
+                settings: Some(ClassSettings::default()),
             };
 
             subclasses.push(subclass);

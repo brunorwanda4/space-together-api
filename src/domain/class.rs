@@ -117,7 +117,7 @@ pub struct Class {
     #[serde(default)]
     pub tags: Vec<String>,
 
-    pub settings: ClassSettings,
+    pub settings: Option<ClassSettings>,
     #[serde(default = "Utc::now")]
     pub created_at: DateTime<Utc>,
 
