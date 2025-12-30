@@ -9,7 +9,7 @@ use crate::{
         common_details::Paginated,
     },
     errors::AppError,
-    models::id_model::IdType,
+    models::{id_model::IdType, mongo_model::IndexDef},
     pipeline::announcement_pipeline::announcement_pipeline,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
@@ -26,10 +26,31 @@ impl AnnouncementService {
         }
     }
 
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let indexes = vec![
+            IndexDef::compound(vec![("class_id", 1), ("created_at", -1)], false),
+            IndexDef::compound(vec![("published.role", 1), ("created_at", -1)], false),
+            IndexDef::single("created_at", false),
+            IndexDef::single("published.id", false),
+            IndexDef::single("mention.id", false),
+        ];
+
+        let repo = BaseRepository::new(
+            self.collection
+                .clone()
+                .clone_with_type::<mongodb::bson::Document>(),
+        );
+
+        repo.ensure_indexes(&indexes).await?;
+        Ok(())
+    }
+
     // =========================
     // CREATE
     // =========================
     pub async fn create(&self, dto: Announcement) -> Result<Announcement, AppError> {
+        self.ensure_indexes().await?;
+
         let partial = dto.to_partial();
 
         let full_doc = bson::to_document(&partial).map_err(|e| AppError {
@@ -152,7 +173,7 @@ impl AnnouncementService {
 
     pub async fn find_one_with_relations(
         &self,
-        id: &Option<IdType>,
+        id: Option<&IdType>,
         extra_match: Option<Document>,
     ) -> Result<AnnouncementWithRelations, AppError> {
         let mut match_stage = extra_match.unwrap_or_default();

@@ -1,3 +1,4 @@
+pub mod school_announcement;
 pub mod school_class;
 pub mod school_class_subject;
 pub mod school_class_timetable;
