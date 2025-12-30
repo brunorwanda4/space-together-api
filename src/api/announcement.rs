@@ -1,4 +1,4 @@
-use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
 use mongodb::bson::doc;
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     },
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{announcement_service::AnnouncementService, event_service::EventService},
-    utils::api_utils::build_extra_match,
+    utils::{api_utils::build_extra_match, db_utils::get_database},
 };
 
 /// ------------------------------------------------------
@@ -18,10 +18,12 @@ use crate::{
 
 #[get("")]
 async fn get_all_announcements(
+    req: HttpRequest,
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
 
     let extra_match = match build_extra_match(&query.field, &query.value) {
         Ok(doc) => doc,
@@ -43,10 +45,12 @@ async fn get_all_announcements(
 
 #[get("/others")]
 async fn get_all_announcements_with_relations(
+    req: HttpRequest,
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
 
     let extra_match = match build_extra_match(&query.field, &query.value) {
         Ok(doc) => doc,
@@ -68,11 +72,13 @@ async fn get_all_announcements_with_relations(
 
 #[get("/{id}/others")]
 async fn get_announcement_by_id_with_relations(
+    req: HttpRequest,
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let id = IdType::from_string(path.into_inner());
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
 
     match service.find_one_with_relations(Some(&id), None).await {
         Ok(data) => HttpResponse::Ok().json(data),
@@ -86,11 +92,13 @@ async fn get_announcement_by_id_with_relations(
 
 #[get("/{id}")]
 async fn get_announcement_by_id(
+    req: HttpRequest,
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let id = IdType::from_string(path.into_inner());
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
 
     match service.find_one(Some(&id), None).await {
         Ok(data) => HttpResponse::Ok().json(data),
@@ -104,10 +112,12 @@ async fn get_announcement_by_id(
 
 #[get("/match")]
 async fn get_announcement_by_match(
+    req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<RequestQuery>,
 ) -> impl Responder {
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
     let extra_match = match build_extra_match(&query.field, &query.value) {
         Ok(doc) => doc,
         Err(err) => return err,
@@ -125,10 +135,12 @@ async fn get_announcement_by_match(
 
 #[get("/others/match")]
 async fn get_announcement_by_other_match(
+    req: HttpRequest,
     state: web::Data<AppState>,
     query: web::Query<RequestQuery>,
 ) -> impl Responder {
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
     let extra_match = match build_extra_match(&query.field, &query.value) {
         Ok(doc) => doc,
         Err(err) => return err,
@@ -146,12 +158,14 @@ async fn get_announcement_by_other_match(
 
 #[post("")]
 async fn create_announcement(
+    req: HttpRequest,
     user: web::ReqData<AuthUserDto>,
     data: web::Json<Announcement>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let _logged_user = user.into_inner();
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
 
     match service.create(data.into_inner()).await {
         Ok(item) => {
@@ -182,6 +196,7 @@ async fn create_announcement(
 
 #[put("/{id}")]
 async fn update_announcement(
+    req: HttpRequest,
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<AnnouncementPartial>,
@@ -189,7 +204,8 @@ async fn update_announcement(
 ) -> impl Responder {
     let _logged_user = user.into_inner();
     let id = IdType::from_string(path.into_inner());
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
 
     match service.update(&id, &data.into_inner()).await {
         Ok(item) => {
@@ -220,13 +236,15 @@ async fn update_announcement(
 
 #[delete("/{id}")]
 async fn delete_announcement(
+    req: HttpRequest,
     user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let _logged_user = user.into_inner();
     let id = IdType::from_string(path.into_inner());
-    let service = AnnouncementService::new(&state.db.main_db());
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
 
     let before_delete = service.find_one(Some(&id), None).await.ok();
 
@@ -257,21 +275,24 @@ async fn delete_announcement(
     }
 }
 
+fn blueprint(cfg: &mut web::ServiceConfig) {
+    cfg.service(get_all_announcements)
+        .service(get_all_announcements_with_relations)
+        .service(get_announcement_by_match)
+        .service(get_announcement_by_other_match)
+        .service(get_announcement_by_id)
+        .service(get_announcement_by_id_with_relations)
+        // Add all other services here...
+        .service(
+            web::scope("")
+                .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
+                .service(create_announcement)
+                .service(update_announcement)
+                .service(delete_announcement),
+        );
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/announcements")
-            // GET
-            .service(get_all_announcements)
-            .service(get_all_announcements_with_relations)
-            .service(get_announcement_by_match)
-            .service(get_announcement_by_other_match)
-            .service(get_announcement_by_id)
-            .service(get_announcement_by_id_with_relations)
-            // AUTH REQUIRED
-            .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
-            // MUTATIONS
-            .service(create_announcement)
-            .service(update_announcement)
-            .service(delete_announcement),
-    );
+    // One line to rule them both!
+    crate::utils::route_utils::mount_dual_routes(cfg, "announcements", blueprint);
 }

@@ -57,5 +57,4 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     class_timetable::init(cfg);
     education_year::init(cfg);
     announcement::init(cfg);
-    school_collections::school_announcement::init(cfg);
 }
