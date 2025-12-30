@@ -207,7 +207,6 @@ impl StudentService {
     // UPDATE
     // =========================
     pub async fn update(&self, id: &IdType, update: &StudentPartial) -> Result<Student, AppError> {
-        // 1. Validation Logic
         if let Some(ref name) = update.name {
             if let Err(e) = is_valid_name(name) {
                 return Err(AppError { message: e });
@@ -220,10 +219,8 @@ impl StudentService {
             }
         }
 
-        // 2. Fetch existing record
         let existing_student = self.find_one(Some(id), None).await?;
 
-        // 3. Unique Email Check
         if let Some(ref email) = update.email {
             if existing_student.email != *email {
                 if let Ok(student) = self.find_one(None, Some(doc! { "email": email })).await {
@@ -234,9 +231,7 @@ impl StudentService {
             }
         }
 
-        // 4. Unique Registration Number Check
         if let Some(reg_number) = update.registration_number.clone().flatten() {
-            // Use .as_ref() to prevent moving reg_number so we can use it again in the doc! macro
             if existing_student.registration_number.as_ref() != Some(&reg_number) {
                 if let Ok(student) = self
                     .find_one(None, Some(doc! { "registration_number": &reg_number }))
@@ -252,31 +247,25 @@ impl StudentService {
             }
         }
 
-        // 5. Clone the update data so we can modify it (e.g., adding Cloudinary URLs)
         let mut update_data = update.clone();
 
-        // 6. Image Handling (Cloudinary)
         if let Some(new_image_data) = update.image.clone().flatten() {
             if Some(new_image_data.clone()) != existing_student.image {
-                // Delete old image if it exists
                 if let Some(old_image_id) = existing_student.image_id.clone() {
                     CloudinaryService::delete_from_cloudinary(&old_image_id)
                         .await
                         .ok();
                 }
 
-                // Upload new image
                 let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data)
                     .await
                     .map_err(|e| AppError { message: e })?;
 
-                // Update the cloned struct with new image details
                 update_data.image_id = Some(Some(cloud_res.public_id));
                 update_data.image = Some(Some(cloud_res.secure_url));
             }
         }
 
-        // 7. Serialize and Update Database
         let full_doc = bson::to_document(&update_data).map_err(|e| AppError {
             message: format!("Serialize update failed: {}", e),
         })?;
@@ -329,9 +318,7 @@ impl StudentService {
             "status",
         ];
 
-        let total = repo.count(filter, &searchable, extra_match).await?;
-
-        Ok(total)
+        repo.count(filter, &searchable, extra_match).await
     }
 
     //TODO: make get students and relations
