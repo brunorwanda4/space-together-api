@@ -234,8 +234,8 @@ async fn count_teachers(
 /// ------------------------------------------------------
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(get_all_teachers)
-        .service(get_teacher_by_id)
         .service(get_teacher_by_match)
+        .service(get_teacher_by_id)
         .service(count_teachers)
         .service(
             web::scope("")

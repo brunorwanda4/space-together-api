@@ -16,7 +16,7 @@ use crate::{
     },
     repositories::{
         class_repo::ClassRepo, main_class_repo::MainClassRepo, school_repo::SchoolRepo,
-        teacher_repo::TeacherRepo, trade_repo::TradeRepo, user_repo::UserRepo,
+        trade_repo::TradeRepo, user_repo::UserRepo,
     },
     services::{
         class_service::ClassService, event_service::EventService,
@@ -38,7 +38,6 @@ fn create_class_controller(
     let school_repo: &'static SchoolRepo = Box::leak(Box::new(SchoolRepo::new(&main_db)));
     let user_repo: &'static UserRepo = Box::leak(Box::new(UserRepo::new(&main_db)));
     let main_class_repo: &'static MainClassRepo = Box::leak(Box::new(MainClassRepo::new(&main_db)));
-    let teacher_repo: &'static TeacherRepo = Box::leak(Box::new(TeacherRepo::new(&school_db)));
 
     // --- Leak services (each borrows from the leaked repos) ---
     let trade_service: &'static TradeService = Box::leak(Box::new(TradeService::new(trade_repo)));
@@ -50,7 +49,7 @@ fn create_class_controller(
         trade_service,
     )));
     let teacher_service: &'static TeacherService =
-        Box::leak(Box::new(TeacherService::new(teacher_repo)));
+        Box::leak(Box::new(TeacherService::new(&school_db)));
 
     // --- Build controller ---
     ClassController::new(
@@ -681,39 +680,6 @@ async fn update_many_school_classes(
             HttpResponse::Ok().json(classes)
         }
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
-    }
-}
-
-#[post("/{class_id}/teachers/{teacher_id}/assign")]
-async fn add_or_update_class_teacher(
-    req: actix_web::HttpRequest,
-    path: web::Path<(String, String)>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    // ✅ Step 1: Check for valid school token
-    let claims = match req.extensions().get::<SchoolToken>() {
-        Some(claims) => claims.clone(),
-        None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "message": "School token required"
-            }))
-        }
-    };
-
-    let (class_id, teacher_id) = path.into_inner();
-    let cls_id = IdType::from_string(&class_id);
-    let tea_id = IdType::from_string(&teacher_id);
-
-    let class_controller = create_class_controller(&state, &claims);
-
-    match class_controller
-        .add_or_update_class_teacher(&cls_id, &tea_id)
-        .await
-    {
-        Ok(updated_class) => HttpResponse::Ok().json(serde_json::json!(updated_class)),
-        Err(e) => HttpResponse::BadRequest().json(serde_json::json!({
-            "message": e.to_string()
-        })),
     }
 }
 
@@ -1454,7 +1420,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             // =============================================
             // Protected routes (require school token)
             .service(create_school_class) // POST /school/classes - Create new class in school
-            .service(add_or_update_class_teacher) // POST /school/classes/{class_id}/teachers/{teacher_id}/assign - add or update class teacher
             .service(update_school_class) // PUT /school/classes/{id} - Update class in school
             .service(update_school_class_merged) // PUT /school/classes/{id}/merged - Update class with merge in school
             .service(delete_school_class) // DELETE /school/classes/{id} - Delete class in school

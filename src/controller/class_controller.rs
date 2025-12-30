@@ -24,7 +24,7 @@ pub struct ClassController<'a> {
     pub class_repo: ClassRepo,
     pub school_service: &'a SchoolService<'a>,
     pub user_service: &'a UserService<'a>,
-    pub teacher_service: &'a TeacherService<'a>,
+    pub teacher_service: &'a TeacherService,
     pub main_class_service: &'a MainClassService<'a>,
     pub trade_service: &'a TradeService<'a>,
 }
@@ -34,7 +34,7 @@ impl<'a> ClassController<'a> {
         class_repo: ClassRepo,
         school_service: &'a SchoolService<'a>,
         user_service: &'a UserService<'a>,
-        teacher_service: &'a TeacherService<'a>,
+        teacher_service: &'a TeacherService,
         main_class_service: &'a MainClassService<'a>,
         trade_service: &'a TradeService<'a>,
     ) -> Self {
@@ -186,7 +186,7 @@ impl<'a> ClassController<'a> {
             let teacher_id_type = IdType::ObjectId(teacher_id);
             match self
                 .teacher_service
-                .get_teacher_by_id(&teacher_id_type)
+                .find_one(Some(&teacher_id_type), None)
                 .await
             {
                 Ok(t) => class_teacher = Some(t),
@@ -215,38 +215,6 @@ impl<'a> ClassController<'a> {
             main_class,
             trade,
         })
-    }
-
-    pub async fn add_or_update_class_teacher(
-        &self,
-        class_id: &IdType,
-        teacher_id: &IdType,
-    ) -> Result<Class, String> {
-        // Step 1: get teacher
-        let teacher = self.teacher_service.get_teacher_by_id(teacher_id).await?;
-
-        // Step 2: ensure teacher has this class_id
-        let class_obj_id = parse_object_id(class_id)?;
-        let mut class_ids = teacher.class_ids.unwrap_or_default();
-
-        // Add class if missing
-        if !class_ids.contains(&class_obj_id) {
-            class_ids.push(class_obj_id);
-
-            // ✅ use your existing service to add class to teacher
-            self.teacher_service
-                .add_classes_to_teacher(teacher_id, class_ids)
-                .await?;
-        }
-
-        // Step 3: add or update teacher in class
-        let updated_class = self
-            .class_repo
-            .add_or_update_class_teacher(class_id, teacher_id)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        Ok(updated_class)
     }
 
     /// Create multiple sub-classes (e.g., Primary 1 A, Primary 1 B, etc.) under a given main class

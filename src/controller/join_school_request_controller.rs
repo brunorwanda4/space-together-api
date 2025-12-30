@@ -23,7 +23,7 @@ use crate::{
     models::id_model::IdType,
     repositories::{
         class_repo::ClassRepo, join_school_request_repo::JoinSchoolRequestRepo,
-        school_repo::SchoolRepo, school_staff_repo::SchoolStaffRepo, teacher_repo::TeacherRepo,
+        school_repo::SchoolRepo, school_staff_repo::SchoolStaffRepo,
     },
     services::{
         class_service::ClassService, school_service::SchoolService,
@@ -374,8 +374,7 @@ impl<'a> JoinSchoolRequestController<'a> {
             }
 
             JoinRole::Teacher => {
-                let teacher_repo = TeacherRepo::new(school_db);
-                let teacher_service = TeacherService::new(&teacher_repo);
+                let teacher_service = TeacherService::new(&school_db);
                 let teacher_type = parse_teacher_type(&request.r#type);
 
                 let new_teacher = Teacher {
@@ -398,10 +397,7 @@ impl<'a> JoinSchoolRequestController<'a> {
                     updated_at: Utc::now(),
                 };
 
-                teacher_service
-                    .create_teacher(new_teacher)
-                    .await
-                    .map_err(|e| AppError { message: e })?;
+                teacher_service.create(new_teacher, None).await?;
             }
 
             JoinRole::Staff => {
