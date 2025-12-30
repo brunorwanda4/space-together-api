@@ -4,7 +4,6 @@ use actix_web::{delete, get, post, put, web, HttpMessage, HttpResponse, Responde
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
-    api::join_school_request::create_join_school_request_controller,
     config::state::AppState,
     controller::{
         join_school_request_controller::JoinSchoolRequestController,
@@ -30,7 +29,10 @@ use crate::{
         subject_service::SubjectService, teacher_service::TeacherService,
         user_service::UserService,
     },
-    utils::api_utils::build_extra_match,
+    utils::{
+        api_utils::build_extra_match,
+        join_school_request_controller_utils::create_join_school_request_controller,
+    },
 };
 
 // Helper function to create TeacherController

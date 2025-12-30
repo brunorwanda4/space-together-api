@@ -1,17 +1,16 @@
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::Document;
 
 use crate::{
     controller::join_school_request_controller::JoinSchoolRequestController,
     domain::{
         class::Class,
-        join_school_request::{CreateJoinSchoolRequest, JoinRole},
+        common_details::Paginated,
         school::School,
-        student::{PaginatedStudentsWithOthers, Student, StudentWithRelations},
+        student::{Student, StudentWithRelations},
         user::User,
     },
     errors::AppError,
     models::id_model::IdType,
-    repositories::student_repo::StudentRepo,
     services::{
         class_service::ClassService, school_service::SchoolService,
         student_service::StudentService, user_service::UserService,
@@ -19,8 +18,7 @@ use crate::{
 };
 
 pub struct StudentController<'a> {
-    pub student_repo: &'a StudentRepo,
-    pub student_service: &'a StudentService<'a>,
+    pub student_service: &'a StudentService,
     pub user_service: &'a UserService<'a>,
     pub school_service: &'a SchoolService<'a>,
     pub class_service: &'a ClassService<'a>,
@@ -29,56 +27,18 @@ pub struct StudentController<'a> {
 
 impl<'a> StudentController<'a> {
     pub fn new(
-        student_repo: &'a StudentRepo,
-        student_service: &'a StudentService<'a>,
+        student_service: &'a StudentService,
         user_service: &'a UserService<'a>,
         school_service: &'a SchoolService<'a>,
         class_service: &'a ClassService<'a>,
         join_school_request: &'a JoinSchoolRequestController<'a>,
     ) -> Self {
         Self {
-            student_repo,
             student_service,
             user_service,
             school_service,
             class_service,
             join_school_request,
-        }
-    }
-
-    pub async fn create_student(
-        &self,
-        new_student: Student,
-        sent_by: ObjectId,
-    ) -> Result<Student, String> {
-        // Ensure the student has a school_id
-        let school_id = match new_student.school_id {
-            Some(id) => id,
-            None => return Err("Missing school_id".to_string()),
-        };
-
-        // Optional: Ensure the student has a class_id if your logic requires it
-        let class_id = new_student.class_id;
-
-        // Build a join school request
-        let create_request = CreateJoinSchoolRequest {
-            school_id: school_id.to_string(),
-            class_id: class_id.map(|id| id.to_string()),
-            message: Some("Join School request".to_string()),
-            r#type: "Student".to_string(),
-            role: JoinRole::Student,
-            email: new_student.email.clone(),
-            sent_by: sent_by.to_hex(),
-        };
-
-        // Try to create the join school request before creating the student
-        match self
-            .join_school_request
-            .create_join_request(create_request, sent_by)
-            .await
-        {
-            Ok(_) => self.student_service.create_student(new_student).await,
-            Err(_) => self.student_service.create_student(new_student).await,
         }
     }
 
@@ -90,13 +50,13 @@ impl<'a> StudentController<'a> {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<PaginatedStudentsWithOthers, AppError> {
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<StudentWithRelations>, AppError> {
         let paginated = self
-            .student_repo
-            .get_all_students(filter.clone(), limit, skip, None)
-            .await
-            .map_err(|e| AppError { message: e.message })?;
-        let students = paginated.students;
+            .student_service
+            .get_all(filter, limit, skip, extra_match)
+            .await?;
+        let students = paginated.data;
 
         let mut results = Vec::new();
 
@@ -105,8 +65,8 @@ impl<'a> StudentController<'a> {
             results.push(enriched);
         }
 
-        Ok(PaginatedStudentsWithOthers {
-            students: results,
+        Ok(Paginated {
+            data: results,
             total: paginated.total,
             total_pages: paginated.total_pages,
             current_page: paginated.current_page,
@@ -118,16 +78,10 @@ impl<'a> StudentController<'a> {
     // ----------------------------------------------------------------------
     pub async fn get_student_by_id_with_relations(
         &self,
-        id: &IdType,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
     ) -> Result<StudentWithRelations, AppError> {
-        let student = self
-            .student_repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| AppError { message: e.message })?
-            .ok_or_else(|| AppError {
-                message: "Student not found".into(),
-            })?;
+        let student = self.student_service.find_one(id, extra_match).await?;
 
         self.enrich_student_with_relations(student).await
     }

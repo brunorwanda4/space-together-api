@@ -13,7 +13,6 @@ pub mod school_service;
 pub mod school_staff_service;
 pub mod school_timetable_service;
 pub mod sector_service;
-pub mod student_servic;
 pub mod student_service;
 pub mod subject_service;
 pub mod subjects;
