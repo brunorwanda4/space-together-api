@@ -1,7 +1,7 @@
 use crate::{
     domain::{
-        class::Class, common_details::UserRole, school_staff::SchoolStaff, student::Student,
-        teacher::Teacher,
+        class::Class,
+        common_details::{RelatedUser, UserRole},
     },
     helpers::object_id_helpers,
     make_partial,
@@ -60,14 +60,6 @@ make_partial! {
 
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,} => AnnouncementPartial
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "user_type", rename_all = "UPPERCASE")]
-pub enum RelatedUser {
-    STUDENT(Student),
-    TEACHER(Teacher),
-    SCHOOLSTAFF(SchoolStaff),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

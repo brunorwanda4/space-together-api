@@ -51,7 +51,7 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
             }
         },
         // ======================================================
-        // PUBLISHED USER LOOKUPS (ROLE AWARE)
+        // PUBLISHED USER (ROLE-AWARE + user_type)
         // ======================================================
         doc! {
             "$lookup": {
@@ -67,7 +67,8 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                                 ]
                             }
                         }
-                    }
+                    },
+                    { "$addFields": { "user_type": "STUDENT" } }
                 ],
                 "as": "published_student"
             }
@@ -86,7 +87,8 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                                 ]
                             }
                         }
-                    }
+                    },
+                    { "$addFields": { "user_type": "TEACHER" } }
                 ],
                 "as": "published_teacher"
             }
@@ -105,7 +107,8 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                                 ]
                             }
                         }
-                    }
+                    },
+                    { "$addFields": { "user_type": "SCHOOLSTAFF" } }
                 ],
                 "as": "published_staff"
             }
@@ -127,13 +130,16 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
             }
         },
         // ======================================================
-        // MENTIONED USERS (ROLE AWARE)
+        // MENTIONED USERS (TAGGED)
         // ======================================================
         doc! {
             "$lookup": {
                 "from": "students",
                 "localField": "mention.id",
                 "foreignField": "_id",
+                "pipeline": [
+                    { "$addFields": { "user_type": "STUDENT" } }
+                ],
                 "as": "mentioned_students"
             }
         },
@@ -142,6 +148,9 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 "from": "teachers",
                 "localField": "mention.id",
                 "foreignField": "_id",
+                "pipeline": [
+                    { "$addFields": { "user_type": "TEACHER" } }
+                ],
                 "as": "mentioned_teachers"
             }
         },
@@ -150,6 +159,9 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 "from": "school_staff",
                 "localField": "mention.id",
                 "foreignField": "_id",
+                "pipeline": [
+                    { "$addFields": { "user_type": "SCHOOLSTAFF" } }
+                ],
                 "as": "mentioned_staff"
             }
         },
@@ -165,7 +177,7 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
             }
         },
         // ======================================================
-        // CLASS LOOKUP (CORRECT COLLECTION)
+        // CLASS LOOKUP
         // ======================================================
         doc! {
             "$lookup": {

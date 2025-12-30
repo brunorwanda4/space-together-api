@@ -9,7 +9,10 @@ use crate::{
         common_details::Paginated,
     },
     errors::AppError,
-    models::{id_model::IdType, mongo_model::IndexDef},
+    models::{
+        id_model::IdType,
+        mongo_model::{CountDoc, IndexDef},
+    },
     pipeline::announcement_pipeline::announcement_pipeline,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
@@ -189,5 +192,28 @@ impl AnnouncementService {
             .ok_or(AppError {
                 message: "Announcement not found".into(),
             })
+    }
+
+    pub async fn count_announcements(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        // Fields allowed for text / search filtering
+        let searchable = [
+            "content",
+            "_id",
+            "published.id",
+            "published.role",
+            "mention.id",
+            "mention.role",
+            "class_id",
+        ];
+
+        let total = base_repo.count(filter, &searchable, extra_match).await?;
+
+        Ok(total)
     }
 }

@@ -275,11 +275,39 @@ async fn delete_announcement(
     }
 }
 
+/// ------------------------------------------------------
+/// GET /announcements/count
+/// ------------------------------------------------------
+
+#[get("/count")]
+async fn count_announcements(
+    req: HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let db = get_database(&req, &state);
+    let service = AnnouncementService::new(&db);
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .count_announcements(query.filter.clone(), extra_match)
+        .await
+    {
+        Ok(count) => HttpResponse::Ok().json(serde_json::json!(count)),
+        Err(message) => HttpResponse::BadRequest().json(message),
+    }
+}
+
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(get_all_announcements)
         .service(get_all_announcements_with_relations)
         .service(get_announcement_by_match)
         .service(get_announcement_by_other_match)
+        .service(count_announcements)
         .service(get_announcement_by_id)
         .service(get_announcement_by_id_with_relations)
         // Add all other services here...
