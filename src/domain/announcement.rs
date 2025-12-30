@@ -59,7 +59,8 @@ make_partial! {
     pub created_at: Option<DateTime<Utc>>,
 
     #[serde(default)]
-    pub updated_at: Option<DateTime<Utc>>,} => AnnouncementPartial
+    pub updated_at: Option<DateTime<Utc>>,
+    } => AnnouncementPartial
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
