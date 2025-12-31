@@ -271,32 +271,25 @@ async fn delete_template_subject(
     let id = IdType::from_string(path.into_inner());
     let service = TemplateSubjectService::new(&state.db.main_db());
 
-    // Fetch before deletion for broadcast
-    let before_delete = service.find_one_by_id(&id).await.ok();
-
     match service.delete_subject(&id).await {
-        Ok(_) => {
+        Ok(subject) => {
             // 🔔 Broadcast deletion event
-            if let Some(subject) = before_delete {
-                let subject_clone = subject.clone();
-                let state_clone = state.clone();
+            let subject_clone = subject.clone();
+            let state_clone = state.clone();
 
-                actix_rt::spawn(async move {
-                    if let Some(id) = subject_clone.id {
-                        EventService::broadcast_deleted(
-                            &state_clone,
-                            "template_subject",
-                            &id.to_hex(),
-                            &subject_clone,
-                        )
-                        .await;
-                    }
-                });
-            }
+            actix_rt::spawn(async move {
+                if let Some(id) = subject_clone.id {
+                    EventService::broadcast_deleted(
+                        &state_clone,
+                        "template_subject",
+                        &id.to_hex(),
+                        &subject_clone,
+                    )
+                    .await;
+                }
+            });
 
-            HttpResponse::Ok().json(serde_json::json!({
-                "message": "Template subject deleted successfully"
-            }))
+            HttpResponse::Ok().json(serde_json::json!(subject))
         }
         Err(message) => HttpResponse::BadRequest().json(message),
     }

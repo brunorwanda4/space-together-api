@@ -307,12 +307,9 @@ impl TeacherService {
             )
             .await?;
 
-        match update {
-            None => Err(AppError {
-                message: "Teacher not found".to_string(),
-            }),
-            Some(teacher) => Ok(teacher),
-        }
+        update.ok_or(AppError {
+            message: "Teacher not found".into(),
+        })
     }
 
     pub async fn add_classes_to_teacher(
@@ -338,12 +335,9 @@ impl TeacherService {
             )
             .await?;
 
-        match update {
-            None => Err(AppError {
-                message: "Teacher not found".to_string(),
-            }),
-            Some(teacher) => Ok(teacher),
-        }
+        update.ok_or(AppError {
+            message: "Teacher not found".into(),
+        })
     }
 
     pub async fn remove_classes_from_teacher(
@@ -367,12 +361,9 @@ impl TeacherService {
             )
             .await?;
 
-        match update {
-            None => Err(AppError {
-                message: "Teacher not found".to_string(),
-            }),
-            Some(teacher) => Ok(teacher),
-        }
+        update.ok_or(AppError {
+            message: "Teacher not found".into(),
+        })
     }
 
     pub async fn remove_subjects_from_teacher(
@@ -396,11 +387,8 @@ impl TeacherService {
             )
             .await?;
 
-        match update {
-            None => Err(AppError {
-                message: "Teacher not found".to_string(),
-            }),
-            Some(teacher) => Ok(teacher),
-        }
+        update.ok_or(AppError {
+            message: "Teacher not found".into(),
+        })
     }
 }

@@ -214,7 +214,15 @@ impl ClassTimetableService {
             term_order = term.order;
         }
 
-        let class_subjects = subject_service.find_many_by_class_id(class_id).await?;
+        let class_subjects = subject_service
+            .get_all(
+                None,
+                None,
+                None,
+                Some(doc! {"class_id" : IdType::to_object_id(class_id)?}),
+            )
+            .await?;
+
         let class_id_obj = IdType::to_object_id(class_id)?;
 
         let start_time_str = "08:00".to_string();
@@ -232,7 +240,7 @@ impl ClassTimetableService {
             class_id_obj,
             education_year_id.unwrap(),
             term_order,
-            class_subjects,
+            class_subjects.data,
             start_time_str,
             days_to_schedule,
             day_template,

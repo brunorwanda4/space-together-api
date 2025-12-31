@@ -246,30 +246,24 @@ async fn delete_announcement(
     let db = get_database(&req, &state);
     let service = AnnouncementService::new(&db);
 
-    let before_delete = service.find_one(Some(&id), None).await.ok();
-
     match service.delete(&id).await {
-        Ok(_) => {
-            if let Some(item) = before_delete {
-                let cloned = item.clone();
-                let state_clone = state.clone();
+        Ok(announcement) => {
+            let cloned = announcement.clone();
+            let state_clone = state.clone();
 
-                actix_rt::spawn(async move {
-                    if let Some(id) = cloned.id {
-                        EventService::broadcast_deleted(
-                            &state_clone,
-                            "announcement",
-                            &id.to_hex(),
-                            &cloned,
-                        )
-                        .await;
-                    }
-                });
-            }
+            actix_rt::spawn(async move {
+                if let Some(id) = cloned.id {
+                    EventService::broadcast_deleted(
+                        &state_clone,
+                        "announcement",
+                        &id.to_hex(),
+                        &cloned,
+                    )
+                    .await;
+                }
+            });
 
-            HttpResponse::Ok().json(doc! {
-                "message": "Announcement deleted successfully"
-            })
+            HttpResponse::Ok().json(announcement)
         }
         Err(err) => HttpResponse::BadRequest().json(err),
     }

@@ -50,7 +50,7 @@ impl ClassSubjectService {
     // CREATE
     pub async fn create(&self, dto: ClassSubject) -> Result<ClassSubject, AppError> {
         self.ensure_indexes().await?;
-        if let Ok(sub) = self.find_one_by_code(&dto.code).await {
+        if let Ok(sub) = self.find_one(None, Some(doc! {"code":&dto.code})).await {
             return Err(AppError {
                 message: format!("Class subject code already exists: {}", sub.code),
             });
@@ -64,34 +64,24 @@ impl ClassSubjectService {
     }
 
     // FIND BY ID
-    pub async fn find_one_by_id(&self, id: &IdType) -> Result<ClassSubject, AppError> {
-        let obj = IdType::to_object_id(id)?;
+    pub async fn find_one(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<ClassSubject, AppError> {
+        let mut filter = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            filter.insert("_id", IdType::to_object_id(id)?);
+        }
+
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let filter = doc! {"_id": obj};
-        let sub = repo.find_one::<ClassSubject>(filter, None).await?;
-
-        match sub {
-            Some(s) => Ok(s),
-            None => Err(AppError {
-                message: "Class subject not found".to_string(),
-            }),
-        }
-    }
-
-    // FIND BY CODE
-    pub async fn find_one_by_code(&self, code: &str) -> Result<ClassSubject, AppError> {
-        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-
-        let filter = doc! {"code": code};
-        let sub = repo.find_one::<ClassSubject>(filter, None).await?;
-
-        match sub {
-            Some(s) => Ok(s),
-            None => Err(AppError {
-                message: "Class subject not found by code".to_string(),
-            }),
-        }
+        repo.find_one::<ClassSubject>(filter, None)
+            .await?
+            .ok_or(AppError {
+                message: "Class subject not found".into(),
+            })
     }
 
     // GET ALL
@@ -136,7 +126,7 @@ impl ClassSubjectService {
     ) -> Result<ClassSubject, AppError> {
         // Validate duplicate code
         if let Some(code) = update.code.clone() {
-            if let Ok(sub) = self.find_one_by_code(&code).await {
+            if let Ok(sub) = self.find_one(None, Some(doc! {"code":&code})).await {
                 if sub.code != code {
                     return Err(AppError {
                         message: format!("Code '{}' already exists", sub.code),
@@ -159,7 +149,7 @@ impl ClassSubjectService {
     // DELETE
     pub async fn delete_subject(&self, id: &IdType) -> Result<ClassSubject, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        let existing = self.find_one_by_id(id).await?;
+        let existing = self.find_one(Some(id), None).await?;
 
         repo.delete_one(id).await?;
 
@@ -176,106 +166,46 @@ impl ClassSubjectService {
     ) -> Result<Paginated<ClassSubjectWithRelations>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let mut pipeline = vec![];
-
-        // add extra match first
-        if let Some(extra) = extra_match {
-            pipeline.push(doc! { "$match": extra });
-        }
+        let mut match_stage = extra_match.unwrap_or_default();
 
         // optional filter search
         if let Some(f) = filter {
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        {"_id": {"$regex": &f, "$options": "i"}},
-                        {"name": {"$regex": &f, "$options": "i"}},
-                        {"code": {"$regex": &f, "$options": "i"}},
-                        {"description": {"$regex": &f, "$options": "i"}}
-                    ]
-                }
-            });
+            match_stage.insert(
+                "$or",
+                vec![doc! {
+                    "_id": { "$regex": &f, "$options": "i" },
+                    "name": { "$regex": &f, "$options": "i" },
+                    "code": { "$regex": &f, "$options": "i" },
+                    "description": { "$regex": &f, "$options": "i" }
+                }],
+            );
         }
 
+        let pipeline = class_subject_pipeline(match_stage);
         // relation joins
-        pipeline.extend(class_subject_pipeline(doc! {}));
 
         repo.aggregate_with_paginate::<ClassSubjectWithRelations>(pipeline, limit, skip)
             .await
     }
 
-    pub async fn find_many_and_others_by_class_id(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-        class_id: &IdType,
-    ) -> Result<Paginated<ClassSubjectWithRelations>, AppError> {
-        let obj = IdType::to_object_id(class_id)?;
-        let extra_match = doc! { "class_id": obj };
-
-        self.get_all_with_relations(filter, limit, skip, Some(extra_match))
-            .await
-    }
-
-    // GET ONE WITH RELATIONS
     pub async fn find_one_with_relations(
         &self,
-        id: &IdType,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
     ) -> Result<ClassSubjectWithRelations, AppError> {
-        let obj = IdType::to_object_id(id)?;
-        self.find_one_with_match(doc! { "_id": obj }).await
-    }
+        let mut match_stage = extra_match.unwrap_or_default();
 
-    pub async fn find_one_with_relations_by_code(
-        &self,
-        code: &str,
-    ) -> Result<ClassSubjectWithRelations, AppError> {
-        self.find_one_with_match(doc! { "code": code }).await
-    }
+        if let Some(id) = id {
+            match_stage.insert("_id", IdType::to_object_id(id)?);
+        }
 
-    async fn find_one_with_match(
-        &self,
-        match_stage: Document,
-    ) -> Result<ClassSubjectWithRelations, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let pipeline = class_subject_pipeline(match_stage);
-
-        let result = repo
-            .aggregate_one::<ClassSubjectWithRelations>(pipeline, None)
-            .await?;
-
-        match result {
-            Some(v) => Ok(v),
-            None => Err(AppError {
-                message: "Class subject not found".to_string(),
-            }),
-        }
-    }
-
-    pub async fn find_many_by_teacher(
-        &self,
-        teacher_id: &IdType,
-    ) -> Result<Vec<ClassSubject>, AppError> {
-        let obj = IdType::to_object_id(teacher_id)?;
-
-        let extra_match = doc! { "teacher_id": obj };
-
-        let res = self.get_all(None, None, None, Some(extra_match)).await?;
-        Ok(res.data)
-    }
-
-    pub async fn find_many_by_class_id(
-        &self,
-        class_id: &IdType,
-    ) -> Result<Vec<ClassSubject>, AppError> {
-        let obj = IdType::to_object_id(class_id)?;
-
-        let extra_match = doc! { "class_id": obj };
-
-        let res = self.get_all(None, None, None, Some(extra_match)).await?;
-        Ok(res.data)
+        repo.aggregate_one::<ClassSubjectWithRelations>(class_subject_pipeline(match_stage), None)
+            .await?
+            .ok_or(AppError {
+                message: "Class subject not found".into(),
+            })
     }
 
     pub async fn create_many(
@@ -292,7 +222,6 @@ impl ClassSubjectService {
             })?;
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create_many::<ClassSubject>(docs, Some(&["code"]))
-            .await
+        repo.create_many::<ClassSubject>(docs, None).await
     }
 }
