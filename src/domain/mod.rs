@@ -12,6 +12,7 @@ pub mod join_school_request;
 pub mod main_class;
 pub mod school;
 pub mod school_staff;
+pub mod school_staff_testing;
 pub mod school_timetable;
 pub mod sector;
 pub mod student;
