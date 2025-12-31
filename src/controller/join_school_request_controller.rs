@@ -1,6 +1,6 @@
 use actix_web::web;
 use chrono::{Datelike, Utc};
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{doc, oid::ObjectId};
 
 use crate::{
     config::state::AppState,
@@ -23,7 +23,7 @@ use crate::{
     models::id_model::IdType,
     repositories::{
         class_repo::ClassRepo, join_school_request_repo::JoinSchoolRequestRepo,
-        school_repo::SchoolRepo, school_staff_repo::SchoolStaffRepo,
+        school_repo::SchoolRepo,
     },
     services::{
         class_service::ClassService, school_service::SchoolService,
@@ -401,8 +401,7 @@ impl<'a> JoinSchoolRequestController<'a> {
             }
 
             JoinRole::Staff => {
-                let staff_repo = SchoolStaffRepo::new(school_db);
-                let staff_service = SchoolStaffService::new(&staff_repo);
+                let staff_service = SchoolStaffService::new(&school_db);
 
                 // Validate staff type and check limits in school database
                 let staff_type = parse_staff_type(&request.r#type);
@@ -411,11 +410,10 @@ impl<'a> JoinSchoolRequestController<'a> {
                 match staff_type {
                     SchoolStaffType::Director => {
                         let count = staff_service
-                            .count_school_staff_by_type(SchoolStaffType::Director)
-                            .await
-                            .map_err(|e| AppError { message: e })?;
+                            .count_staff(None, Some(doc! {"type": "Director"}))
+                            .await?;
 
-                        if count >= 1 {
+                        if count.count >= 1 {
                             return Err(AppError {
                                 message: "This school already has a Director".into(),
                             });
@@ -423,11 +421,10 @@ impl<'a> JoinSchoolRequestController<'a> {
                     }
                     SchoolStaffType::HeadOfStudies => {
                         let count = staff_service
-                            .count_school_staff_by_type(SchoolStaffType::HeadOfStudies)
-                            .await
-                            .map_err(|e| AppError { message: e })?;
+                            .count_staff(None, Some(doc! {"type": "HeadOfStudies"}))
+                            .await?;
 
-                        if count >= 5 {
+                        if count.count >= 5 {
                             return Err(AppError {
                                 message: "This school already has 5 HeadOfStudies".into(),
                             });
@@ -449,10 +446,7 @@ impl<'a> JoinSchoolRequestController<'a> {
                     updated_at: Utc::now(),
                 };
 
-                staff_service
-                    .create_school_staff(staff)
-                    .await
-                    .map_err(|e| AppError { message: e })?;
+                staff_service.create(staff, None).await?;
             }
         }
 
