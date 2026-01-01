@@ -447,13 +447,24 @@ impl BaseRepository {
         for idx in indexes {
             let mut keys_doc = Document::new();
             for (field, order) in &idx.fields {
-                keys_doc.insert(field, order);
+                keys_doc.insert(field, *order);
             }
 
-            // Build index
+            let mut options = IndexOptions::builder().unique(idx.unique).build();
+
+            // APPLY partialFilterExpression
+            if let Some(partial) = &idx.partial {
+                options.partial_filter_expression = Some(partial.clone());
+            }
+
+            // APPLY index name
+            if let Some(name) = &idx.name {
+                options.name = Some(name.clone());
+            }
+
             let index = IndexModel::builder()
                 .keys(keys_doc)
-                .options(IndexOptions::builder().unique(idx.unique).build())
+                .options(options)
                 .build();
 
             self.collection

@@ -231,9 +231,9 @@ async fn count_school_staff(
 /// ------------------------------------------------------
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(get_all_school_staff)
-        .service(get_school_staff_by_id)
         .service(get_school_staff_by_match)
         .service(count_school_staff)
+        .service(get_school_staff_by_id)
         .service(
             web::scope("")
                 .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

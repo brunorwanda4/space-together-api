@@ -171,7 +171,9 @@ impl TeacherService {
     ) -> Result<Paginated<Teacher>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let searchable = ["name", "email", "phone", "user_id", "_id", "tags"];
+        let searchable = [
+            "name", "email", "phone", "user_id", "_id", "tags", "gender", "type", "tags",
+        ];
 
         let (data, total, total_pages, current_page) = repo
             .get_all::<Teacher>(filter, &searchable, limit, skip, extra_match)

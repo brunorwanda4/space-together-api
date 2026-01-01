@@ -189,7 +189,21 @@ impl StudentService {
     ) -> Result<Paginated<Student>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let searchable = ["name", "email", "registration_number", "_id"];
+        let searchable = [
+            "name",
+            "email",
+            "registration_number",
+            "_id",
+            "user_id",
+            "school_id",
+            "class_id",
+            "subclass_id",
+            "phone",
+            "gender",
+            "admission_year",
+            "status",
+            "tags",
+        ];
 
         let (data, total, total_pages, current_page) = repo
             .get_all::<Student>(filter, &searchable, limit, skip, extra_match)
