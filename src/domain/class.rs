@@ -26,6 +26,7 @@ pub enum ClassLevelType {
     MainClass, // e.g., "Primary 1"
     SubClass, // e.g., "Primary 1 A"
 }
+
 make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Class {

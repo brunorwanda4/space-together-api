@@ -1,10 +1,10 @@
-use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
 use mongodb::bson::doc;
 
 use crate::{
     config::state::AppState,
     domain::class_subject::{ClassSubject, ClassSubjectPartial},
-    models::{api_request_model::RequestQuery, id_model::IdType, school_token_model::SchoolToken},
+    models::{api_request_model::RequestQuery, id_model::IdType},
     services::{class_subject_service::ClassSubjectService, event_service::EventService},
     utils::{api_utils::build_extra_match, db_utils::get_database},
 };

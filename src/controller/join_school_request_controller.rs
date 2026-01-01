@@ -14,7 +14,7 @@ use crate::{
         },
         school::School,
         school_staff::{parse_staff_type, SchoolStaff, SchoolStaffType},
-        student::{Student, StudentStatus},
+        student::{Student, StudentPartial, StudentStatus},
         teacher::{parse_teacher_type, Teacher},
         user::User,
     },
@@ -346,31 +346,72 @@ impl<'a> JoinSchoolRequestController<'a> {
                     }
                 }
 
-                // ✅ Define new student (for creation)
-                let new_student = Student {
-                    id: None,
-                    user_id: Some(user_id),
-                    school_id: Some(school_id),
-                    class_id: request.class_id,
-                    creator_id: Some(request.sent_by),
-                    name: user.name.clone(),
-                    email: user.email.clone(),
-                    phone: user.phone.clone(),
-                    gender: user.gender.clone(),
-                    date_of_birth: user.age.clone(),
-                    subclass_id: None,
-                    image: user.image.clone(),
-                    image_id: user.image_id.clone(),
-                    registration_number: generate_school_registration_number(school).await,
-                    admission_year: Some(Utc::now().year()),
-                    status: StudentStatus::Active,
-                    is_active: false,
-                    tags: vec!["join-request".to_string()],
-                    created_at: Utc::now(),
-                    updated_at: Utc::now(),
-                };
+                if let Ok(student) = student_service
+                    .find_one(None, Some(doc! {"email": user.email.clone()}))
+                    .await
+                {
+                    let update_student = StudentPartial {
+                        id: None,               // StudentPartial.id is Option<ObjectId>
+                        user_id: Some(user.id), // Assuming user.id is ObjectId
+                        school_id: Some(school.id),
+                        class_id: Some(request.class_id),
+                        subclass_id: Some(student.subclass_id), // Already Option<ObjectId>
+                        creator_id: Some(student.creator_id),   // Already Option<ObjectId>
 
-                student_service.create(new_student, None).await?;
+                        name: Some(student.name), // String -> Option<String>
+                        email: Some(student.email), // String -> Option<String>
+
+                        // These are already Option<T>, so do NOT wrap in Some()
+                        phone: Some(student.phone.or(user.phone.clone())),
+                        gender: Some(student.gender.or(user.gender.clone())),
+                        image: Some(student.image.or(user.image.clone())),
+                        image_id: Some(student.image_id.or(user.image_id.clone())),
+
+                        // date_of_birth is Option<Age>, so assign directly
+                        date_of_birth: Some(student.date_of_birth.or(user.age.clone())),
+
+                        registration_number: Some(student.registration_number), // Already Option
+                        admission_year: Some(student.admission_year),           // Already Option
+
+                        status: Some(student.status), // StudentStatus -> Option<StudentStatus>
+                        is_active: Some(student.is_active), // bool -> Option<bool>
+                        tags: Some(student.tags),     // Vec -> Option<Vec>
+
+                        created_at: None,
+                        updated_at: None,
+                    };
+
+                    student_service
+                        .update(
+                            &IdType::from_object_id(student.id.unwrap()),
+                            &update_student,
+                        )
+                        .await?;
+                } else {
+                    let new_student = Student {
+                        id: None,
+                        user_id: Some(user_id),
+                        school_id: Some(school_id),
+                        class_id: request.class_id,
+                        creator_id: Some(request.sent_by),
+                        name: user.name.clone(),
+                        email: user.email.clone(),
+                        phone: user.phone.clone(),
+                        gender: user.gender.clone(),
+                        date_of_birth: user.age.clone(),
+                        subclass_id: None,
+                        image: user.image.clone(),
+                        image_id: user.image_id.clone(),
+                        registration_number: generate_school_registration_number(school).await,
+                        admission_year: Some(Utc::now().year()),
+                        status: StudentStatus::Active,
+                        is_active: false,
+                        tags: vec!["join-request".to_string()],
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    };
+                    student_service.create(new_student, None).await?;
+                }
             }
 
             JoinRole::Teacher => {
