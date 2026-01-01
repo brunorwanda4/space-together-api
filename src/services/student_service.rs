@@ -1,5 +1,5 @@
 use mongodb::{
-    bson::{self, doc, Document},
+    bson::{self, doc, oid::ObjectId, Document},
     Collection, Database,
 };
 
@@ -8,13 +8,14 @@ use crate::{
     domain::{
         common_details::Paginated,
         join_school_request::{CreateJoinSchoolRequest, JoinRole},
-        student::{Student, StudentPartial, StudentStatus},
+        student::{Student, StudentPartial, StudentStatus, StudentWithRelations},
     },
     errors::AppError,
     models::{
         id_model::IdType,
         mongo_model::{CountDoc, IndexDef},
     },
+    pipeline::student_pipeline::student_pipeline,
     repositories::base_repo::BaseRepository,
     services::cloudinary_service::CloudinaryService,
     utils::{
@@ -307,6 +308,73 @@ impl StudentService {
         repo.delete_one(id).await?;
 
         Ok(student)
+    }
+
+    pub async fn get_all_with_relations(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<StudentWithRelations>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let mut match_stage = extra_match.unwrap_or_default();
+        if let Some(f) = filter {
+            let mut or_conditions = vec![
+                // =========================
+                // STRING FIELDS (regex)
+                // =========================
+                doc! { "name": { "$regex": &f, "$options": "i" } },
+                doc! { "email": { "$regex": &f, "$options": "i" } },
+                doc! { "registration_number": { "$regex": &f, "$options": "i" } },
+                doc! { "phone": { "$regex": &f, "$options": "i" } },
+                doc! { "gender": { "$regex": &f, "$options": "i" } },
+                doc! { "status": { "$regex": &f, "$options": "i" } },
+                doc! { "tags": { "$in": [&f] } },
+            ];
+
+            if let Ok(year) = f.parse::<i32>() {
+                or_conditions.push(doc! { "admission_year": year });
+            }
+            // SEARCH BY ID
+            if let Ok(oid) = ObjectId::parse_str(&f) {
+                or_conditions.extend(vec![
+                    doc! { "_id": oid },
+                    doc! { "user_id": oid },
+                    doc! { "school_id": oid },
+                    doc! { "class_id": oid },
+                    doc! { "subclass_id": oid },
+                ]);
+            }
+
+            match_stage.insert("$or", or_conditions);
+        }
+
+        let pipeline = student_pipeline(match_stage);
+
+        repo.aggregate_with_paginate::<StudentWithRelations>(pipeline, limit, skip)
+            .await
+    }
+
+    pub async fn find_one_with_relations(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<StudentWithRelations, AppError> {
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            match_stage.insert("_id", IdType::to_object_id(id)?);
+        }
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.aggregate_one::<StudentWithRelations>(student_pipeline(match_stage), None)
+            .await?
+            .ok_or(AppError {
+                message: "Student not found".into(),
+            })
     }
 
     // =========================

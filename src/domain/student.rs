@@ -109,4 +109,5 @@ pub struct StudentWithRelations {
     pub creator: Option<crate::domain::user::User>,
     pub school: Option<crate::domain::school::School>,
     pub class: Option<crate::domain::class::Class>,
+    pub subclass: Option<crate::domain::class::Class>,
 }
