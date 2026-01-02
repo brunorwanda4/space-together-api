@@ -9,13 +9,14 @@ use crate::{
     domain::{
         common_details::Paginated,
         join_school_request::{CreateJoinSchoolRequest, JoinRole},
-        teacher::{Teacher, UpdateTeacher},
+        teacher::{Teacher, TeacherWithRelations, UpdateTeacher},
     },
     errors::AppError,
     models::{
         id_model::IdType,
         mongo_model::{CountDoc, IndexDef},
     },
+    pipeline::teacher_pipeline::teacher_pipeline,
     repositories::base_repo::BaseRepository,
     services::cloudinary_service::CloudinaryService,
     utils::{
@@ -263,6 +264,72 @@ impl TeacherService {
         repo.delete_one(id).await?;
 
         Ok(teacher)
+    }
+
+    pub async fn get_all_with_relations(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<TeacherWithRelations>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(f) = filter {
+            let mut or_conditions = vec![
+                // =========================
+                // STRING FIELDS (regex)
+                // =========================
+                doc! { "name": { "$regex": &f, "$options": "i" } },
+                doc! { "email": { "$regex": &f, "$options": "i" } },
+                doc! { "phone": { "$regex": &f, "$options": "i" } },
+                doc! { "tags": { "$in": [&f] } },
+                doc! { "type": { "$regex": &f, "$options": "i" } },
+            ];
+
+            // =========================
+            // SEARCH BY OBJECT ID
+            // =========================
+            if let Ok(oid) = ObjectId::parse_str(&f) {
+                or_conditions.extend(vec![
+                    doc! { "_id": oid },
+                    doc! { "user_id": oid },
+                    doc! { "school_id": oid },
+                    doc! { "creator_id": oid },
+                    doc! { "class_ids": oid },
+                    doc! { "subject_ids": oid },
+                ]);
+            }
+
+            match_stage.insert("$or", or_conditions);
+        }
+
+        let pipeline = teacher_pipeline(match_stage);
+
+        repo.aggregate_with_paginate::<TeacherWithRelations>(pipeline, limit, skip)
+            .await
+    }
+
+    pub async fn find_one_with_relations(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<TeacherWithRelations, AppError> {
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            match_stage.insert("_id", IdType::to_object_id(id)?);
+        }
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.aggregate_one::<TeacherWithRelations>(teacher_pipeline(match_stage), None)
+            .await?
+            .ok_or(AppError {
+                message: "Teacher not found".into(),
+            })
     }
 
     // =========================

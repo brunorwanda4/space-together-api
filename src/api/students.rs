@@ -130,7 +130,7 @@ async fn get_student_by_match(
 }
 
 /// ------------------------------------------------------
-/// GET /announcements/others/match
+/// GET /students/others/match
 /// ------------------------------------------------------
 
 #[get("/others/match")]

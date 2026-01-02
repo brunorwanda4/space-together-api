@@ -41,6 +41,53 @@ async fn get_all_teachers(
 }
 
 /// ------------------------------------------------------
+/// GET /teachers/others
+/// ------------------------------------------------------
+
+#[get("/others")]
+async fn get_all_teachers_with_relations(
+    req: HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let db = get_database(&req, &state);
+    let service = TeacherService::new(&db);
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .get_all_with_relations(query.filter.clone(), query.limit, query.skip, extra_match)
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// GET /teachers/{id}/others
+/// ------------------------------------------------------
+
+#[get("/{id}/others")]
+async fn get_teacher_by_id_with_relations(
+    req: HttpRequest,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let id = IdType::from_string(path.into_inner());
+    let db = get_database(&req, &state);
+    let service = TeacherService::new(&db);
+
+    match service.find_one_with_relations(Some(&id), None).await {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+/// ------------------------------------------------------
 /// GET /teachers/{id}
 /// ------------------------------------------------------
 #[get("/{id}")]
@@ -78,6 +125,29 @@ async fn get_teacher_by_match(
 
     match service.find_one(None, extra_match).await {
         Ok(teacher) => HttpResponse::Ok().json(teacher),
+        Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// GET /teachers/others/match
+/// ------------------------------------------------------
+
+#[get("/others/match")]
+async fn get_teacher_by_other_match(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
+) -> impl Responder {
+    let db = get_database(&req, &state);
+    let service = TeacherService::new(&db);
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service.find_one_with_relations(None, extra_match).await {
+        Ok(data) => HttpResponse::Ok().json(data),
         Err(err) => HttpResponse::NotFound().json(err),
     }
 }
@@ -234,7 +304,10 @@ async fn count_teachers(
 /// ------------------------------------------------------
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(get_all_teachers)
+        .service(get_all_teachers_with_relations)
         .service(get_teacher_by_match)
+        .service(get_teacher_by_other_match)
+        .service(get_teacher_by_id_with_relations)
         .service(count_teachers)
         .service(get_teacher_by_id)
         .service(
