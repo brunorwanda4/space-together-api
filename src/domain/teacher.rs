@@ -105,36 +105,6 @@ pub struct TeacherWithRelations {
     pub subjects: Option<Vec<Subject>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BulkTeacherIds {
-    pub ids: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BulkUpdateTeacherActive {
-    pub ids: Vec<String>,
-    pub is_active: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BulkTeacherTags {
-    pub ids: Vec<String>,
-    pub tags: Vec<String>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct PrepareTeacherRequest {
-    pub teachers: Vec<Teacher>,
-    pub school_id: Option<String>,
-    pub creator_id: Option<String>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct TeacherCountQuery {
-    pub gender: Option<Gender>,
-    pub teacher_type: Option<TeacherType>,
-}
-
 impl fmt::Display for TeacherType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -157,13 +127,4 @@ pub fn parse_teacher_type(type_str: &str) -> TeacherType {
         "deputy" => TeacherType::Deputy,
         _ => TeacherType::Regular,
     }
-}
-
-// get class with pages
-#[derive(Serialize)]
-pub struct PaginatedTeachers {
-    pub teachers: Vec<Teacher>,
-    pub total: i64,
-    pub total_pages: i64,
-    pub current_page: i64,
 }
