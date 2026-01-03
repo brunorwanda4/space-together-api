@@ -4,7 +4,7 @@ use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        sector_testing::{Sector, SectorPartial},
+        sector_testing::{GetSectorsByIdsBody, Sector, SectorPartial},
     },
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{event_service::EventService, sector_service_testing::SectorService},
@@ -206,6 +206,26 @@ async fn count_sectors(
     }
 }
 
+#[post("/by-ids")]
+async fn get_sectors_by_ids(
+    body: web::Json<GetSectorsByIdsBody>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = SectorService::new(&state.db.main_db());
+
+    // Convert the string IDs into IdType
+    let ids: Vec<IdType> = body
+        .ids
+        .iter()
+        .map(|id| IdType::from_string(id.clone()))
+        .collect();
+
+    match service.find_by_ids(ids).await {
+        Ok(sectors) => HttpResponse::Ok().json(sectors),
+        Err(error) => HttpResponse::NotFound().json(error),
+    }
+}
+
 /// ------------------------------------------------------
 /// INIT
 /// ------------------------------------------------------
@@ -215,6 +235,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_all_sectors)
             .service(get_sector_by_match)
             .service(count_sectors)
+            .service(get_sectors_by_ids)
             .service(get_sector_by_id)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_sector)

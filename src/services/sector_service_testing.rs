@@ -1,5 +1,6 @@
+use futures::TryStreamExt;
 use mongodb::{
-    bson::{self, doc, Document},
+    bson::{self, doc, oid::ObjectId, Document},
     Collection, Database,
 };
 
@@ -235,5 +236,33 @@ impl SectorService {
         let searchable = ["name", "username", "country", "type", "description", "_id"];
 
         repo.count(filter, &searchable, extra_match).await
+    }
+
+    pub async fn find_by_ids(&self, ids: Vec<IdType>) -> Result<Vec<Sector>, AppError> {
+        // Convert string IDs into MongoDB ObjectIds
+        let object_ids: Vec<ObjectId> = ids
+            .into_iter()
+            .filter_map(|id| ObjectId::parse_str(id.as_string()).ok())
+            .collect();
+
+        if object_ids.is_empty() {
+            return Ok(vec![]); // No valid IDs — return empty list
+        }
+
+        // Build the query to match multiple IDs
+        let filter = doc! { "_id": { "$in": object_ids } };
+
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to fetch sectors by ids: {}", e),
+        })?;
+
+        let mut sectors = Vec::new();
+        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate sectors: {}", e),
+        })? {
+            sectors.push(result);
+        }
+
+        Ok(sectors)
     }
 }
