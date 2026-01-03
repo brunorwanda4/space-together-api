@@ -9,9 +9,9 @@ use crate::{
     },
     middleware::jwt_middleware::JwtMiddleware,
     models::{id_model::IdType, request_error_model::ReqErrModel},
-    repositories::{school_repo::SchoolRepo, user_repo::UserRepo},
+    repositories::user_repo::UserRepo,
     services::{
-        auth_service::AuthService, school_service::SchoolService, user_service::UserService,
+        auth_service::AuthService, school_service_testing::SchoolService, user_service::UserService,
     },
 };
 
@@ -55,23 +55,15 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
 
     let school_access_token: Option<String> = match user.current_school_id {
         Some(school_id) => {
-            let school_repo = SchoolRepo::new(&db);
-            let school_service = SchoolService::new(&school_repo);
+            let school_service = SchoolService::new(&db);
 
-            let school = match school_service
-                .get_school_by_id(&IdType::ObjectId(school_id))
+            match school_service
+                .create_school_token(&IdType::from_object_id(school_id))
                 .await
             {
-                Ok(school) => school,
-                Err(e) => {
-                    return HttpResponse::BadRequest().json(ReqErrModel { message: e });
-                }
-            };
-
-            match school_service.create_school_token(&school).await {
                 Ok(token) => Some(token),
                 Err(e) => {
-                    return HttpResponse::BadRequest().json(ReqErrModel { message: e });
+                    return HttpResponse::BadRequest().json(e);
                 }
             }
         }

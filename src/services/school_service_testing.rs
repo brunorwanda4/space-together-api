@@ -239,4 +239,12 @@ impl SchoolService {
 
         Ok(new_token)
     }
+
+    pub async fn create_school_token(&self, id: &IdType) -> Result<String, AppError> {
+        let school = self.find_one(Some(id), None).await?;
+        let school_token = to_school_school_token(&school).map_err(|e| AppError { message: e })?;
+        let token = create_school_token(school_token);
+
+        Ok(token)
+    }
 }
