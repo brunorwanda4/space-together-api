@@ -19,7 +19,6 @@ mod subject;
 mod subjects;
 mod teachers;
 mod template_subject;
-mod trade;
 mod trade_api;
 mod users;
 mod welcome;
@@ -31,7 +30,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     sector_api::init(cfg);
     auth::init(cfg);
     users::init(cfg);
-    // trade::init(cfg);
     trade_api::init(cfg);
     main_class::init(cfg);
     events::init(cfg);
