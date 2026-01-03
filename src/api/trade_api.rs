@@ -4,22 +4,22 @@ use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        sector::{GetSectorsByIdsBody, Sector, SectorPartial},
+        trade::{Trade, TradePartial},
     },
     models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{event_service::EventService, sector_service::SectorService},
+    services::{event_service::EventService, trade_service::TradeService},
     utils::api_utils::build_extra_match,
 };
 
 /// ------------------------------------------------------
-/// GET /sectors
+/// GET /trades
 /// ------------------------------------------------------
 #[get("")]
-async fn get_all_sectors(
+async fn get_all_trades(
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let service = SectorService::new(&state.db.main_db());
+    let service = TradeService::new(&state.db.main_db());
 
     let extra_match = match build_extra_match(&query.field, &query.value) {
         Ok(doc) => doc,
@@ -36,29 +36,69 @@ async fn get_all_sectors(
 }
 
 /// ------------------------------------------------------
-/// GET /sectors/{id}
+/// GET /trades/with-relations
+/// ------------------------------------------------------
+#[get("/with-relations")]
+async fn get_all_trades_with_relations(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = TradeService::new(&state.db.main_db());
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .get_all_with_relations(query.filter.clone(), query.limit, query.skip, extra_match)
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// GET /trades/{id}
 /// ------------------------------------------------------
 #[get("/{id}")]
-async fn get_sector_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
+async fn get_trade_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
     let id = IdType::from_string(path.into_inner());
-
-    let service = SectorService::new(&state.db.main_db());
+    let service = TradeService::new(&state.db.main_db());
 
     match service.find_one(Some(&id), None).await {
-        Ok(sector) => HttpResponse::Ok().json(sector),
+        Ok(trade) => HttpResponse::Ok().json(trade),
         Err(err) => HttpResponse::NotFound().json(err),
     }
 }
 
 /// ------------------------------------------------------
-/// GET /sectors/match
+/// GET /trades/{id}/with-relations
+/// ------------------------------------------------------
+#[get("/{id}/with-relations")]
+async fn get_trade_by_id_with_relations(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let id = IdType::from_string(path.into_inner());
+    let service = TradeService::new(&state.db.main_db());
+
+    match service.find_one_with_relations(Some(&id), None).await {
+        Ok(trade) => HttpResponse::Ok().json(trade),
+        Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// GET /trades/match
 /// ------------------------------------------------------
 #[get("/match")]
-async fn get_sector_by_match(
+async fn get_trade_by_match(
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let service = SectorService::new(&state.db.main_db());
+    let service = TradeService::new(&state.db.main_db());
 
     let extra_match = match build_extra_match(&query.field, &query.value) {
         Ok(doc) => doc,
@@ -66,124 +106,125 @@ async fn get_sector_by_match(
     };
 
     match service.find_one(None, extra_match).await {
-        Ok(sector) => HttpResponse::Ok().json(sector),
+        Ok(trade) => HttpResponse::Ok().json(trade),
         Err(err) => HttpResponse::NotFound().json(err),
     }
 }
 
 /// ------------------------------------------------------
-/// POST /sectors
+/// POST /trades
 /// ------------------------------------------------------
 #[post("")]
-async fn create_sector(
+async fn create_trade(
     _user: web::ReqData<AuthUserDto>,
-    data: web::Json<Sector>,
+    data: web::Json<Trade>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let service = SectorService::new(&state.db.main_db());
+    let service = TradeService::new(&state.db.main_db());
 
     match service.create(data.into_inner()).await {
-        Ok(sector) => {
-            let sector_clone = sector.clone();
+        Ok(trade) => {
+            let trade_clone = trade.clone();
             let state_clone = state.clone();
+
             actix_rt::spawn(async move {
-                if let Some(id) = sector_clone.id {
+                if let Some(id) = trade_clone.id {
                     EventService::broadcast_created(
                         &state_clone,
-                        "sector",
+                        "trade",
                         &id.to_hex(),
-                        &sector_clone,
+                        &trade_clone,
                     )
                     .await;
                 }
             });
 
-            HttpResponse::Created().json(sector)
+            HttpResponse::Created().json(trade)
         }
         Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
 
 /// ------------------------------------------------------
-/// PUT /sectors/{id}
+/// PUT /trades/{id}
 /// ------------------------------------------------------
 #[put("/{id}")]
-async fn update_sector(
+async fn update_trade(
     _user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
-    data: web::Json<SectorPartial>,
+    data: web::Json<TradePartial>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let id = IdType::from_string(path.into_inner());
-
-    let service = SectorService::new(&state.db.main_db());
+    let service = TradeService::new(&state.db.main_db());
 
     match service.update(&id, &data.into_inner()).await {
-        Ok(sector) => {
-            let sector_clone = sector.clone();
+        Ok(trade) => {
+            let trade_clone = trade.clone();
             let state_clone = state.clone();
+
             actix_rt::spawn(async move {
-                if let Some(id) = sector_clone.id {
+                if let Some(id) = trade_clone.id {
                     EventService::broadcast_updated(
                         &state_clone,
-                        "sector",
+                        "trade",
                         &id.to_hex(),
-                        &sector_clone,
+                        &trade_clone,
                     )
                     .await;
                 }
             });
 
-            HttpResponse::Ok().json(sector)
+            HttpResponse::Ok().json(trade)
         }
         Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
 
 /// ------------------------------------------------------
-/// DELETE /sectors/{id}
+/// DELETE /trades/{id}
 /// ------------------------------------------------------
 #[delete("/{id}")]
-async fn delete_sector(
+async fn delete_trade(
     _user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let id = IdType::from_string(path.into_inner());
-
-    let service = SectorService::new(&state.db.main_db());
+    let service = TradeService::new(&state.db.main_db());
 
     match service.delete(&id).await {
-        Ok(sector) => {
-            let sector_clone = sector.clone();
+        Ok(trade) => {
+            let trade_clone = trade.clone();
             let state_clone = state.clone();
+
             actix_rt::spawn(async move {
-                if let Some(id) = sector_clone.id {
+                if let Some(id) = trade_clone.id {
                     EventService::broadcast_deleted(
                         &state_clone,
-                        "sector",
+                        "trade",
                         &id.to_hex(),
-                        &sector_clone,
+                        &trade_clone,
                     )
                     .await;
                 }
             });
 
-            HttpResponse::Ok().json(sector)
+            HttpResponse::Ok().json(trade)
         }
         Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
 
 /// ------------------------------------------------------
-/// GET /count
+/// GET /trades/count
 /// ------------------------------------------------------
 #[get("/count")]
-async fn count_sectors(
+async fn count_trades(
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let service = SectorService::new(&state.db.main_db());
+    let service = TradeService::new(&state.db.main_db());
 
     let extra_match = match build_extra_match(&query.field, &query.value) {
         Ok(doc) => doc,
@@ -196,40 +237,21 @@ async fn count_sectors(
     }
 }
 
-#[post("/by-ids")]
-async fn get_sectors_by_ids(
-    body: web::Json<GetSectorsByIdsBody>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let service = SectorService::new(&state.db.main_db());
-
-    // Convert the string IDs into IdType
-    let ids: Vec<IdType> = body
-        .ids
-        .iter()
-        .map(|id| IdType::from_string(id.clone()))
-        .collect();
-
-    match service.find_by_ids(ids).await {
-        Ok(sectors) => HttpResponse::Ok().json(sectors),
-        Err(error) => HttpResponse::NotFound().json(error),
-    }
-}
-
 /// ------------------------------------------------------
 /// INIT
 /// ------------------------------------------------------
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/sectors")
-            .service(get_all_sectors)
-            .service(get_sector_by_match)
-            .service(count_sectors)
-            .service(get_sectors_by_ids)
-            .service(get_sector_by_id)
+        web::scope("/trades")
+            .service(get_all_trades)
+            .service(get_all_trades_with_relations)
+            .service(get_trade_by_match)
+            .service(count_trades)
+            .service(get_trade_by_id)
+            .service(get_trade_by_id_with_relations)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
-            .service(create_sector)
-            .service(update_sector)
-            .service(delete_sector),
+            .service(create_trade)
+            .service(update_trade)
+            .service(delete_trade),
     );
 }

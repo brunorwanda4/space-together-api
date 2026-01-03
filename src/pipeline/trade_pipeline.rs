@@ -1,6 +1,6 @@
 use mongodb::bson::{doc, Document};
 
-pub fn trade_with_others_pipeline(match_stage: Document) -> Vec<Document> {
+pub fn trade_pipeline(match_stage: Document) -> Vec<Document> {
     vec![
         doc! { "$match": match_stage },
         doc! {

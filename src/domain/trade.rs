@@ -91,7 +91,7 @@ pub struct Trade {
 
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
-} => UpdateTrade
+} => TradePartial
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
