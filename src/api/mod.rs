@@ -9,7 +9,6 @@ mod database_status;
 mod education_year;
 mod events;
 mod join_school_request;
-mod main_class;
 mod main_class_api;
 mod school;
 mod school_collections;

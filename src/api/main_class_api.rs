@@ -7,7 +7,7 @@ use crate::{
         main_class::{MainClass, MainClassPartial},
     },
     models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{event_service::EventService, main_class_service_testing::MainClassService},
+    services::{event_service::EventService, main_class_service::MainClassService},
     utils::api_utils::build_extra_match,
 };
 
