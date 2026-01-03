@@ -13,9 +13,8 @@ mod main_class;
 mod school;
 mod school_collections;
 mod school_staff;
-mod sector;
 mod sector_api;
-mod students;
+mod students_api;
 mod subject;
 mod subjects;
 mod teachers;
@@ -28,7 +27,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     welcome::init(cfg);
 
     database_status::init(cfg);
-    // sector::init(cfg);
     sector_api::init(cfg);
     auth::init(cfg);
     users::init(cfg);
@@ -44,7 +42,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     school::init(cfg);
     class::init(cfg);
     subject::init(cfg);
-    students::init(cfg);
+    students_api::init(cfg);
     teachers::init(cfg);
     school_staff::init(cfg);
     join_school_request::init(cfg);

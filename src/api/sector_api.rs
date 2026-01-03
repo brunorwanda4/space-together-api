@@ -4,10 +4,10 @@ use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        sector_testing::{GetSectorsByIdsBody, Sector, SectorPartial},
+        sector::{GetSectorsByIdsBody, Sector, SectorPartial},
     },
     models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{event_service::EventService, sector_service_testing::SectorService},
+    services::{event_service::EventService, sector_service::SectorService},
     utils::api_utils::build_extra_match,
 };
 

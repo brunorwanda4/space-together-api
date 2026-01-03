@@ -1,185 +1,268 @@
-use crate::{
-    domain::sector::{Sector, UpdateSector},
-    models::id_model::IdType,
-    repositories::sector_repo::SectorRepo,
-    services::cloudinary_service::CloudinaryService,
-    utils::names::is_valid_username,
+use futures::TryStreamExt;
+use mongodb::{
+    bson::{self, doc, oid::ObjectId, Document},
+    Collection, Database,
 };
-use chrono::Utc;
-use mongodb::bson::oid::ObjectId;
 
-pub struct SectorService<'a> {
-    repo: &'a SectorRepo,
+use crate::{
+    domain::{
+        common_details::Paginated,
+        sector::{Sector, SectorPartial},
+    },
+    errors::AppError,
+    models::{
+        id_model::IdType,
+        mongo_model::{CountDoc, IndexDef},
+    },
+    repositories::base_repo::BaseRepository,
+    services::cloudinary_service::CloudinaryService,
+    utils::mongo_utils::extract_valid_fields,
+};
+
+pub struct SectorService {
+    pub collection: Collection<Sector>,
 }
 
-impl<'a> SectorService<'a> {
-    pub fn new(repo: &'a SectorRepo) -> Self {
-        Self { repo }
+impl SectorService {
+    pub fn new(db: &Database) -> Self {
+        Self {
+            collection: db.collection::<Sector>("sectors"),
+        }
     }
 
-    /// Get all sectors
-    pub async fn get_all_sectors(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-    ) -> Result<Vec<Sector>, String> {
-        self.repo
-            .get_all_sectors(filter, limit, skip)
+    // =========================
+    // INDEXES
+    // =========================
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let indexes = vec![
+            IndexDef::single("name", true),
+            IndexDef::single("username", true),
+            IndexDef::single("country", false),
+            IndexDef::single("type", false),
+            IndexDef::single("disable", false),
+            IndexDef::compound(vec![("country", 1), ("type", 1)], false),
+        ];
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.ensure_indexes(&indexes).await?;
+        Ok(())
+    }
+
+    // =========================
+    // CREATE
+    // =========================
+    pub async fn create(&self, dto: Sector) -> Result<Sector, AppError> {
+        self.ensure_indexes().await?;
+
+        // unique name
+        if let Ok(existing) = self.find_one(None, Some(doc! { "name": &dto.name })).await {
+            return Err(AppError {
+                message: format!("Sector name already exists: {}", existing.name),
+            });
+        }
+
+        // unique username
+        if let Ok(existing) = self
+            .find_one(None, Some(doc! { "username": &dto.username }))
             .await
-            .map_err(|e| e.message)
-    }
-
-    /// Create a new sector
-    pub async fn create_sector(&self, mut new_sector: Sector) -> Result<Sector, String> {
-        is_valid_username(&new_sector.username)?;
-
-        if let Ok(Some(_)) = self.repo.find_by_username(&new_sector.username).await {
-            return Err("username already exists".to_string());
+        {
+            return Err(AppError {
+                message: format!("Sector username already exists: {}", existing.username),
+            });
         }
 
-        if let Ok(Some(_)) = self.repo.find_by_username(&new_sector.username).await {
-            return Err("username already exists".to_string());
-        }
-        // ✅ Handle logo (upload to Cloudinary if provided)
+        let mut new_sector = dto.clone();
+
         if let Some(new_logo_file) = new_sector.logo.clone() {
-            let cloud_res = CloudinaryService::upload_to_cloudinary(&new_logo_file).await?;
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&new_logo_file)
+                .await
+                .map_err(|e| AppError { message: e })?;
+
             new_sector.logo_id = Some(cloud_res.public_id);
             new_sector.logo = Some(cloud_res.secure_url);
         }
 
-        // Set timestamps
-        let now = Some(Utc::now());
-        new_sector.created_at = now;
-        new_sector.updated_at = now;
+        let full_doc = bson::to_document(&new_sector).map_err(|e| AppError {
+            message: format!("Failed to serialize sector: {}", e),
+        })?;
 
-        // Ensure Mongo generates id
-        new_sector.id = Some(ObjectId::new());
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        // Save sector in database
-        let inserted_sector = self
-            .repo
-            .insert_sector(&new_sector)
+        repo.create::<Sector>(extract_valid_fields(full_doc), None)
             .await
-            .map_err(|e| e.message)?;
-
-        Ok(inserted_sector)
     }
 
-    /// Get sector by ID
-    pub async fn get_sector_by_id(&self, id: &IdType) -> Result<Sector, String> {
-        self.repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Sector not found".to_string())
-    }
-
-    pub async fn get_sector_by_username(&self, username: &str) -> Result<Sector, String> {
-        self.repo
-            .find_by_username(username)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Sector not found".to_string())
-    }
-
-    pub async fn get_sectors_by_ids(&self, ids: Vec<IdType>) -> Result<Vec<Sector>, String> {
-        let sectors = self
-            .repo
-            .find_by_ids(ids)
-            .await
-            .map_err(|e| e.message.clone())?;
-
-        if sectors.is_empty() {
-            Err("No sectors found for the provided IDs".to_string())
-        } else {
-            Ok(sectors)
-        }
-    }
-
-    /// Update a sector by id
-    pub async fn update_sector(
+    // =========================
+    // FIND ONE
+    // =========================
+    pub async fn find_one(
         &self,
-        id: &IdType,
-        updated_data: UpdateSector,
-    ) -> Result<Sector, String> {
-        if let Some(ref username) = updated_data.username {
-            is_valid_username(username)?;
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<Sector, AppError> {
+        let mut filter = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            filter.insert("_id", IdType::to_object_id(id)?);
         }
 
-        let mut sector_to_update = self
-            .repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Sector not found".to_string())?;
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        if let Some(ref username) = updated_data.username {
-            if sector_to_update.username != *username {
-                if let Ok(Some(_)) = self.repo.find_by_username(username).await {
-                    return Err("username already exists".to_string());
+        repo.find_one::<Sector>(filter, None)
+            .await?
+            .ok_or(AppError {
+                message: "Sector not found".into(),
+            })
+    }
+
+    // =========================
+    // GET ALL (PAGINATED)
+    // =========================
+    pub async fn get_all(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<Sector>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let searchable = ["name", "username", "country", "type", "description", "_id"];
+
+        let (data, total, total_pages, current_page) = repo
+            .get_all::<Sector>(filter, &searchable, limit, skip, extra_match)
+            .await?;
+
+        Ok(Paginated {
+            data,
+            total,
+            total_pages,
+            current_page,
+        })
+    }
+
+    // =========================
+    // UPDATE
+    // =========================
+    pub async fn update(&self, id: &IdType, update: &SectorPartial) -> Result<Sector, AppError> {
+        let existing = self.find_one(Some(id), None).await?;
+
+        // name uniqueness
+        if let Some(ref name) = update.name {
+            if existing.name != *name {
+                if let Ok(_) = self.find_one(None, Some(doc! { "name": name })).await {
+                    return Err(AppError {
+                        message: format!("Sector name already exists: {}", name),
+                    });
                 }
             }
         }
 
-        // ✅ Handle logo update
-        if let Some(ref new_logo) = updated_data.logo {
-            if let Some(old_logo) = sector_to_update.logo_id.clone() {
-                CloudinaryService::delete_from_cloudinary(&old_logo)
+        // username uniqueness
+        if let Some(ref username) = update.username {
+            if existing.username != *username {
+                if let Ok(_) = self
+                    .find_one(None, Some(doc! { "username": username }))
                     .await
-                    .ok();
+                {
+                    return Err(AppError {
+                        message: format!("Sector username already exists: {}", username),
+                    });
+                }
             }
-            let cloud_res = CloudinaryService::upload_to_cloudinary(new_logo).await?;
-            sector_to_update.logo_id = Some(cloud_res.public_id);
-            sector_to_update.logo = Some(cloud_res.secure_url);
         }
 
-        // ✅ Only overwrite if provided
-        if let Some(ref name) = updated_data.name {
-            sector_to_update.name = name.clone();
-        }
-        if let Some(ref username) = updated_data.username {
-            sector_to_update.username = username.clone();
-        }
-        if let Some(ref description) = updated_data.description {
-            sector_to_update.description = Some(description.clone());
-        }
-        if let Some(curriculum) = updated_data.curriculum {
-            sector_to_update.curriculum = Some(curriculum);
-        }
-        if let Some(ref country) = updated_data.country {
-            sector_to_update.country = country.clone();
-        }
-        if let Some(ref disable) = updated_data.disable {
-            sector_to_update.disable = Some(*disable);
+        let existing_sector = self.find_one(Some(id), None).await?;
+
+        let mut update_data = update.clone();
+
+        if let Some(new_logo) = update_data.logo.clone().flatten() {
+            if Some(new_logo.clone()) != existing_sector.logo {
+                if let Some(old_logo_id) = existing_sector.logo_id.clone() {
+                    CloudinaryService::delete_from_cloudinary(&old_logo_id)
+                        .await
+                        .ok();
+                }
+
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_logo)
+                    .await
+                    .map_err(|e| AppError { message: e })?;
+
+                update_data.logo_id = Some(Some(cloud_res.public_id));
+                update_data.logo = Some(Some(cloud_res.secure_url));
+            }
         }
 
-        if let Some(ref t) = updated_data.r#type {
-            sector_to_update.r#type = t.clone();
-        }
+        let full_doc = bson::to_document(&update_data).map_err(|e| AppError {
+            message: format!("Serialize update failed: {}", e),
+        })?;
 
-        sector_to_update.updated_at = Some(Utc::now());
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let updated_sector = self
-            .repo
-            .update_sector(id, &updated_data)
+        repo.update_one_and_fetch::<Sector>(id, extract_valid_fields(full_doc))
             .await
-            .map_err(|e| e.message)?;
-        Ok(updated_sector)
     }
 
-    /// Delete a sector by id
-    pub async fn delete_sector(&self, id: &IdType) -> Result<(), String> {
-        let sector = self.repo.find_by_id(id).await.map_err(|e| e.message)?;
+    // =========================
+    // DELETE
+    // =========================
+    pub async fn delete(&self, id: &IdType) -> Result<Sector, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        if let Some(delete_sector) = sector {
-            if let Some(logo_public_id) = delete_sector.logo_id {
-                CloudinaryService::delete_from_cloudinary(&logo_public_id)
-                    .await
-                    .ok(); // ignore delete errors
-            }
+        let sector = self.find_one(Some(id), None).await?;
+
+        if let Some(ref logo_id) = sector.logo_id {
+            CloudinaryService::delete_from_cloudinary(logo_id)
+                .await
+                .ok();
         }
 
-        self.repo.delete_sector(id).await.map_err(|e| e.message)
+        repo.delete_one(id).await?;
+
+        Ok(sector)
+    }
+
+    // =========================
+    // COUNT
+    // =========================
+    pub async fn count(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let searchable = ["name", "username", "country", "type", "description", "_id"];
+
+        repo.count(filter, &searchable, extra_match).await
+    }
+
+    pub async fn find_by_ids(&self, ids: Vec<IdType>) -> Result<Vec<Sector>, AppError> {
+        // Convert string IDs into MongoDB ObjectIds
+        let object_ids: Vec<ObjectId> = ids
+            .into_iter()
+            .filter_map(|id| ObjectId::parse_str(id.as_string()).ok())
+            .collect();
+
+        if object_ids.is_empty() {
+            return Ok(vec![]); // No valid IDs — return empty list
+        }
+
+        // Build the query to match multiple IDs
+        let filter = doc! { "_id": { "$in": object_ids } };
+
+        let mut cursor = self.collection.find(filter).await.map_err(|e| AppError {
+            message: format!("Failed to fetch sectors by ids: {}", e),
+        })?;
+
+        let mut sectors = Vec::new();
+        while let Some(result) = cursor.try_next().await.map_err(|e| AppError {
+            message: format!("Failed to iterate sectors: {}", e),
+        })? {
+            sectors.push(result);
+        }
+
+        Ok(sectors)
     }
 }
