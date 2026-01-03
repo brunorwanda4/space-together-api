@@ -3,5 +3,8 @@
     "Bson",
     "actix",
     "dtos"
+  ],
+  "words": [
+    "chrono"
   ]
 }

@@ -402,6 +402,4 @@ impl StudentService {
 
         repo.count(filter, &searchable, extra_match).await
     }
-
-    //TODO: make get students and relations
 }
