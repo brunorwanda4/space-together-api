@@ -2,11 +2,9 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    domain::trade::{Trade, TradeWithOthers},
-    helpers::object_id_helpers,
-};
+use crate::{domain::trade::Trade, helpers::object_id_helpers, make_partial};
 
+make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MainClass {
     #[serde(
@@ -37,6 +35,7 @@ pub struct MainClass {
 
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
+} => MainClassPartial
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,5 +44,5 @@ pub struct MainClassWithOthers {
     pub main_class: MainClass,
 
     #[serde(default)]
-    pub trade: Option<TradeWithOthers>,
+    pub trade: Option<Trade>,
 }

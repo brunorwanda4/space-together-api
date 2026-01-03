@@ -17,7 +17,6 @@ impl TenantService {
         let _ = db.create_collection("subjects").await;
         let _ = db.create_collection("notes").await;
         let _ = db.create_collection("assessments").await;
-        let _ = db.create_collection("posts").await;
 
         Ok(())
     }

@@ -1,61 +1,30 @@
 use mongodb::bson::{doc, Document};
 
-pub fn main_class_with_others_pipeline(match_stage: Document) -> Vec<Document> {
+pub fn main_class_pipeline(match_stage: Document) -> Vec<Document> {
     vec![
-        doc! { "$match": match_stage },
+        // ======================================================
+        // MATCH
+        // ======================================================
         doc! {
-            "$lookup": {
-                "from": "trades",
-                "localField": "trade_id",
-                "foreignField": "_id",
-                "as": "trade"
-            }
+            "$match": match_stage
         },
-        doc! { "$unwind": { "path": "$trade", "preserveNullAndEmptyArrays": true } },
-        // Include sector & parent_trade inside Trade
-        doc! {
-            "$lookup": {
-                "from": "sectors",
-                "localField": "trade.sector_id",
-                "foreignField": "_id",
-                "as": "trade.sector"
-            }
-        },
-        doc! { "$unwind": { "path": "$trade.sector", "preserveNullAndEmptyArrays": true } },
-        doc! {
-            "$lookup": {
-                "from": "trades",
-                "localField": "trade.trade_id",
-                "foreignField": "_id",
-                "as": "trade.parent_trade"
-            }
-        },
+        // ======================================================
+        // NORMALIZE OBJECT IDS
+        // ======================================================
         doc! {
             "$addFields": {
-                "trade.parent_trade": {
-                    "$cond": {
-                        "if": { "$gt": [{ "$size": "$trade.parent_trade" }, 0] },
-                        "then": { "$arrayElemAt": ["$trade.parent_trade", 0] },
-                        "else": null
-                    }
+                "trade_id": {
+                    "$cond": [
+                        { "$eq": [{ "$type": "$trade_id" }, "string"] },
+                        { "$toObjectId": "$trade_id" },
+                        "$trade_id"
+                    ]
                 }
             }
         },
-        doc! {
-            "$lookup": {
-                "from": "sectors",
-                "localField": "trade.parent_trade.sector_id",
-                "foreignField": "_id",
-                "as": "trade.parent_trade.sector"
-            }
-        },
-        doc! { "$unwind": { "path": "$trade.parent_trade.sector", "preserveNullAndEmptyArrays": true } },
-    ]
-}
-
-pub fn main_class_with_trade_pipeline(match_stage: Document) -> Vec<Document> {
-    vec![
-        doc! { "$match": match_stage },
+        // ======================================================
+        // TRADE
+        // ======================================================
         doc! {
             "$lookup": {
                 "from": "trades",
@@ -64,6 +33,17 @@ pub fn main_class_with_trade_pipeline(match_stage: Document) -> Vec<Document> {
                 "as": "trade"
             }
         },
-        doc! { "$unwind": { "path": "$trade", "preserveNullAndEmptyArrays": true } },
+        doc! {
+            "$unwind": {
+                "path": "$trade",
+                "preserveNullAndEmptyArrays": true
+            }
+        },
+        // ======================================================
+        // SORT
+        // ======================================================
+        doc! {
+            "$sort": { "created_at": -1 }
+        },
     ]
 }

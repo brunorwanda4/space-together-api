@@ -10,6 +10,7 @@ mod education_year;
 mod events;
 mod join_school_request;
 mod main_class;
+mod main_class_api;
 mod school;
 mod school_collections;
 mod school_staff;
@@ -31,7 +32,8 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     auth::init(cfg);
     users::init(cfg);
     trade_api::init(cfg);
-    main_class::init(cfg);
+    // main_class::init(cfg);
+    main_class_api::init(cfg);
     events::init(cfg);
     subjects::main_subject::init(cfg);
     subjects::subject_topic::init(cfg);
