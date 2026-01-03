@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     domain::common_details::{Address, Contact, SocialMedia},
     helpers::object_id_helpers,
+    make_partial,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -36,6 +37,7 @@ pub enum AttendanceSystemType {
     Online,
 }
 
+make_partial! {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct School {
     #[serde(
@@ -110,39 +112,7 @@ pub struct School {
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct UpdateSchool {
-    pub username: Option<String>,
-    pub logo: Option<String>,
-    pub logo_id: Option<String>,
-    pub name: Option<String>,
-    pub code: Option<String>,
-    pub description: Option<String>,
-    pub school_type: Option<SchoolType>,
-    pub curriculum: Option<Vec<ObjectId>>,
-    pub education_level: Option<Vec<ObjectId>>,
-    pub accreditation_number: Option<String>,
-    pub affiliation: Option<AffiliationType>,
-    pub school_members: Option<SchoolMemberType>,
-    pub address: Option<Address>,
-    pub contact: Option<Contact>,
-    pub website: Option<String>,
-    pub social_media: Option<Vec<SocialMedia>>,
-    pub student_capacity: Option<i32>,
-    pub uniform_required: Option<bool>,
-    pub attendance_system: Option<AttendanceSystemType>,
-    pub scholarship_available: Option<bool>,
-    pub classrooms: Option<i32>,
-    pub library: Option<bool>,
-    pub labs: Option<Vec<String>>,
-    pub sports_extracurricular: Option<Vec<String>>,
-    pub online_classes: Option<bool>,
-    pub database_name: Option<String>,
-    pub is_active: Option<bool>,
-    #[serde(default)]
-    pub updated_at: Option<DateTime<Utc>>,
+} => SchoolPartial
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

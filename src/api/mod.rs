@@ -11,6 +11,7 @@ mod events;
 mod join_school_request;
 mod main_class_api;
 mod school;
+mod school_api;
 mod school_collections;
 mod school_staff;
 mod sector_api;
@@ -40,7 +41,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     subjects::subject_progress_configs::init(cfg);
     subjects::subject_learning_material::init(cfg);
     subjects::subject_grading_schemes::init(cfg);
-    school::init(cfg);
+    school_api::init(cfg);
     class::init(cfg);
     subject::init(cfg);
     students_api::init(cfg);
