@@ -15,6 +15,7 @@ use crate::{
         class_subject::ClassSubject,
         common_details::Paginated,
         school::{School, SchoolAcademicRequest, SchoolAcademicResponse, SchoolPartial},
+        template_subject::TemplateSubject,
     },
     errors::AppError,
     mappers::school_mapper::to_school_school_token,
@@ -340,6 +341,7 @@ impl SchoolService {
         let class_subject_service = ClassSubjectService::new(&school_db);
 
         let trade_service = TradeService::new(&state.db.main_db());
+        let template_subject_service = TemplateSubject::new(&state.db.main_db());
         let main_class_service = MainClassService::new(&state.db.main_db());
 
         // Academic year
@@ -413,7 +415,7 @@ impl SchoolService {
                     subject: None,
                     grade_level: Some(level.to_string()),
                     tags: vec!["academic".into(), trade.name.clone()],
-                    is_active: true,
+                    is_active: Some(true),
                     capacity: Some(30),
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
