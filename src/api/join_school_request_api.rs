@@ -278,7 +278,7 @@ async fn cleanup_expired_join_requests(
     }
 }
 
-pub fn config(cfg: &mut web::ServiceConfig) {
+pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/join-school-requests")
             .service(get_all_join_requests)

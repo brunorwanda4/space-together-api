@@ -14,10 +14,9 @@ use crate::{
         auth_user::AuthUserDto,
         common_details::Paginated,
         join_school_request::{
-            BulkRespondRequest, JoinRequestQuery, JoinRole, JoinSchoolByCode, JoinSchoolRequest,
+            CreateJoinSchoolRequest, JoinRole, JoinSchoolByCode, JoinSchoolRequest,
             JoinSchoolRequestResponseToken, JoinSchoolRequestWithRelations, JoinStatus,
         },
-        school::School,
         school_staff::{parse_staff_type, SchoolStaff, SchoolStaffType},
         student::{Student, StudentPartial, StudentStatus},
         teacher::{parse_teacher_type, Teacher},
@@ -31,14 +30,14 @@ use crate::{
     pipeline::join_school_request_pipeline::join_school_request_pipeline,
     repositories::{base_repo::BaseRepository, user_repo::UserRepo},
     services::{
-        class_service::ClassService,
-        school_service::{self, SchoolService},
-        school_staff_service::SchoolStaffService,
-        student_service::StudentService,
-        teacher_service::TeacherService,
-        user_service::{self, UserService},
+        class_service::ClassService, school_service::SchoolService,
+        school_staff_service::SchoolStaffService, student_service::StudentService,
+        teacher_service::TeacherService, user_service::UserService,
     },
-    utils::{code::generate_school_registration_number, mongo_utils::build_search_filter},
+    utils::{
+        code::generate_school_registration_number, email::is_valid_email,
+        mongo_utils::build_search_filter,
+    },
 };
 
 pub struct JoinSchoolRequestService {
@@ -75,12 +74,89 @@ impl JoinSchoolRequestService {
     // ======================================================
     // CREATE
     // ======================================================
-    pub async fn create(&self, request: JoinSchoolRequest) -> Result<JoinSchoolRequest, AppError> {
+    pub async fn create(
+        &self,
+        request: CreateJoinSchoolRequest,
+        sent_by: ObjectId,
+        state: &AppState,
+    ) -> Result<JoinSchoolRequest, AppError> {
         self.ensure_indexes().await?;
+        is_valid_email(&request.email).map(|e| AppError { message: e });
+
+        if let JoinRole::Student = request.role.clone() {
+            if request.class_id.is_none() {
+                return Err(AppError {
+                    message: "Class is required for student join requests".into(),
+                });
+            }
+        }
+
+        let school_id = ObjectId::from_str(&request.school_id.clone()).map_err(|e| AppError {
+            message: format!("Failed to change school id into objectId:{}", e),
+        })?;
+
+        if (self.find_one(None, Some(doc! {"email": request.email.clone(), "school_id": school_id.clone(), "status": bson::to_bson(&JoinStatus::Pending).map_err(|e| AppError {
+                    message: format!("Failed to serialize status: {}", e),
+                })?})))
+            .await
+            .is_ok()
+        {
+            return Err(AppError {
+                message: "A join request with this email already exists".into(),
+            });
+        }
+
+        let user_repo = UserRepo::new(&state.db.main_db());
+        let user_service = UserService::new(&user_repo);
+
+        let mut invited_user_id = None;
+        if let Ok(user) = user_service
+            .get_user_by_email(&request.email)
+            .await
+            .map_err(|e| AppError { message: e })
+        {
+            if let Some(schools) = &user.schools {
+                if schools.contains(&school_id.clone()) {
+                    return Err(AppError {
+                        message: "User is already a member of this school".into(),
+                    });
+                }
+            }
+
+            invited_user_id = user.id;
+        }
+
+        let class_id = match request.class_id {
+            Some(class_id_str) => {
+                Some(ObjectId::from_str(&class_id_str).map_err(|e| AppError {
+                    message: format!("Failed to change class id into objectId:{}", e),
+                })?)
+            }
+            None => None,
+        };
+
+        let now = Utc::now();
+        let join_request = JoinSchoolRequest {
+            id: None,
+            school_id,
+            invited_user_id,
+            class_id,
+            role: request.role.clone(),
+            email: request.email.clone(),
+            r#type: request.r#type.clone(),
+            message: request.message,
+            status: JoinStatus::Pending,
+            sent_at: now,
+            responded_at: None,
+            expires_at: Some(now + chrono::Duration::days(7)),
+            sent_by,
+            created_at: now,
+            updated_at: now,
+        };
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let doc = mongodb::bson::to_document(&request).map_err(|e| AppError {
+        let doc = mongodb::bson::to_document(&join_request).map_err(|e| AppError {
             message: format!("Serialize join request failed: {}", e),
         })?;
 

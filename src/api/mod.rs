@@ -8,7 +8,6 @@ mod class_timetable;
 mod database_status;
 mod education_year;
 mod events;
-mod join_school_request;
 mod join_school_request_api;
 mod main_class_api;
 mod school_api;
@@ -46,7 +45,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     students_api::init(cfg);
     teachers::init(cfg);
     school_staff::init(cfg);
-    join_school_request::init(cfg);
     join_school_request_api::init(cfg);
     school_collections::school_subject::init(cfg);
     school_collections::school_class_timetable::init(cfg);
