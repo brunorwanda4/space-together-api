@@ -11,7 +11,7 @@ use crate::{
     models::{id_model::IdType, request_error_model::ReqErrModel},
     repositories::user_repo::UserRepo,
     services::{
-        auth_service::AuthService, school_service_testing::SchoolService, user_service::UserService,
+        auth_service::AuthService, school_service::SchoolService, user_service::UserService,
     },
 };
 

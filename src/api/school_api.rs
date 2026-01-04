@@ -10,7 +10,7 @@ use crate::{
     models::{api_request_model::RequestQuery, id_model::IdType},
     repositories::user_repo::UserRepo,
     services::{
-        event_service::EventService, school_service_testing::SchoolService,
+        event_service::EventService, school_service::SchoolService,
         user_service::UserService,
     },
     utils::api_utils::build_extra_match,
