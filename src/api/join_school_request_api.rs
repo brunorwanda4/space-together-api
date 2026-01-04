@@ -1,15 +1,20 @@
+use std::str::FromStr;
+
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
+use mongodb::bson::oid::ObjectId;
 
 use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        join_school_request::{BulkRespondRequest, JoinRequestQuery, JoinSchoolByCode},
+        join_school_request::{CreateJoinSchoolRequest, JoinSchoolByCode},
     },
     errors::AppError,
     guards::role_guard,
     models::{api_request_model::RequestQuery, id_model::IdType},
-    services::join_school_request_service::JoinSchoolRequestService,
+    services::{
+        event_service::EventService, join_school_request_service::JoinSchoolRequestService,
+    },
     utils::api_utils::build_extra_match,
 };
 
@@ -79,6 +84,39 @@ async fn get_join_requests_with_relations(
 }
 
 /// ------------------------------------------------------
+/// POST /join-school-requests/
+/// ------------------------------------------------------
+#[post("")]
+async fn create_join_school(
+    user: web::ReqData<AuthUserDto>,
+    data: web::Json<CreateJoinSchoolRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let auth_user = user.into_inner();
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+    let sent_by = ObjectId::from_str(&auth_user.id).unwrap();
+    match service
+        .create(data.into_inner(), sent_by, &state.clone().into_inner())
+        .await
+    {
+        Ok(token) => {
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                EventService::broadcast_created(
+                    &state_clone,
+                    "join_school_request",
+                    "new",
+                    &serde_json::json!({ "action": "created", "by_user": auth_user.id }),
+                )
+                .await;
+            });
+            HttpResponse::Ok().json(token)
+        }
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
 /// POST /join-school-requests/join-by-code
 /// ------------------------------------------------------
 #[post("/join-by-code")]
@@ -101,7 +139,7 @@ async fn join_school_by_code(
                     &state_clone,
                     "join_school_request",
                     "new",
-                    &serde_json::json!({ "action": "created", "by_user": user.id }),
+                    &serde_json::json!({ "action": "created", "by_user": auth_user.id }),
                 )
                 .await;
             });
@@ -289,6 +327,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_join_request_by_id_with_relations)
             .service(get_join_request_by_id)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
+            .service(create_join_school)
             .service(join_school_by_code)
             .service(accept_join_request)
             .service(reject_join_request)

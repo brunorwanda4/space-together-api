@@ -18,7 +18,10 @@ use crate::{
     },
     pipeline::teacher_pipeline::teacher_pipeline,
     repositories::base_repo::BaseRepository,
-    services::cloudinary_service::CloudinaryService,
+    services::{
+        cloudinary_service::CloudinaryService,
+        join_school_request_service::JoinSchoolRequestService,
+    },
     utils::{
         email::is_valid_email,
         join_school_request_controller_utils::create_join_school_request_controller,
@@ -124,11 +127,11 @@ impl TeacherService {
                         email: teacher.email.clone(),
                         sent_by: sent_by.clone().to_hex(),
                     };
+                    let join_request_service =
+                        JoinSchoolRequestService::new(&app_state.db.main_db());
 
-                    let join_request_controller = create_join_school_request_controller(app_state);
-
-                    let _join_request = join_request_controller
-                        .create_join_request(create_request, sent_by)
+                    let _join_request = join_request_service
+                        .create(create_request, sent_by, app_state)
                         .await
                         .ok();
                 }
