@@ -24,7 +24,6 @@ use crate::{
     },
     utils::{
         email::is_valid_email,
-        join_school_request_controller_utils::create_join_school_request_controller,
         mongo_utils::{build_search_filter, extract_valid_fields},
         names::is_valid_name,
     },

@@ -5,7 +5,6 @@ pub mod code;
 pub mod db_utils;
 pub mod email;
 pub mod hash;
-pub mod join_school_request_controller_utils;
 pub mod jwt;
 pub mod mongo_utils;
 pub mod names;

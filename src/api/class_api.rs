@@ -1,8 +1,6 @@
 use std::str::FromStr;
 
-use actix_web::{
-    cookie::time::error, delete, get, post, put, web, HttpRequest, HttpResponse, Responder,
-};
+use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
 use mongodb::bson::oid::ObjectId;
 
 use crate::{

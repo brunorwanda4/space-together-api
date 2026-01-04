@@ -139,61 +139,6 @@ pub struct ClassWithOthers {
     pub trade: Option<Trade>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BulkClassesRequest {
-    pub classes: Vec<Class>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BulkUpdateRequest {
-    pub updates: Vec<BulkUpdateItem>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BulkUpdateItem {
-    pub id: String,
-    pub update: UpdateClass,
-}
-
-// ===========================
-// NEW DATA STRUCTURES FOR FRONTEND
-// ===========================
-
-#[derive(Debug, serde::Serialize)]
-pub struct MainClassWithSubclasses {
-    pub main_class: ClassWithOthers,
-    pub subclasses: Vec<Class>,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct MainClassHierarchy {
-    pub main_class: ClassWithOthers,
-    pub subclasses: Vec<ClassWithOthers>,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct MainClassWithSubclassCount {
-    pub main_class: ClassWithOthers,
-    pub subclass_count: usize,
-}
-
-// get class with pages
-#[derive(Serialize)]
-pub struct PaginatedClasses {
-    pub classes: Vec<Class>,
-    pub total: i64,
-    pub total_pages: i64,
-    pub current_page: i64,
-}
-
-#[derive(Serialize)]
-pub struct PaginatedClassesWithOthers {
-    pub classes: Vec<ClassWithOthers>,
-    pub total: i64,
-    pub total_pages: i64,
-    pub current_page: i64,
-}
-
 // ================= Class settings ==================================
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

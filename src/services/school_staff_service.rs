@@ -17,11 +17,7 @@ use crate::{
     },
     repositories::base_repo::BaseRepository,
     services::join_school_request_service::JoinSchoolRequestService,
-    utils::{
-        email::is_valid_email,
-        join_school_request_controller_utils::create_join_school_request_controller,
-        mongo_utils::extract_valid_fields, names::is_valid_name,
-    },
+    utils::{email::is_valid_email, mongo_utils::extract_valid_fields, names::is_valid_name},
 };
 
 pub struct SchoolStaffService {
@@ -107,7 +103,7 @@ impl SchoolStaffService {
                         r#type: "SchoolStaff".to_string(),
                         role: JoinRole::Student,
                         email: school_staff.email.clone(),
-                        sent_by: sent_by.clone().to_hex(),
+                        sent_by: sent_by.to_hex(),
                     };
 
                     let join_request_service =

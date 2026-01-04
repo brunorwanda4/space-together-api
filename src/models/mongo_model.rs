@@ -50,11 +50,6 @@ impl IndexDef {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MongoFields {
-    pub fields: Vec<String>,
-}
-
 // count doc
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CountDoc {

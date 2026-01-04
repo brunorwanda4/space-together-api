@@ -81,7 +81,9 @@ impl JoinSchoolRequestService {
         state: &AppState,
     ) -> Result<JoinSchoolRequest, AppError> {
         self.ensure_indexes().await?;
-        is_valid_email(&request.email).map(|e| AppError { message: e });
+        if let Err(e) = is_valid_email(&request.email) {
+            return Err(AppError { message: e });
+        }
 
         if let JoinRole::Student = request.role.clone() {
             if request.class_id.is_none() {
@@ -242,7 +244,8 @@ impl JoinSchoolRequestService {
             .await
             .map_err(|e| AppError { message: e })?;
 
-        self.create_role_entity_school_db(&request, &user, &state)
+        let _ = self
+            .create_role_entity_school_db(&request, &user, &state)
             .await;
 
         self.update_status(

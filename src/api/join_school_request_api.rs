@@ -62,7 +62,7 @@ async fn get_join_request_by_id(
 /// ------------------------------------------------------
 /// GET /join-school-requests/with-relations
 /// ------------------------------------------------------
-#[get("/with-relations")]
+#[get("/others")]
 async fn get_join_requests_with_relations(
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
@@ -129,7 +129,7 @@ async fn join_school_by_code(
     let service = JoinSchoolRequestService::new(&state.db.main_db());
 
     match service
-        .join_school_by_code(&data.into_inner(), &auth_user, state.clone())
+        .join_school_by_code(&data.into_inner(), &auth_user.clone(), state.clone())
         .await
     {
         Ok(token) => {

@@ -112,67 +112,6 @@ pub struct CreateJoinSchoolRequest {
     pub class_id: Option<String>,
 }
 
-/// Bulk create wrapper
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BulkCreateJoinSchoolRequest {
-    pub requests: Vec<CreateJoinSchoolRequest>,
-}
-
-/// Payload to respond to a request (accept/reject/cancel)
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RespondToJoinRequest {
-    pub request_id: String,
-
-    pub status: JoinStatus,
-
-    pub responded_by: Option<String>,
-
-    pub invited_user_id: Option<String>,
-
-    pub message: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UpdateRequestExpiration {
-    pub request_id: String,
-    pub expires_at: DateTime<Utc>,
-}
-
-/// Bulk respond (accept/reject/cancel) by ids
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BulkRespondRequest {
-    pub request_ids: Vec<String>,
-    pub status: JoinStatus,
-    pub responded_by: Option<String>,
-    /// optional responded_at override
-    pub responded_at: Option<DateTime<Utc>>,
-}
-
-/// Query/filter object for listing requests (used by handlers)
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct JoinRequestQuery {
-    /// optional filter by email (exact or partial depending on handler)
-    pub email: Option<String>,
-
-    /// optional filter by school id (string)
-    pub school_id: Option<String>,
-
-    pub class_id: Option<String>,
-
-    /// optional filter by status
-    pub status: Option<JoinStatus>,
-
-    /// optional filter by role
-    pub role: Option<JoinRole>,
-
-    /// pagination
-    pub limit: Option<i64>,
-    pub skip: Option<i64>,
-
-    /// optional: only expired older than X days (useful for cleanup endpoints)
-    pub older_than_days: Option<i64>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JoinSchoolRequestWithRelations {
     #[serde(flatten)]
