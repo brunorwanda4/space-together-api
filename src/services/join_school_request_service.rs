@@ -107,6 +107,40 @@ impl JoinSchoolRequestService {
             })
     }
 
+    pub async fn get_all(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<JoinSchoolRequest>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let searchable = [
+            "email",
+            "type",
+            "role",
+            "status",
+            "message",
+            "_id",
+            "school_id",
+            "class_id",
+            "invited_user_id",
+            "sent_by",
+        ];
+
+        let (data, total, total_pages, current_page) = repo
+            .get_all::<JoinSchoolRequest>(filter, &searchable, limit, skip, extra_match)
+            .await?;
+
+        Ok(Paginated {
+            data,
+            total,
+            total_pages,
+            current_page,
+        })
+    }
+
     // ======================================================
     // STATUS UPDATES
     // ======================================================
@@ -302,6 +336,29 @@ impl JoinSchoolRequestService {
             .await
     }
 
+    pub async fn find_one_with_relations(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<JoinSchoolRequestWithRelations, AppError> {
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            match_stage.insert("_id", IdType::to_object_id(id)?);
+        }
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.aggregate_one::<JoinSchoolRequestWithRelations>(
+            join_school_request_pipeline(match_stage),
+            None,
+        )
+        .await?
+        .ok_or(AppError {
+            message: "Join school request not found".into(),
+        })
+    }
+
     async fn create_role_entity_school_db(
         &self,
         request: &JoinSchoolRequest,
@@ -324,9 +381,7 @@ impl JoinSchoolRequestService {
         match request.role {
             JoinRole::Student => {
                 let student_service = StudentService::new(&school_db);
-                // ✅ Validate class exists before creating student
                 let class_service = ClassService::new(&school_db);
-                // ✅ Validate class exists before creating student
 
                 if let Some(class_id) = request.class_id {
                     if class_service
