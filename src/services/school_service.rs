@@ -24,7 +24,7 @@ use crate::{
     },
     repositories::{base_repo::BaseRepository, class_repo::ClassRepo},
     services::{
-        class_service::ClassService, class_subject_service::ClassSubjectService,
+        class_service_testing::ClassService, class_subject_service::ClassSubjectService,
         cloudinary_service::CloudinaryService, main_class_service::MainClassService,
         template_subject_service::TemplateSubjectService, trade_service::TradeService,
     },
@@ -334,8 +334,7 @@ impl SchoolService {
             message: format!("Failed to convert creator id: {}", e),
         })?);
 
-        let class_repo_school = ClassRepo::new(&school_db);
-        let class_service_school = ClassService::new(&class_repo_school);
+        let class_service_school = ClassService::new(&school_db);
 
         let class_subject_service = ClassSubjectService::new(&school_db);
 
@@ -447,10 +446,7 @@ impl SchoolService {
             .map(|(class, _)| class.clone())
             .collect();
 
-        let created_classes = class_service_school
-            .create_many_classes(classes_to_create)
-            .await
-            .map_err(|e| AppError { message: e })?;
+        let created_classes = class_service_school.create_many(classes_to_create).await?;
 
         let created_classes_count = created_classes.len();
 
