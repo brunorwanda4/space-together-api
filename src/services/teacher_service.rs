@@ -22,7 +22,8 @@ use crate::{
     utils::{
         email::is_valid_email,
         join_school_request_controller_utils::create_join_school_request_controller,
-        mongo_utils::extract_valid_fields, names::is_valid_name,
+        mongo_utils::{build_search_filter, extract_valid_fields},
+        names::is_valid_name,
     },
 };
 
@@ -278,32 +279,23 @@ impl TeacherService {
         let mut match_stage = extra_match.unwrap_or_default();
 
         if let Some(f) = filter {
-            let mut or_conditions = vec![
-                // =========================
-                // STRING FIELDS (regex)
-                // =========================
-                doc! { "name": { "$regex": &f, "$options": "i" } },
-                doc! { "email": { "$regex": &f, "$options": "i" } },
-                doc! { "phone": { "$regex": &f, "$options": "i" } },
-                doc! { "tags": { "$in": [&f] } },
-                doc! { "type": { "$regex": &f, "$options": "i" } },
-            ];
+            let search = build_search_filter(
+                Some(f),
+                &[
+                    "name",
+                    "email",
+                    "phone",
+                    "type",
+                    "_id",
+                    "user_id",
+                    "school_id",
+                    "creator_id",
+                    "class_ids",
+                    "subject_ids",
+                ],
+            );
 
-            // =========================
-            // SEARCH BY OBJECT ID
-            // =========================
-            if let Ok(oid) = ObjectId::parse_str(&f) {
-                or_conditions.extend(vec![
-                    doc! { "_id": oid },
-                    doc! { "user_id": oid },
-                    doc! { "school_id": oid },
-                    doc! { "creator_id": oid },
-                    doc! { "class_ids": oid },
-                    doc! { "subject_ids": oid },
-                ]);
-            }
-
-            match_stage.insert("$or", or_conditions);
+            match_stage.extend(search);
         }
 
         let pipeline = teacher_pipeline(match_stage);

@@ -1,4 +1,4 @@
-use mongodb::bson::{Bson, Document};
+use mongodb::bson::{doc, oid::ObjectId, Bson, Document};
 
 /// Recursively removes:
 /// - null values
@@ -44,5 +44,43 @@ fn clean_document(prefix: Option<String>, doc: Document, out: &mut Document) {
                 out.insert(full_key, other);
             }
         }
+    }
+}
+
+/// Builds a `$match`-like document using field naming conventions.
+/// Intended for logging / debugging purposes.
+pub fn build_search_filter(filter: Option<String>, searchable_fields: &[&str]) -> Document {
+    let Some(f) = filter else {
+        return doc! {};
+    };
+
+    let parsed_oid = ObjectId::parse_str(&f).ok();
+
+    let or_conditions: Vec<Document> = searchable_fields
+        .iter()
+        .filter_map(|field| {
+            if field.ends_with("_id") {
+                parsed_oid.as_ref().map(|oid| doc! { *field: oid })
+            } else if field.ends_with("_ids") {
+                parsed_oid
+                    .as_ref()
+                    .map(|oid| doc! { *field: { "$in": [oid] } })
+            } else if field.ends_with("_by") {
+                parsed_oid.as_ref().map(|oid| doc! { *field: oid })
+            } else {
+                Some(doc! {
+                    *field: {
+                        "$regex": &f,
+                        "$options": "i"
+                    }
+                })
+            }
+        })
+        .collect();
+
+    if or_conditions.is_empty() {
+        doc! {}
+    } else {
+        doc! { "$or": or_conditions }
     }
 }

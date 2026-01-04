@@ -1,6 +1,6 @@
 use mongodb::bson::{doc, Document};
 
-pub fn join_school_request_with_relations_pipeline(match_stage: Document) -> Vec<Document> {
+pub fn join_school_request_pipeline(match_stage: Document) -> Vec<Document> {
     vec![
         doc! { "$match": match_stage },
         doc! {

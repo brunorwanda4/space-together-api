@@ -8,7 +8,7 @@ use crate::{
     errors::AppError,
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
-    pipeline::join_school_request_pipeline::join_school_request_with_relations_pipeline,
+    pipeline::join_school_request_pipeline::join_school_request_pipeline,
     utils::{
         class_utils::sanitize_class, school_utils::sanitize_school, user_utils::sanitize_user,
     },
@@ -223,7 +223,7 @@ impl JoinSchoolRequestRepo {
         email: &str,
     ) -> Result<Vec<JoinSchoolRequestWithRelations>, AppError> {
         // Build aggregation pipeline with relations and match filter
-        let pipeline = join_school_request_with_relations_pipeline(doc! { "email": email });
+        let pipeline = join_school_request_pipeline(doc! { "email": email });
 
         let mut cursor = self
             .collection
@@ -456,7 +456,7 @@ impl JoinSchoolRequestRepo {
         }
 
         // Build aggregation pipeline with relations
-        let pipeline = join_school_request_with_relations_pipeline(filter);
+        let pipeline = join_school_request_pipeline(filter);
 
         // Execute aggregation
         let mut cursor = self
@@ -938,7 +938,7 @@ impl JoinSchoolRequestRepo {
         }
 
         // Build the pipeline with relations
-        let mut pipeline = join_school_request_with_relations_pipeline(match_stage);
+        let mut pipeline = join_school_request_pipeline(match_stage);
 
         // Add skip and limit if provided
         if let Some(skip) = query.skip {
@@ -1221,7 +1221,7 @@ impl JoinSchoolRequestRepo {
         id: &IdType,
     ) -> Result<Option<JoinSchoolRequestWithRelations>, AppError> {
         let obj_id = parse_object_id(id).map_err(|e| AppError { message: e })?;
-        let pipeline = join_school_request_with_relations_pipeline(doc! {"_id": obj_id});
+        let pipeline = join_school_request_pipeline(doc! {"_id": obj_id});
 
         let mut cursor = self
             .collection

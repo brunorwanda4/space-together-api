@@ -18,7 +18,9 @@ use crate::{
         id_model::IdType,
         mongo_model::{CountDoc, IndexDef},
     },
+    pipeline::join_school_request_pipeline::join_school_request_pipeline,
     repositories::base_repo::BaseRepository,
+    utils::mongo_utils::build_search_filter,
 };
 
 pub struct JoinSchoolRequestService {
@@ -208,39 +210,40 @@ impl JoinSchoolRequestService {
     // ======================================================
     // RELATIONS (PIPELINE)
     // ======================================================
-    pub async fn query_with_relations(
+    pub async fn get_all_with_relations(
         &self,
-        query: &JoinRequestQuery,
-    ) -> Result<Vec<JoinSchoolRequestWithRelations>, AppError> {
-        let mut match_stage = Document::new();
-
-        if let Some(status) = &query.status {
-            match_stage.insert("status", status);
-        }
-
-        if let Some(school_id) = &query.school_id {
-            match_stage.insert(
-                "school_id",
-                IdType::to_object_id(&IdType::String(school_id.clone()))?,
-            );
-        }
-
-        let pipeline = vec![
-            doc! { "$match": match_stage },
-            doc! {
-                "$lookup": {
-                    "from": "schools",
-                    "localField": "school_id",
-                    "foreignField": "_id",
-                    "as": "school"
-                }
-            },
-            doc! { "$unwind": { "path": "$school", "preserveNullAndEmptyArrays": true } },
-        ];
-
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<JoinSchoolRequestWithRelations>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        repo.aggregate::<JoinSchoolRequestWithRelations>(pipeline)
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(f) = filter {
+            let search = build_search_filter(
+                Some(f),
+                &[
+                    "email",
+                    "type",
+                    "role",
+                    "status",
+                    "message",
+                    "_id",
+                    "school_id",
+                    "class_id",
+                    "invited_user_id",
+                    "sent_by",
+                ],
+            );
+
+            match_stage.extend(search);
+        }
+
+        let pipeline = join_school_request_pipeline(match_stage);
+
+        repo.aggregate_with_paginate::<JoinSchoolRequestWithRelations>(pipeline, limit, skip)
             .await
     }
 }

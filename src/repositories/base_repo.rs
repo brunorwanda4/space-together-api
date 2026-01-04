@@ -6,6 +6,7 @@ use crate::{
         id_model::IdType,
         mongo_model::{CountDoc, IndexDef},
     },
+    utils::mongo_utils::build_search_filter,
 };
 use futures::TryStreamExt;
 use mongodb::{
@@ -36,21 +37,7 @@ impl BaseRepository {
         let mut pipeline = vec![];
 
         // ===== BUILD MATCH STAGE =====
-        let mut match_stage = if let Some(f) = filter.clone() {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i"
-            };
-
-            let or_conditions: Vec<Document> = searchable_fields
-                .iter()
-                .map(|field| doc! { *field: &regex })
-                .collect();
-
-            doc! { "$or": or_conditions }
-        } else {
-            doc! {}
-        };
+        let mut match_stage = build_search_filter(filter.clone(), &searchable_fields);
 
         // ===== MERGE EXTRA MATCH =====
         if let Some(extra) = extra_match {
@@ -173,7 +160,6 @@ impl BaseRepository {
     }
 
     /// Update a document and return the updated version
-
     pub async fn update_one_and_fetch<T: DeserializeOwned>(
         &self,
         id: &IdType,

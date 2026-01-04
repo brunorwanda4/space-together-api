@@ -17,7 +17,11 @@ use crate::{
     pipeline::class_pipeline::class_pipeline,
     repositories::base_repo::BaseRepository,
     services::cloudinary_service::CloudinaryService,
-    utils::{code::generate_code, mongo_utils::extract_valid_fields, names::is_valid_username},
+    utils::{
+        code::generate_code,
+        mongo_utils::{build_search_filter, extract_valid_fields},
+        names::is_valid_username,
+    },
 };
 
 pub struct ClassService {
@@ -273,25 +277,28 @@ impl ClassService {
         let mut match_stage = extra_match.unwrap_or_default();
 
         if let Some(f) = filter {
-            let mut or_conditions = vec![
-                doc! { "name": { "$regex": &f, "$options": "i" } },
-                doc! { "username": { "$regex": &f, "$options": "i" } },
-                doc! { "code": { "$regex": &f, "$options": "i" } },
-                doc! { "tags": { "$in": [&f] } },
-            ];
+            let search = build_search_filter(
+                Some(f),
+                &[
+                    "name",
+                    "username",
+                    "code",
+                    "tags",
+                    "school_id",
+                    "creator_id",
+                    "class_teacher_id",
+                    "type",
+                    "is_active",
+                    "_id",
+                    "main_class_id",
+                    "trade_id",
+                    "school_id",
+                    "creator_id",
+                    "class_teacher_id",
+                ],
+            );
 
-            if let Ok(oid) = ObjectId::parse_str(&f) {
-                or_conditions.extend(vec![
-                    doc! { "_id": oid },
-                    doc! { "school_id": oid },
-                    doc! { "creator_id": oid },
-                    doc! { "class_teacher_id": oid },
-                    doc! { "main_class_id": oid },
-                    doc! { "trade_id": oid },
-                ]);
-            }
-
-            match_stage.insert("$or", or_conditions);
+            match_stage.extend(search);
         }
 
         let pipeline = class_pipeline(match_stage);

@@ -1,5 +1,5 @@
 use mongodb::{
-    bson::{self, doc, oid::ObjectId, Document},
+    bson::{self, doc, Document},
     Collection, Database,
 };
 
@@ -21,7 +21,8 @@ use crate::{
     utils::{
         email::is_valid_email,
         join_school_request_controller_utils::create_join_school_request_controller,
-        mongo_utils::extract_valid_fields, names::is_valid_name,
+        mongo_utils::{build_search_filter, extract_valid_fields},
+        names::is_valid_name,
     },
 };
 
@@ -320,35 +321,30 @@ impl StudentService {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let mut match_stage = extra_match.unwrap_or_default();
+
         if let Some(f) = filter {
-            let mut or_conditions = vec![
-                // =========================
-                // STRING FIELDS (regex)
-                // =========================
-                doc! { "name": { "$regex": &f, "$options": "i" } },
-                doc! { "email": { "$regex": &f, "$options": "i" } },
-                doc! { "registration_number": { "$regex": &f, "$options": "i" } },
-                doc! { "phone": { "$regex": &f, "$options": "i" } },
-                doc! { "gender": { "$regex": &f, "$options": "i" } },
-                doc! { "status": { "$regex": &f, "$options": "i" } },
-                doc! { "tags": { "$in": [&f] } },
-            ];
+            // =========================
+            // BASE STRING + OBJECT ID SEARCH
+            // =========================
+            let search = build_search_filter(
+                Some(f),
+                &[
+                    "name",
+                    "email",
+                    "registration_number",
+                    "phone",
+                    "gender",
+                    "status",
+                    "_id",
+                    "user_id",
+                    "school_id",
+                    "class_id",
+                    "subclass_id",
+                    "tags",
+                ],
+            );
 
-            if let Ok(year) = f.parse::<i32>() {
-                or_conditions.push(doc! { "admission_year": year });
-            }
-            // SEARCH BY ID
-            if let Ok(oid) = ObjectId::parse_str(&f) {
-                or_conditions.extend(vec![
-                    doc! { "_id": oid },
-                    doc! { "user_id": oid },
-                    doc! { "school_id": oid },
-                    doc! { "class_id": oid },
-                    doc! { "subclass_id": oid },
-                ]);
-            }
-
-            match_stage.insert("$or", or_conditions);
+            match_stage.extend(search);
         }
 
         let pipeline = student_pipeline(match_stage);
