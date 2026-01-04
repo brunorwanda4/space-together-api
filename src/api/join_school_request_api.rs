@@ -161,12 +161,12 @@ async fn accept_join_request(
     let logged_user = user.into_inner();
     let id = IdType::from_string(path.into_inner());
 
-    let invited_user_id = match IdType::from_string(&logged_user.id) {
-        IdType::ObjectId(oid) => oid,
-        _ => {
-            return HttpResponse::BadRequest().json(AppError {
-                message: "Invalid user id".into(),
-            })
+    let invited_user_id = match ObjectId::from_str(&logged_user.id) {
+        Ok(oid) => oid,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "message": "Invalid user ID"
+            }))
         }
     };
 
