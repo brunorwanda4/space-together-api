@@ -4,7 +4,7 @@ use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        school::{School, SchoolPartial},
+        school::{School, SchoolAcademicRequest, SchoolPartial},
     },
     errors::AppError,
     models::{api_request_model::RequestQuery, id_model::IdType},
@@ -257,6 +257,67 @@ async fn refresh_school_token(req: HttpRequest, state: web::Data<AppState>) -> i
     }
 }
 
+#[post("/{id}/academics")]
+async fn setup_school_academics(
+    user: web::ReqData<AuthUserDto>,
+    path: web::Path<String>,
+    data: web::Json<SchoolAcademicRequest>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+
+    let target_school_id_str = path.into_inner();
+
+    // Check if user has permission to update school academics
+    if let Err(err) =
+        crate::guards::role_guard::check_school_access(&logged_user, &target_school_id_str)
+    {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err.to_string()
+        }));
+    }
+
+    let service = SchoolService::new(&state.db.main_db());
+    let target_school_id = IdType::from_string(target_school_id_str);
+
+    match service
+        .setup_school_academics(
+            &target_school_id,
+            data.into_inner(),
+            state.clone(),
+            logged_user,
+        )
+        .await
+    {
+        Ok(response) => {
+            // Broadcast event for academic setup completion
+            let state_clone = state.clone();
+            let school_id_hex = match &target_school_id {
+                IdType::ObjectId(id) => id.to_hex(),
+                IdType::String(id) => id.clone(),
+            };
+
+            actix_rt::spawn(async move {
+                EventService::broadcast_updated(
+                    &state_clone,
+                    "school_academics",
+                    &school_id_hex,
+                    &serde_json::json!({
+                        "school_id": school_id_hex,
+                        "created_classes": response.created_classes,
+                        "created_subjects": response.created_subjects,
+                        "success": response.success
+                    }),
+                )
+                .await;
+            });
+
+            HttpResponse::Ok().json(response)
+        }
+        Err(e) => HttpResponse::BadRequest().json(e),
+    }
+}
+
 /// ------------------------------------------------------
 /// INIT
 /// ------------------------------------------------------
@@ -271,6 +332,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_school)
             .service(update_school)
-            .service(delete_school),
+            .service(delete_school)
+            .service(setup_school_academics),
     );
 }
