@@ -173,6 +173,7 @@ impl BaseRepository {
     }
 
     /// Update a document and return the updated version
+
     pub async fn update_one_and_fetch<T: DeserializeOwned>(
         &self,
         id: &IdType,
@@ -187,35 +188,22 @@ impl BaseRepository {
         }
 
         // Always update timestamp
-        let mut update_doc = update_data.clone();
+        let mut update_doc = update_data;
         update_doc.insert("updated_at", bson::to_bson(&chrono::Utc::now()).unwrap());
 
-        // self.collection.find_one_and_update(filter, update) use this instead update_one ?
-        // Perform update
-        let result = self
+        let updated = self
             .collection
-            .update_one(doc! { "_id": obj_id }, doc! { "$set": update_doc })
+            .find_one_and_update(
+                doc! { "_id": obj_id },
+                doc! { "$set": update_doc },
+                // options,
+            )
             .await
             .map_err(|e| AppError {
                 message: format!("Failed to update document: {}", e),
-            })?;
-
-        if result.matched_count == 0 {
-            return Err(AppError {
-                message: "Document not found".into(),
-            });
-        }
-
-        // Fetch updated document
-        let updated = self
-            .collection
-            .find_one(doc! { "_id": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to fetch updated document: {}", e),
             })?
             .ok_or(AppError {
-                message: "Failed to fetch updated document".into(),
+                message: "Document not found".into(),
             })?;
 
         let item: T = bson::from_document(updated).map_err(|e| AppError {
