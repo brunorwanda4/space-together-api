@@ -2,7 +2,6 @@ use actix_web::web;
 
 mod announcement;
 mod auth;
-mod class;
 mod class_api;
 mod class_subject;
 mod class_timetable;

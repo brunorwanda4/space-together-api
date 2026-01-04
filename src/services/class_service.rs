@@ -1,305 +1,222 @@
+use chrono::Utc;
+use mongodb::{
+    bson::{self, doc, oid::ObjectId, Document},
+    Collection, Database,
+};
+
 use crate::{
     domain::{
-        class::{Class, ClassSettings, ClassWithOthers, PaginatedClasses, UpdateClass},
-        common_details::Image,
+        class::{Class, ClassLevelType, ClassSettings, ClassWithOthers, UpdateClass},
+        common_details::{Image, Paginated},
     },
-    models::id_model::IdType,
-    repositories::class_repo::ClassRepo,
+    errors::AppError,
+    models::{
+        id_model::IdType,
+        mongo_model::{CountDoc, IndexDef},
+    },
+    pipeline::class_pipeline::class_pipeline,
+    repositories::base_repo::BaseRepository,
     services::cloudinary_service::CloudinaryService,
-    utils::{
-        class_utils::{sanitize_class, sanitize_classes},
-        code::generate_code,
-        names::is_valid_username,
-    },
+    utils::{code::generate_code, mongo_utils::extract_valid_fields, names::is_valid_username},
 };
-use chrono::Utc;
-use mongodb::bson::oid::ObjectId;
 
-pub struct ClassService<'a> {
-    repo: &'a ClassRepo,
+pub struct ClassService {
+    pub collection: Collection<Class>,
 }
 
-impl<'a> ClassService<'a> {
-    pub fn new(repo: &'a ClassRepo) -> Self {
-        Self { repo }
+impl ClassService {
+    pub fn new(db: &Database) -> Self {
+        Self {
+            collection: db.collection::<Class>("classes"),
+        }
     }
 
-    /// Get all classes
-    pub async fn get_all_classes(
-        &self,
-        filter: Option<String>,
-        limit: Option<i64>,
-        skip: Option<i64>,
-    ) -> Result<PaginatedClasses, String> {
-        let classes = self
-            .repo
-            .get_all_classes(filter, limit, skip, None)
+    // =========================
+    // INDEXES
+    // =========================
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let indexes = vec![
+            IndexDef::single("name", false),
+            IndexDef::single("code", true),
+            IndexDef::single("username", true),
+            IndexDef::single("school_id", false),
+            IndexDef::single("creator_id", false),
+            IndexDef::single("class_teacher_id", false),
+            IndexDef::single("main_class_id", false),
+            IndexDef::single("trade_id", false),
+            IndexDef::single("type", false),
+            IndexDef::single("is_active", false),
+            IndexDef::compound(vec![("school_id", 1), ("type", 1)], false),
+        ];
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.ensure_indexes(&indexes).await?;
+        Ok(())
+    }
+
+    // =========================
+    // CREATE
+    // =========================
+    pub async fn create(&self, mut dto: Class) -> Result<Class, AppError> {
+        self.ensure_indexes().await?;
+
+        is_valid_username(&dto.username).map_err(|e| AppError { message: e })?;
+
+        // Ensure unique username
+        if let Ok(_) = self
+            .find_one(None, Some(doc! { "username": &dto.username }))
             .await
-            .map_err(|e| e.message)?;
-        Ok(PaginatedClasses {
-            classes: sanitize_classes(classes.classes),
-            total: classes.total,
-            total_pages: classes.total_pages,
-            current_page: classes.current_page,
-        })
-    }
-
-    /// Create a new class
-    pub async fn create_class(&self, mut new_class: Class) -> Result<Class, String> {
-        is_valid_username(&new_class.username)?;
-
-        // Check if code already exists
-        if let Some(class_code) = &new_class.code {
-            if let Ok(Some(_)) = self.repo.find_by_code(class_code).await {
-                return Err("Class code already exists".to_string());
-            }
+        {
+            return Err(AppError {
+                message: format!("Class username already exists: {}", dto.username),
+            });
         }
 
-        if let Some(image_data) = new_class.image.clone() {
-            let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data).await?;
-            new_class.image_id = Some(cloud_res.public_id);
-            new_class.image = Some(cloud_res.secure_url);
+        if let Some(image_data) = dto.image.clone() {
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data)
+                .await
+                .map_err(|e| AppError { message: e })?;
+
+            dto.image_id = Some(cloud_res.public_id);
+            dto.image = Some(cloud_res.secure_url);
         }
 
-        // ☁️ Upload multiple background images
-        if let Some(background_images_data) = new_class.background_images.clone() {
+        if let Some(background_images_data) = dto.background_images.clone() {
             let mut uploaded_images = Vec::new();
             for bg in background_images_data {
-                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url).await?;
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url)
+                    .await
+                    .map_err(|e| AppError { message: e })?;
                 uploaded_images.push(Image {
                     id: cloud_res.public_id,
                     url: cloud_res.secure_url,
                 });
             }
-            new_class.background_images = Some(uploaded_images);
+            dto.background_images = Some(uploaded_images);
         }
 
-        // Check if username already exists
-        if let Ok(Some(_)) = self.repo.find_by_username(&new_class.username).await {
-            return Err("Class username already exists".to_string());
+        dto.code = Some(generate_code());
+        dto.is_active = Some(true);
+
+        let full_doc = bson::to_document(&dto).map_err(|e| AppError {
+            message: format!("Failed to serialize class: {}", e),
+        })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.create::<Class>(extract_valid_fields(full_doc), None)
+            .await
+    }
+
+    // =========================
+    // FIND ONE
+    // =========================
+    pub async fn find_one(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<Class, AppError> {
+        let mut filter = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            filter.insert("_id", IdType::to_object_id(id)?);
         }
 
-        // Generate class code if not provided
-        if new_class.code.is_none() {
-            new_class.code = Some(generate_code());
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.find_one::<Class>(filter, None).await?.ok_or(AppError {
+            message: "Class not found".into(),
+        })
+    }
+
+    // =========================
+    // GET ALL
+    // =========================
+    pub async fn get_all(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<Class>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let searchable = [
+            "name",
+            "username",
+            "code",
+            "tags",
+            "school_id",
+            "creator_id",
+            "class_teacher_id",
+            "type",
+            "is_active",
+        ];
+
+        let (data, total, total_pages, current_page) = repo
+            .get_all::<Class>(filter, &searchable, limit, skip, extra_match)
+            .await?;
+
+        Ok(Paginated {
+            data,
+            total,
+            total_pages,
+            current_page,
+        })
+    }
+
+    // =========================
+    // UPDATE
+    // =========================
+    pub async fn update(&self, id: &IdType, update: &UpdateClass) -> Result<Class, AppError> {
+        if let Some(ref username) = update.username {
+            is_valid_username(username).map_err(|e| AppError { message: e })?;
         }
 
-        if new_class.settings.is_none() {
-            new_class.settings = Some(ClassSettings::default());
-        }
+        let existing_class = self.find_one(Some(id), None).await?;
 
-        // Set timestamps
-        let now = Utc::now();
-        new_class.created_at = now;
-        new_class.updated_at = now;
-
-        // Set default values for optional fields
-        if !new_class.is_active {
-            new_class.is_active = true;
-        }
-
-        let class_id = ObjectId::new();
-        new_class.id = Some(class_id);
-
-        // Save class in database
-        let inserted_class = self
-            .repo
-            .insert_class(&new_class)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_class(inserted_class))
-    }
-
-    /// Get class by ID
-    pub async fn get_class_by_id(&self, id: &IdType) -> Result<Class, String> {
-        let class = self
-            .repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        Ok(sanitize_class(class))
-    }
-
-    /// Get class by ID with related information
-    pub async fn get_class_by_id_with_others(
-        &self,
-        id: &IdType,
-    ) -> Result<ClassWithOthers, String> {
-        let class = self
-            .repo
-            .find_by_id_with_others(id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        Ok(class)
-    }
-
-    /// Get class by username
-    pub async fn get_class_by_username(&self, username: &str) -> Result<Class, String> {
-        let class = self
-            .repo
-            .find_by_username(username)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        Ok(sanitize_class(class))
-    }
-
-    /// Get class by username with related information
-    pub async fn get_class_by_username_with_others(
-        &self,
-        username: &str,
-    ) -> Result<ClassWithOthers, String> {
-        let class = self
-            .repo
-            .find_by_username_with_others(username)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        Ok(class)
-    }
-
-    /// Get class by code
-    pub async fn get_class_by_code(&self, code: &str) -> Result<Class, String> {
-        let class = self
-            .repo
-            .find_by_code(code)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        Ok(sanitize_class(class))
-    }
-
-    /// Get class by code with related information
-    pub async fn get_class_by_code_with_others(
-        &self,
-        code: &str,
-    ) -> Result<ClassWithOthers, String> {
-        let class = self
-            .repo
-            .find_by_code_with_others(code)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        Ok(class)
-    }
-
-    /// Get classes by school ID
-    pub async fn get_classes_by_school_id(&self, school_id: &IdType) -> Result<Vec<Class>, String> {
-        let classes = self
-            .repo
-            .find_by_school_id(school_id)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(sanitize_classes(classes))
-    }
-
-    /// Get classes by creator ID
-    pub async fn get_classes_by_creator_id(
-        &self,
-        creator_id: &IdType,
-    ) -> Result<Vec<Class>, String> {
-        let classes = self
-            .repo
-            .find_by_creator_id(creator_id)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(sanitize_classes(classes))
-    }
-
-    /// Get classes by class teacher ID
-    pub async fn get_classes_by_class_teacher_id(
-        &self,
-        teacher_id: &IdType,
-    ) -> Result<Vec<Class>, String> {
-        let classes = self
-            .repo
-            .find_by_class_teacher_id(teacher_id)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(sanitize_classes(classes))
-    }
-
-    /// Get classes by main class ID
-    pub async fn get_classes_by_main_class_id(
-        &self,
-        main_class_id: &IdType,
-    ) -> Result<Vec<Class>, String> {
-        let classes = self
-            .repo
-            .find_by_main_class_id(main_class_id)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(sanitize_classes(classes))
-    }
-
-    pub async fn update_class_merged(
-        &self,
-        id: &IdType,
-        updated_data: UpdateClass,
-    ) -> Result<Class, String> {
-        // ✅ Validate username
-        if let Some(ref username) = updated_data.username {
-            is_valid_username(username)?;
-        }
-
-        let existing_class = self
-            .repo
-            .find_by_id(id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        let mut update_class = updated_data.clone();
-
-        if let Some(class_image) = updated_data.image {
-            if let Some(image) = class_image {
-                if existing_class.image != Some(image.clone()) {
-                    if let Some(old_image_id) = existing_class.image_id.clone() {
-                        let _ = CloudinaryService::delete_from_cloudinary(&old_image_id).await;
-                    }
-
-                    let cloud_res = CloudinaryService::upload_to_cloudinary(&image)
-                        .await
-                        .map_err(|e| format!("Cloud upload failed: {}", e))?;
-                    update_class.image_id = Some(Some(cloud_res.public_id));
-                    update_class.image = Some(Some(cloud_res.secure_url));
-                }
-            }
-        }
-
-        // ✅ Unique username check
-        if let Some(ref username) = updated_data.username {
+        if let Some(ref username) = update.username {
             if existing_class.username != *username {
-                if let Ok(Some(_)) = self.repo.find_by_username(username).await {
-                    return Err("Class username already exists".into());
-                }
-            }
-        }
-
-        // ✅ Unique code check
-        if let Some(ref code) = updated_data.code {
-            if existing_class.code.as_ref() != code.as_ref() {
-                if let Ok(Some(_)) = self
-                    .repo
-                    .find_by_code(code.as_ref().unwrap_or(&"".to_string()))
+                if let Ok(class) = self
+                    .find_one(None, Some(doc! { "username": username }))
                     .await
                 {
-                    return Err("Class code already exists".into());
+                    return Err(AppError {
+                        message: format!("Username already exists: {}", class.username),
+                    });
                 }
             }
         }
 
-        // ✅ Handle background images
-        if let Some(Some(bg_images)) = updated_data.background_images.clone() {
+        if let Some(code) = update.code.clone().flatten() {
+            if existing_class.code.as_deref() != Some(&code) {
+                if let Ok(school) = self.find_one(None, Some(doc! { "code": code })).await {
+                    return Err(AppError {
+                        message: format!("Class code already exists: {:?}", school.code),
+                    });
+                }
+            }
+        }
+
+        let mut update_class = update.clone();
+
+        if let Some(new_image) = update.image.clone().flatten() {
+            if Some(new_image.clone()) != existing_class.image {
+                if let Some(old_image_id) = existing_class.image_id.clone() {
+                    CloudinaryService::delete_from_cloudinary(&old_image_id)
+                        .await
+                        .ok();
+                }
+
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image)
+                    .await
+                    .map_err(|e| AppError { message: e })?;
+
+                update_class.image_id = Some(Some(cloud_res.public_id));
+                update_class.image = Some(Some(cloud_res.secure_url));
+            }
+        }
+
+        if let Some(Some(bg_images)) = update.background_images.clone() {
             if let Some(old_bgs) = existing_class.background_images.clone() {
                 for bg in old_bgs {
                     let _ = CloudinaryService::delete_from_cloudinary(&bg.id).await;
@@ -310,7 +227,10 @@ impl<'a> ClassService<'a> {
             for bg in bg_images {
                 let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url)
                     .await
-                    .map_err(|e| format!("Failed to upload background image: {}", e))?;
+                    .map_err(|e| AppError {
+                        message: format!("Failed to upload background image: {}", e),
+                    })?;
+
                 uploaded_bgs.push(Image {
                     id: cloud_res.public_id,
                     url: cloud_res.secure_url,
@@ -319,402 +239,208 @@ impl<'a> ClassService<'a> {
             update_class.background_images = Some(Some(uploaded_bgs));
         }
 
-        let updated_class = self
-            .repo
-            .update_class(id, &update_class)
+        let full_doc = bson::to_document(&update_class).map_err(|e| AppError {
+            message: format!("Serialize update failed: {}", e),
+        })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.update_one_and_fetch::<Class>(id, extract_valid_fields(full_doc))
             .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_class(updated_class))
     }
 
-    /// Delete a class by id
-    pub async fn delete_class(&self, id: &IdType) -> Result<(), String> {
-        self.repo.delete_class(id).await.map_err(|e| e.message)
+    // =========================
+    // DELETE
+    // =========================
+    pub async fn delete(&self, id: &IdType) -> Result<Class, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        let class = self.find_one(Some(id), None).await?;
+        repo.delete_one(id).await?;
+        Ok(class)
     }
 
-    /// Count classes by creator ID
-    pub async fn count_classes_by_creator_id(&self, creator_id: &IdType) -> Result<u64, String> {
-        self.repo
-            .count_by_creator_id(creator_id)
-            .await
-            .map_err(|e| e.message)
-    }
-
-    pub async fn create_many_classes(&self, classes: Vec<Class>) -> Result<Vec<Class>, String> {
-        // Validate all classes first
-        for class in &classes {
-            is_valid_username(&class.username)?;
-        }
-
-        // Process classes: generate codes, set timestamps, etc.
-        let mut processed_classes = Vec::with_capacity(classes.len());
-        let now = Utc::now();
-
-        for mut class in classes {
-            // Generate class code if not provided
-            if class.code.is_none() {
-                class.code = Some(generate_code());
-            }
-
-            // Set timestamps
-            class.created_at = now;
-            class.updated_at = now;
-
-            // Set default values for optional fields
-            if !class.is_active {
-                class.is_active = true;
-            }
-
-            if class.image.is_some() {
-                class.image = None;
-                class.image_id = None;
-            }
-
-            // Generate ID
-            class.id = Some(ObjectId::new());
-
-            processed_classes.push(class);
-        }
-
-        // Create classes using repository
-        let created_classes = self
-            .repo
-            .create_many_classes(processed_classes)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_classes(created_classes))
-    }
-
-    /// Bulk update multiple classes
-    pub async fn update_many_classes(
-        &self,
-        updates: Vec<(IdType, UpdateClass)>,
-    ) -> Result<Vec<Class>, String> {
-        // Validate all updates first
-        for (_, update) in &updates {
-            if let Some(ref username) = update.username {
-                is_valid_username(username)?;
-            }
-        }
-
-        // Check uniqueness for usernames and codes that are being changed
-        for (id, update) in &updates {
-            if let Some(ref username) = update.username {
-                // Get existing class to check if username is changing
-                if let Ok(Some(existing_class)) = self.repo.find_by_id(id).await {
-                    if existing_class.username != *username {
-                        if let Ok(Some(_)) = self.repo.find_by_username(username).await {
-                            return Err(format!("Class username already exists: {}", username));
-                        }
-                    }
-                }
-            }
-
-            if let Some(ref code) = update.code {
-                // Get existing class to check if code is changing
-                if let Ok(Some(existing_class)) = self.repo.find_by_id(id).await {
-                    let existing_code = existing_class.code.as_ref();
-                    let new_code = code.as_ref();
-
-                    if existing_code != new_code {
-                        if let Ok(Some(_)) = self
-                            .repo
-                            .find_by_code(new_code.unwrap_or(&"".to_string()))
-                            .await
-                        {
-                            return Err("Class code already exists".to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Perform bulk update
-        let updated_classes = self
-            .repo
-            .update_many_classes(updates)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_classes(updated_classes))
-    }
-
-    pub async fn get_many_classes_by_ids(&self, ids: Vec<ObjectId>) -> Result<Vec<Class>, String> {
-        let classes = self
-            .repo
-            .find_many_by_ids(ids)
-            .await
-            .map_err(|e| e.message.clone())?;
-
-        Ok(sanitize_classes(classes))
-    }
-
-    // ===========================
-    // SUBCLASS MANAGEMENT METHODS
-    // ===========================
-
-    /// Add a subclass to a main class
-    pub async fn add_subclass(
-        &self,
-        main_class_id: &IdType,
-        subclass: Class,
-    ) -> Result<Class, String> {
-        // Validate subclass username
-        is_valid_username(&subclass.username)?;
-
-        // Check if subclass username already exists
-        if let Ok(Some(_)) = self.repo.find_by_username(&subclass.username).await {
-            return Err("Subclass username already exists".to_string());
-        }
-
-        // Process subclass data (images, code generation, etc.)
-        let mut processed_subclass = subclass;
-
-        // Handle image upload for subclass
-        if let Some(image_data) = processed_subclass.image.clone() {
-            let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data).await?;
-            processed_subclass.image_id = Some(cloud_res.public_id);
-            processed_subclass.image = Some(cloud_res.secure_url);
-        }
-
-        // Handle background images for subclass
-        if let Some(background_images_data) = processed_subclass.background_images.clone() {
-            let mut uploaded_images = Vec::new();
-            for bg in background_images_data {
-                let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url).await?;
-                uploaded_images.push(Image {
-                    id: cloud_res.public_id,
-                    url: cloud_res.secure_url,
-                });
-            }
-            processed_subclass.background_images = Some(uploaded_images);
-        }
-
-        // Generate class code if not provided
-        if processed_subclass.code.is_none() {
-            processed_subclass.code = Some(generate_code());
-        }
-
-        // Set timestamps
-        let now = Utc::now();
-        processed_subclass.created_at = now;
-        processed_subclass.updated_at = now;
-
-        // Set default values
-        if !processed_subclass.is_active {
-            processed_subclass.is_active = true;
-        }
-
-        // Add subclass using repository
-        let inserted_subclass = self
-            .repo
-            .add_subclass(main_class_id, &processed_subclass)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_class(inserted_subclass))
-    }
-
-    /// Remove a subclass from its main class
-    pub async fn remove_subclass(&self, subclass_id: &IdType) -> Result<(), String> {
-        // Get subclass to check for images that need cleanup
-        if let Ok(Some(subclass)) = self.repo.find_by_id(subclass_id).await {
-            // Clean up images from cloud storage
-            if let Some(image_id) = subclass.image_id {
-                let _ = CloudinaryService::delete_from_cloudinary(&image_id).await;
-            }
-
-            if let Some(background_images) = subclass.background_images {
-                for bg in background_images {
-                    let _ = CloudinaryService::delete_from_cloudinary(&bg.id).await;
-                }
-            }
-        }
-
-        self.repo
-            .remove_subclass(subclass_id)
-            .await
-            .map_err(|e| e.message)
-    }
-
-    /// Get all subclasses of a main class
-    pub async fn get_subclasses(&self, main_class_id: &IdType) -> Result<Vec<Class>, String> {
-        let subclasses = self
-            .repo
-            .get_subclasses(main_class_id)
-            .await
-            .map_err(|e| e.message)?;
-        Ok(sanitize_classes(subclasses))
-    }
-
-    /// Get subclasses with full details (including school, teacher, etc.)
-    pub async fn get_subclasses_with_others(
-        &self,
-        main_class_id: &IdType,
-    ) -> Result<Vec<ClassWithOthers>, String> {
-        self.repo
-            .get_subclasses_with_others(main_class_id)
-            .await
-            .map_err(|e| e.message)
-    }
-
-    /// Get the main class of a subclass
-    pub async fn get_parent_class(&self, subclass_id: &IdType) -> Result<Option<Class>, String> {
-        let parent_class = self
-            .repo
-            .get_parent_class(subclass_id)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(parent_class.map(sanitize_class))
-    }
-
-    /// Move a subclass to a different main class
-    pub async fn move_subclass(
-        &self,
-        subclass_id: &IdType,
-        new_main_class_id: &IdType,
-    ) -> Result<Class, String> {
-        let updated_subclass = self
-            .repo
-            .move_subclass(subclass_id, new_main_class_id)
-            .await
-            .map_err(|e| e.message)?;
-
-        Ok(sanitize_class(updated_subclass))
-    }
-
-    /// Check if a class is a main class with subclasses
-    pub async fn is_main_class_with_subclasses(&self, class_id: &IdType) -> Result<bool, String> {
-        self.repo
-            .is_main_class_with_subclasses(class_id)
-            .await
-            .map_err(|e| e.message)
-    }
-
-    /// Get all main classes (classes without parent_class_id and with MainClass level type)
-    pub async fn get_main_classes(
+    // =========================
+    // WITH RELATIONS
+    // =========================
+    pub async fn get_all_with_relations(
         &self,
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
-    ) -> Result<PaginatedClasses, String> {
-        let main_classes = self
-            .repo
-            .get_main_classes(filter, limit, skip)
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<ClassWithOthers>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(f) = filter {
+            let mut or_conditions = vec![
+                doc! { "name": { "$regex": &f, "$options": "i" } },
+                doc! { "username": { "$regex": &f, "$options": "i" } },
+                doc! { "code": { "$regex": &f, "$options": "i" } },
+                doc! { "tags": { "$in": [&f] } },
+            ];
+
+            if let Ok(oid) = ObjectId::parse_str(&f) {
+                or_conditions.extend(vec![
+                    doc! { "_id": oid },
+                    doc! { "school_id": oid },
+                    doc! { "creator_id": oid },
+                    doc! { "class_teacher_id": oid },
+                    doc! { "main_class_id": oid },
+                    doc! { "trade_id": oid },
+                ]);
+            }
+
+            match_stage.insert("$or", or_conditions);
+        }
+
+        let pipeline = class_pipeline(match_stage);
+        repo.aggregate_with_paginate::<ClassWithOthers>(pipeline, limit, skip)
             .await
-            .map_err(|e| e.message)?;
-        Ok(PaginatedClasses {
-            total: main_classes.total,
-            total_pages: main_classes.total_pages,
-            current_page: main_classes.current_page,
-            classes: sanitize_classes(main_classes.classes),
-        })
     }
 
-    /// Bulk add multiple subclasses to a main class
-    pub async fn add_multiple_subclasses(
+    pub async fn find_one_with_relations(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<ClassWithOthers, AppError> {
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            match_stage.insert("_id", IdType::to_object_id(id)?);
+        }
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.aggregate_one::<ClassWithOthers>(class_pipeline(match_stage), None)
+            .await?
+            .ok_or(AppError {
+                message: "Class not found".into(),
+            })
+    }
+
+    // =========================
+    // COUNT
+    // =========================
+    pub async fn count_classes(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let searchable = ["name", "username", "school_id", "type", "is_active", "tags"];
+
+        repo.count(filter, &searchable, extra_match).await
+    }
+
+    pub async fn create_many(&self, classes: Vec<Class>) -> Result<Vec<Class>, AppError> {
+        self.ensure_indexes().await?;
+        let docs = classes
+            .into_iter()
+            .map(|dto| bson::to_document(&dto.to_partial()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError {
+                message: format!("Failed to serialize DTO: {}", e),
+            })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.create_many::<Class>(docs, None).await
+    }
+
+    pub async fn create_many_sub_class_by_class_id(
         &self,
         main_class_id: &IdType,
-        subclasses: Vec<Class>,
-    ) -> Result<Vec<Class>, String> {
-        // Validate all subclasses first
-        for subclass in &subclasses {
-            is_valid_username(&subclass.username)?;
-
-            // Check if subclass username already exists
-            if let Ok(Some(_)) = self.repo.find_by_username(&subclass.username).await {
-                return Err(format!(
-                    "Subclass username already exists: {}",
-                    subclass.username
-                ));
-            }
+        num_sub_classes: u8,
+        creator_id: ObjectId,
+    ) -> Result<Vec<Class>, AppError> {
+        if !(1..=12).contains(&num_sub_classes) {
+            return Err(AppError {
+                message: "Number of sub-classes must be between 1 and 12".into(),
+            });
         }
 
-        // Process subclasses: generate codes, set timestamps, etc.
-        let mut processed_subclasses = Vec::with_capacity(subclasses.len());
-        let now = Utc::now();
+        let main_class = self.find_one(Some(main_class_id), None).await?;
+        let main_obj_id = IdType::to_object_id(main_class_id)?;
+        let start_index = main_class.subclass_ids.as_ref().map_or(0, |ids| ids.len()) as u8;
 
-        for mut subclass in subclasses {
-            // Generate class code if not provided
-            if subclass.code.is_none() {
-                subclass.code = Some(generate_code());
-            }
+        let mut subclasses = Vec::new();
 
-            // Set timestamps
-            subclass.created_at = now;
-            subclass.updated_at = now;
+        for i in 0..num_sub_classes {
+            // Letter = 'A' + start_index + i
+            let letter = ((b'A' + start_index + i) as char).to_string();
 
-            // Set default values for optional fields
-            if !subclass.is_active {
-                subclass.is_active = true;
-            }
+            let subclass_name = format!("{} {}", main_class.name, letter);
+            let subclass_username = format!("{}_{}", main_class.username, letter.to_lowercase());
 
-            // Clear images for bulk processing (they can be updated later)
-            // if subclass.image.is_some() {
-            //     subclass.image = None;
-            //     subclass.image_id = None;
-            // }
-            // if subclass.background_images.is_some() {
-            //     subclass.background_images = None;
-            // }
+            let now = Utc::now();
 
-            // Generate ID
-            subclass.id = Some(ObjectId::new());
+            // Build subclass object
+            let subclass = Class {
+                id: None,
+                name: subclass_name,
+                username: subclass_username,
+                code: Some(generate_code()),
+                school_id: main_class.school_id,
+                creator_id: Some(creator_id),
+                class_teacher_id: None,
+                r#type: main_class.r#type.clone(),
+                level_type: Some(ClassLevelType::SubClass),
+                parent_class_id: Some(main_obj_id.clone()),
+                subclass_ids: None,
+                main_class_id: main_class.main_class_id,
+                trade_id: main_class.trade_id,
+                is_active: Some(true),
+                image_id: main_class.image_id.clone(),
+                image: main_class.image.clone(),
+                background_images: main_class.background_images.clone(),
+                description: Some(format!("Sub class of {}", main_class.name)),
+                capacity: main_class.capacity,
+                subject: main_class.subject.clone(),
+                grade_level: main_class.grade_level.clone(),
+                tags: vec!["subclass".to_string()],
+                created_at: now,
+                updated_at: now,
+                settings: Some(ClassSettings::default()),
+            };
 
-            processed_subclasses.push(subclass);
+            subclasses.push(subclass);
         }
 
-        // Add subclasses using repository
-        let inserted_subclasses = self
-            .repo
-            .add_multiple_subclasses(main_class_id, processed_subclasses)
+        let inserted_subclasses = self.create_many(subclasses).await?;
+        let subclass_ids: Vec<ObjectId> = inserted_subclasses.iter().filter_map(|c| c.id).collect();
+
+        if subclass_ids.is_empty() {
+            return Ok(inserted_subclasses);
+        }
+
+        let subclass_ids_bson = bson::to_bson(&subclass_ids).map_err(|e| AppError {
+            message: format!("Failed to serialize subclass IDs for update: {}", e),
+        })?;
+
+        let update_pipeline = vec![
+            doc! {
+                "$set": {
+                    "subclass_ids": { "$ifNull": [ "$subclass_ids", [] ] },
+                    "updated_at": bson::to_bson(&Utc::now()).unwrap()
+                }
+            },
+            doc! {
+                "$set": {
+                    "subclass_ids": {
+                        "$concatArrays": [ "$subclass_ids", subclass_ids_bson ]
+                    }
+                }
+            },
+        ];
+
+        self.collection
+            .update_one(doc! { "_id": main_obj_id }, update_pipeline)
             .await
-            .map_err(|e| e.message)?;
+            .map_err(|e| AppError {
+                message: format!("Failed to update main class with subclasses: {}", e),
+            })?;
 
-        Ok(sanitize_classes(inserted_subclasses))
-    }
-
-    /// Create a main class (convenience method)
-    pub async fn create_main_class(&self, mut main_class: Class) -> Result<Class, String> {
-        // Ensure level_type is set to MainClass
-        main_class.level_type = Some(crate::domain::class::ClassLevelType::MainClass);
-        main_class.parent_class_id = None;
-        main_class.subclass_ids = Some(Vec::new());
-
-        self.create_class(main_class).await
-    }
-
-    /// Check if a class can be deleted (no subclasses if it's a main class)
-    pub async fn can_delete_class(&self, class_id: &IdType) -> Result<bool, String> {
-        let class = self
-            .repo
-            .find_by_id(class_id)
-            .await
-            .map_err(|e| e.message.clone())?
-            .ok_or_else(|| "Class not found".to_string())?;
-
-        // If it's a main class, check if it has subclasses
-        if class.level_type == Some(crate::domain::class::ClassLevelType::MainClass) {
-            if let Some(subclass_ids) = class.subclass_ids {
-                return Ok(subclass_ids.is_empty());
-            }
-        }
-
-        Ok(true)
-    }
-
-    /// Get class hierarchy (main class with all its subclasses)
-    pub async fn get_class_hierarchy(
-        &self,
-        main_class_id: &IdType,
-    ) -> Result<(Class, Vec<Class>), String> {
-        let main_class = self.get_class_by_id(main_class_id).await?;
-
-        let subclasses = self.get_subclasses(main_class_id).await?;
-
-        Ok((main_class, subclasses))
+        Ok(inserted_subclasses)
     }
 }

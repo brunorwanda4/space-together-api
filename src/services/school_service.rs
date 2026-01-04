@@ -24,7 +24,7 @@ use crate::{
     },
     repositories::{base_repo::BaseRepository, class_repo::ClassRepo},
     services::{
-        class_service_testing::ClassService, class_subject_service::ClassSubjectService,
+        class_service::ClassService, class_subject_service::ClassSubjectService,
         cloudinary_service::CloudinaryService, main_class_service::MainClassService,
         template_subject_service::TemplateSubjectService, trade_service::TradeService,
     },

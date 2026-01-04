@@ -13,7 +13,7 @@ use crate::{
     },
     errors::AppError,
     models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{class_service_testing::ClassService, event_service::EventService},
+    services::{class_service::ClassService, event_service::EventService},
     utils::{
         api_utils::build_extra_match, db_utils::get_database, object_id::parse_object_id_value,
     },
