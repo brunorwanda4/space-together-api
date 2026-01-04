@@ -278,7 +278,10 @@ impl JoinSchoolRequestService {
         Ok(result.modified_count)
     }
 
-    pub async fn cleanup_expired_requests(&self, older_than_days: i64) -> Result<u64, AppError> {
+    pub async fn cleanup_expired_requests(
+        &self,
+        older_than_days: i64,
+    ) -> Result<CountDoc, AppError> {
         let cutoff_date = Utc::now() - chrono::Duration::days(older_than_days);
         let result = self
             .collection
@@ -293,7 +296,9 @@ impl JoinSchoolRequestService {
                 message: format!("Failed to cleanup expired join requests: {}", e),
             })?;
 
-        Ok(result.deleted_count)
+        Ok(CountDoc {
+            count: result.deleted_count,
+        })
     }
 
     // ======================================================

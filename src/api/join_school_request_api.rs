@@ -1,4 +1,4 @@
-use actix_web::{get, post, put, web, HttpResponse, Responder};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 
 use crate::{
     config::state::AppState,
@@ -7,6 +7,7 @@ use crate::{
         join_school_request::{BulkRespondRequest, JoinRequestQuery, JoinSchoolByCode},
     },
     errors::AppError,
+    guards::role_guard,
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::join_school_request_service::JoinSchoolRequestService,
     utils::api_utils::build_extra_match,
@@ -93,7 +94,19 @@ async fn join_school_by_code(
         .join_school_by_code(&data.into_inner(), &auth_user, state.clone())
         .await
     {
-        Ok(token) => HttpResponse::Ok().json(token),
+        Ok(token) => {
+            let state_clone = state.clone();
+            actix_rt::spawn(async move {
+                EventService::broadcast_created(
+                    &state_clone,
+                    "join_school_request",
+                    "new",
+                    &serde_json::json!({ "action": "created", "by_user": user.id }),
+                )
+                .await;
+            });
+            HttpResponse::Ok().json(token)
+        }
         Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
@@ -229,11 +242,9 @@ async fn get_join_request_by_id_with_relations(
 
 #[get("/others/match")]
 async fn get_join_request_by_other_match(
-    path: web::Path<String>,
     state: web::Data<AppState>,
     query: web::Query<RequestQuery>,
 ) -> impl Responder {
-    let id = IdType::from_string(path.into_inner());
     let service = JoinSchoolRequestService::new(&state.db.main_db());
     let extra_match = match build_extra_match(&query.field, &query.value) {
         Ok(doc) => doc,
@@ -243,6 +254,27 @@ async fn get_join_request_by_other_match(
     match service.find_one_with_relations(None, extra_match).await {
         Ok(data) => HttpResponse::Ok().json(data),
         Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+#[delete("/admin/cleanup-expired/{older_than_days}")]
+async fn cleanup_expired_join_requests(
+    user: web::ReqData<AuthUserDto>,
+    path: web::Path<i64>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+
+    if let Err(err) = role_guard::check_admin_staff_or_teacher(&logged_user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err.to_string()
+        }));
+    }
+
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+    match service.cleanup_expired_requests(path.into_inner()).await {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(error) => HttpResponse::BadRequest().json(error),
     }
 }
 
@@ -260,6 +292,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .service(join_school_by_code)
             .service(accept_join_request)
             .service(reject_join_request)
-            .service(cancel_join_request),
+            .service(cancel_join_request)
+            .service(cleanup_expired_join_requests),
     );
 }
