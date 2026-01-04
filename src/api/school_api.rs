@@ -8,7 +8,11 @@ use crate::{
     },
     errors::AppError,
     models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{event_service::EventService, school_service_testing::SchoolService},
+    repositories::user_repo::UserRepo,
+    services::{
+        event_service::EventService, school_service_testing::SchoolService,
+        user_service::UserService,
+    },
     utils::api_utils::build_extra_match,
 };
 
@@ -76,10 +80,18 @@ async fn get_school_by_match(
 /// ------------------------------------------------------
 #[post("")]
 async fn create_school(
-    _user: web::ReqData<AuthUserDto>,
+    user: web::ReqData<AuthUserDto>,
     data: web::Json<School>,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    let logged_user = user.into_inner();
+
+    if let Err(err) = crate::guards::role_guard::check_admin_or_staff(&logged_user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err.to_string()
+        }));
+    }
+
     let service = SchoolService::new(&state.db.main_db());
 
     match service.create(data.into_inner()).await {
@@ -94,7 +106,41 @@ async fn create_school(
                 }
             });
 
-            HttpResponse::Created().json(school)
+            let school_id = match school.id {
+                Some(id) => IdType::ObjectId(id),
+                None => {
+                    return HttpResponse::BadRequest().json(AppError {
+                        message: "Failed to get school id".into(),
+                    })
+                }
+            };
+
+            let user_repo = UserRepo::new(&state.db.main_db());
+            let user_service = UserService::new(&user_repo);
+
+            let user_id = IdType::from_string(&logged_user.id);
+
+            match user_service.add_school_to_user(&user_id, &school_id).await {
+                Ok(_) => (),
+                Err(err) => {
+                    return HttpResponse::BadRequest().json(err);
+                }
+            }
+
+            let token = match service.create_school_token(&school_id).await {
+                Ok(token) => token,
+                Err(err) => {
+                    return HttpResponse::BadRequest().json(err);
+                }
+            };
+
+            let mut school_json = serde_json::to_value(&school).unwrap_or_default();
+
+            if let serde_json::Value::Object(ref mut obj) = school_json {
+                obj.insert("token".to_string(), serde_json::json!(token));
+            }
+
+            HttpResponse::Created().json(school_json)
         }
         Err(err) => HttpResponse::BadRequest().json(err),
     }
