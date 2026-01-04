@@ -1,0 +1,265 @@
+use actix_web::{get, post, put, web, HttpResponse, Responder};
+
+use crate::{
+    config::state::AppState,
+    domain::{
+        auth_user::AuthUserDto,
+        join_school_request::{BulkRespondRequest, JoinRequestQuery, JoinSchoolByCode},
+    },
+    errors::AppError,
+    models::{api_request_model::RequestQuery, id_model::IdType},
+    services::join_school_request_service::JoinSchoolRequestService,
+    utils::api_utils::build_extra_match,
+};
+
+/// ------------------------------------------------------
+/// GET /join-school-requests
+/// ------------------------------------------------------
+#[get("")]
+async fn get_all_join_requests(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .get_all(query.filter.clone(), query.limit, query.skip, extra_match)
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// GET /join-school-requests/{id}
+/// ------------------------------------------------------
+#[get("/{id}")]
+async fn get_join_request_by_id(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let id = IdType::from_string(path.into_inner());
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    match service.find_one(Some(&id), None).await {
+        Ok(req) => HttpResponse::Ok().json(req),
+        Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// GET /join-school-requests/with-relations
+/// ------------------------------------------------------
+#[get("/with-relations")]
+async fn get_join_requests_with_relations(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .get_all_with_relations(query.filter.clone(), query.limit, query.skip, extra_match)
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// POST /join-school-requests/join-by-code
+/// ------------------------------------------------------
+#[post("/join-by-code")]
+async fn join_school_by_code(
+    user: web::ReqData<AuthUserDto>,
+    data: web::Json<JoinSchoolByCode>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let auth_user = user.into_inner();
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    match service
+        .join_school_by_code(&data.into_inner(), &auth_user, state.clone())
+        .await
+    {
+        Ok(token) => HttpResponse::Ok().json(token),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// PUT /join-school-requests/{id}/accept
+/// ------------------------------------------------------
+#[put("/{id}/accept")]
+async fn accept_join_request(
+    user: web::ReqData<AuthUserDto>,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+    let id = IdType::from_string(path.into_inner());
+
+    let invited_user_id = match IdType::from_string(&logged_user.id) {
+        IdType::ObjectId(oid) => oid,
+        _ => {
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Invalid user id".into(),
+            })
+        }
+    };
+
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    match service
+        .accept_request(&id, invited_user_id, Some(invited_user_id), state.clone())
+        .await
+    {
+        Ok(token) => HttpResponse::Ok().json(token),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// PUT /join-school-requests/{id}/reject
+/// ------------------------------------------------------
+#[put("/{id}/reject")]
+async fn reject_join_request(
+    user: web::ReqData<AuthUserDto>,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+    let id = IdType::from_string(path.into_inner());
+
+    let responded_by = IdType::from_string(&logged_user.id).to_object_id().ok();
+
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    match service.reject_request(&id, responded_by).await {
+        Ok(req) => HttpResponse::Ok().json(req),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// PUT /join-school-requests/{id}/cancel
+/// ------------------------------------------------------
+#[put("/{id}/cancel")]
+async fn cancel_join_request(
+    user: web::ReqData<AuthUserDto>,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+    let id = IdType::from_string(path.into_inner());
+
+    let responded_by = IdType::from_string(&logged_user.id).to_object_id().ok();
+
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    match service.cancel_request(&id, responded_by).await {
+        Ok(req) => HttpResponse::Ok().json(req),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
+/// GET /join-school-requests/count
+/// ------------------------------------------------------
+#[get("/count")]
+async fn count_join_requests(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service.count(query.filter.clone(), extra_match).await {
+        Ok(count) => HttpResponse::Ok().json(count),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+#[get("/match")]
+async fn get_join_request_by_match(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service.find_one(None, extra_match).await {
+        Ok(school) => HttpResponse::Ok().json(school),
+        Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+#[get("/{id}/others")]
+async fn get_join_request_by_id_with_relations(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let id = IdType::from_string(path.into_inner());
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    match service.find_one_with_relations(Some(&id), None).await {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+#[get("/others/match")]
+async fn get_join_request_by_other_match(
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+    query: web::Query<RequestQuery>,
+) -> impl Responder {
+    let id = IdType::from_string(path.into_inner());
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service.find_one_with_relations(None, extra_match).await {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+pub fn config(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/join-school-requests")
+            .service(get_all_join_requests)
+            .service(get_join_requests_with_relations)
+            .service(get_join_request_by_match)
+            .service(get_join_request_by_other_match)
+            .service(count_join_requests)
+            .service(get_join_request_by_id_with_relations)
+            .service(get_join_request_by_id)
+            .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
+            .service(join_school_by_code)
+            .service(accept_join_request)
+            .service(reject_join_request)
+            .service(cancel_join_request),
+    );
+}
