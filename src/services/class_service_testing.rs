@@ -226,7 +226,10 @@ impl ClassService {
             for bg in bg_images {
                 let cloud_res = CloudinaryService::upload_to_cloudinary(&bg.url)
                     .await
-                    .map_err(|e| format!("Failed to upload background image: {}", e))?;
+                    .map_err(|e| AppError {
+                        message: format!("Failed to upload background image: {}", e),
+                    })?;
+
                 uploaded_bgs.push(Image {
                     id: cloud_res.public_id,
                     url: cloud_res.secure_url,

@@ -15,7 +15,6 @@ use crate::{
         class_subject::ClassSubject,
         common_details::Paginated,
         school::{School, SchoolAcademicRequest, SchoolAcademicResponse, SchoolPartial},
-        template_subject::TemplateSubject,
     },
     errors::AppError,
     mappers::school_mapper::to_school_school_token,
@@ -27,7 +26,7 @@ use crate::{
     services::{
         class_service::ClassService, class_subject_service::ClassSubjectService,
         cloudinary_service::CloudinaryService, main_class_service::MainClassService,
-        trade_service::TradeService,
+        template_subject_service::TemplateSubjectService, trade_service::TradeService,
     },
     utils::{
         code::generate_code,
@@ -341,7 +340,7 @@ impl SchoolService {
         let class_subject_service = ClassSubjectService::new(&school_db);
 
         let trade_service = TradeService::new(&state.db.main_db());
-        let template_subject_service = TemplateSubject::new(&state.db.main_db());
+        let template_subject_service = TemplateSubjectService::new(&state.db.main_db());
         let main_class_service = MainClassService::new(&state.db.main_db());
 
         // Academic year
@@ -469,11 +468,9 @@ impl SchoolService {
             }
 
             // TEMPLATE SUBJECTS BY PREREQUISITE (main_class_id)
-            let template_subjects = self
-                .template_subject
+            let template_subjects = template_subject_service
                 .find_many_by_prerequisite(&IdType::ObjectId(main_class_id))
-                .await
-                .map_err(|e| e.message)?;
+                .await?;
 
             let mut class_subjects = Vec::new();
 
