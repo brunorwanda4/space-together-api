@@ -166,11 +166,9 @@ impl MainClassService {
             }
         }
 
-        let mut update_doc = bson::to_document(update).map_err(|e| AppError {
+        let update_doc = bson::to_document(update).map_err(|e| AppError {
             message: format!("Serialize update failed: {}", e),
         })?;
-
-        update_doc.insert("updated_at", chrono::Utc::now());
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
         repo.update_one_and_fetch::<MainClass>(id, extract_valid_fields(update_doc))

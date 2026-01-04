@@ -14,7 +14,6 @@ use crate::{
         class::{Class, ClassLevelType, ClassSettings, ClassType},
         class_subject::ClassSubject,
         common_details::Paginated,
-        main_class,
         school::{School, SchoolAcademicRequest, SchoolAcademicResponse, SchoolPartial},
     },
     errors::AppError,
@@ -25,10 +24,8 @@ use crate::{
     },
     repositories::{base_repo::BaseRepository, class_repo::ClassRepo},
     services::{
-        class_service::ClassService,
-        class_subject_service::ClassSubjectService,
-        cloudinary_service::CloudinaryService,
-        main_class_service::{self, MainClassService},
+        class_service::ClassService, class_subject_service::ClassSubjectService,
+        cloudinary_service::CloudinaryService, main_class_service::MainClassService,
         trade_service::TradeService,
     },
     utils::{
@@ -55,7 +52,7 @@ impl SchoolService {
     // =========================
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
         let indexes = vec![
-            IndexDef::single("name", true),
+            IndexDef::single("name", false),
             IndexDef::single("username", true),
             IndexDef::single("code", true),
             IndexDef::single("creator_id", false),
@@ -76,13 +73,6 @@ impl SchoolService {
         is_valid_username(&dto.username).map_err(|e| AppError { message: e })?;
         is_valid_name(&dto.name).map_err(|e| AppError { message: e })?;
 
-        // unique name
-        if let Ok(existing) = self.find_one(None, Some(doc! { "name": &dto.name })).await {
-            return Err(AppError {
-                message: format!("School name already exists: {}", existing.name),
-            });
-        }
-
         // unique username
         if let Ok(existing) = self
             .find_one(None, Some(doc! { "username": &dto.username }))
@@ -91,15 +81,6 @@ impl SchoolService {
             return Err(AppError {
                 message: format!("School username already exists: {}", existing.username),
             });
-        }
-
-        // unique code (optional)
-        if let Some(ref code) = dto.code {
-            if let Ok(_) = self.find_one(None, Some(doc! { "code": code })).await {
-                return Err(AppError {
-                    message: format!("School code already exists: {}", code),
-                });
-            }
         }
 
         let mut new_school = dto.clone();
@@ -241,9 +222,9 @@ impl SchoolService {
         // code uniqueness
         if let Some(code) = update.code.clone().flatten() {
             if existing.code.as_deref() != Some(&code) {
-                if let Ok(_) = self.find_one(None, Some(doc! { "code": code })).await {
+                if let Ok(school) = self.find_one(None, Some(doc! { "code": code })).await {
                     return Err(AppError {
-                        message: format!("School code already exists: {:?}", code),
+                        message: format!("School code already exists: {:?}", school.code),
                     });
                 }
             }

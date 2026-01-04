@@ -32,7 +32,6 @@ make_partial! {
 pub struct Class {
     #[serde(
         rename = "_id",
-        // alias = "id",
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",
@@ -105,7 +104,7 @@ pub struct Class {
     )]
     pub trade_id: Option<ObjectId>,
 
-    pub is_active: bool,
+    pub is_active: Option<bool>,
 
     pub image_id: Option<String>,
     pub image: Option<String>,
