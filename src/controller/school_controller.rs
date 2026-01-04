@@ -213,6 +213,7 @@ impl<'a> SchoolController<'a> {
         let created_classes = class_service_school
             .create_many_classes(classes_to_create)
             .await?;
+
         let created_classes_count = created_classes.len();
 
         // ---- Step 3: Create Subjects Using TEMPLATE SUBJECTS ----

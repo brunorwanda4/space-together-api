@@ -282,6 +282,39 @@ impl TradeService {
 
         Ok(trades)
     }
+
+    pub async fn get_trades_by_sector_ids(
+        &self,
+        sector_ids: &[ObjectId],
+    ) -> Result<Vec<Trade>, AppError> {
+        let filter = doc! { "sector_id": { "$in": sector_ids } };
+        self.collection
+            .find(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find trades by sector ids: {}", e),
+            })?
+            .try_collect()
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to collect trades: {}", e),
+            })
+    }
+
+    pub async fn get_trades_by_ids(&self, trade_ids: &[ObjectId]) -> Result<Vec<Trade>, AppError> {
+        let filter = doc! { "_id": { "$in": trade_ids } };
+        self.collection
+            .find(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find trades by ids: {}", e),
+            })?
+            .try_collect()
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to collect trades: {}", e),
+            })
+    }
 }
 
 // pub async fn create_trade_and_main_classes(
