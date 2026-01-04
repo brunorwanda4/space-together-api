@@ -191,13 +191,6 @@ pub struct JoinSchoolRequestWithRelations {
     pub sender: Option<User>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct JoinRequestWithToken {
-    #[serde(flatten)]
-    pub request: JoinSchoolRequest,
-    pub school_token: String,
-}
-
 impl fmt::Display for JoinRole {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

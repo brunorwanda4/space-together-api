@@ -595,21 +595,7 @@ impl BaseRepository {
         extra_match: Option<Document>,
     ) -> Result<CountDoc, AppError> {
         // ===== BUILD MATCH =====
-        let mut match_stage = if let Some(f) = filter {
-            let regex = doc! {
-                "$regex": f,
-                "$options": "i"
-            };
-
-            let or_conditions: Vec<Document> = searchable_fields
-                .iter()
-                .map(|field| doc! { *field: &regex })
-                .collect();
-
-            doc! { "$or": or_conditions }
-        } else {
-            doc! {}
-        };
+        let mut match_stage = build_search_filter(filter.clone(), &searchable_fields);
 
         // ===== MERGE EXTRA MATCH =====
         if let Some(extra) = extra_match {

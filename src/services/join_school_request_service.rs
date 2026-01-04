@@ -1,17 +1,27 @@
+use std::str::FromStr;
+
+use actix_web::web;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
     Collection, Database,
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 
 use crate::{
+    config::state::AppState,
     domain::{
+        auth_user::AuthUserDto,
         common_details::Paginated,
         join_school_request::{
-            BulkRespondRequest, JoinRequestQuery, JoinSchoolRequest,
-            JoinSchoolRequestWithRelations, JoinStatus,
+            BulkRespondRequest, JoinRequestQuery, JoinRole, JoinSchoolByCode, JoinSchoolRequest,
+            JoinSchoolRequestResponseToken, JoinSchoolRequestWithRelations, JoinStatus,
         },
+        school::School,
+        school_staff::{parse_staff_type, SchoolStaff, SchoolStaffType},
+        student::{Student, StudentPartial, StudentStatus},
+        teacher::{parse_teacher_type, Teacher},
+        user::User,
     },
     errors::AppError,
     models::{
@@ -19,8 +29,16 @@ use crate::{
         mongo_model::{CountDoc, IndexDef},
     },
     pipeline::join_school_request_pipeline::join_school_request_pipeline,
-    repositories::base_repo::BaseRepository,
-    utils::mongo_utils::build_search_filter,
+    repositories::{base_repo::BaseRepository, user_repo::UserRepo},
+    services::{
+        class_service::ClassService,
+        school_service::{self, SchoolService},
+        school_staff_service::SchoolStaffService,
+        student_service::StudentService,
+        teacher_service::TeacherService,
+        user_service::{self, UserService},
+    },
+    utils::{code::generate_school_registration_number, mongo_utils::build_search_filter},
 };
 
 pub struct JoinSchoolRequestService {
@@ -69,14 +87,24 @@ impl JoinSchoolRequestService {
         repo.create::<JoinSchoolRequest>(doc, None).await
     }
 
-    // ======================================================
-    // FIND
-    // ======================================================
-    pub async fn find_by_id(&self, id: &IdType) -> Result<Option<JoinSchoolRequest>, AppError> {
+    pub async fn find_one(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<JoinSchoolRequest, AppError> {
+        let mut filter = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            filter.insert("_id", IdType::to_object_id(id)?);
+        }
+
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        repo.find_one::<JoinSchoolRequest>(doc! { "_id": IdType::to_object_id(id)? }, None)
-            .await
+        repo.find_one::<JoinSchoolRequest>(filter, None)
+            .await?
+            .ok_or(AppError {
+                message: "Join school request not found".into(),
+            })
     }
 
     // ======================================================
@@ -87,14 +115,41 @@ impl JoinSchoolRequestService {
         id: &IdType,
         invited_user_id: ObjectId,
         responded_by: Option<ObjectId>,
-    ) -> Result<JoinSchoolRequest, AppError> {
+        state: web::Data<AppState>,
+    ) -> Result<JoinSchoolRequestResponseToken, AppError> {
+        let request = self.find_one(Some(id), None).await?;
+        if !matches!(request.status, JoinStatus::Pending) {
+            return Err(AppError {
+                message: "Join request is not pending".into(),
+            });
+        }
+
+        let user_repo = UserRepo::new(&state.db.main_db());
+        let user_service = UserService::new(&user_repo);
+
+        let user = user_service
+            .get_user_by_email(&request.email)
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        self.create_role_entity_school_db(&request, &user, &state)
+            .await;
+
         self.update_status(
             id,
             JoinStatus::Accepted,
             Some(invited_user_id),
             responded_by,
         )
-        .await
+        .await?;
+
+        let school_service = SchoolService::new(&state.db.main_db());
+
+        let school_token = school_service
+            .create_school_token(&IdType::ObjectId(request.school_id))
+            .await?;
+
+        Ok(JoinSchoolRequestResponseToken { school_token })
     }
 
     pub async fn reject_request(
@@ -245,5 +300,268 @@ impl JoinSchoolRequestService {
 
         repo.aggregate_with_paginate::<JoinSchoolRequestWithRelations>(pipeline, limit, skip)
             .await
+    }
+
+    async fn create_role_entity_school_db(
+        &self,
+        request: &JoinSchoolRequest,
+        user: &User,
+        state: &web::Data<AppState>,
+    ) -> Result<(), AppError> {
+        let user_id = user.id.unwrap();
+        let school_id = request.school_id;
+        let school_service = SchoolService::new(&state.db.main_db());
+        let school = school_service
+            .find_one(Some(&IdType::ObjectId(school_id)), None)
+            .await?;
+
+        let school_db_name = school.database_name.as_ref().ok_or_else(|| AppError {
+            message: "School database not configured".into(),
+        })?;
+
+        let school_db = state.db.get_db(school_db_name);
+
+        match request.role {
+            JoinRole::Student => {
+                let student_service = StudentService::new(&school_db);
+                // ✅ Validate class exists before creating student
+                let class_service = ClassService::new(&school_db);
+                // ✅ Validate class exists before creating student
+
+                if let Some(class_id) = request.class_id {
+                    if class_service
+                        .find_one(Some(&IdType::ObjectId(class_id)), None)
+                        .await
+                        .is_err()
+                    {
+                        return Err(AppError {
+                            message: "Class not found in school database".into(),
+                        });
+                    }
+                }
+
+                if let Ok(student) = student_service
+                    .find_one(None, Some(doc! {"email": user.email.clone()}))
+                    .await
+                {
+                    let update_student = StudentPartial {
+                        id: None,               // StudentPartial.id is Option<ObjectId>
+                        user_id: Some(user.id), // Assuming user.id is ObjectId
+                        school_id: Some(school.id),
+                        class_id: Some(request.class_id),
+                        subclass_id: Some(student.subclass_id), // Already Option<ObjectId>
+                        creator_id: Some(student.creator_id),   // Already Option<ObjectId>
+
+                        name: Some(student.name), // String -> Option<String>
+                        email: Some(student.email), // String -> Option<String>
+
+                        // These are already Option<T>, so do NOT wrap in Some()
+                        phone: Some(student.phone.or(user.phone.clone())),
+                        gender: Some(student.gender.or(user.gender.clone())),
+                        image: Some(student.image.or(user.image.clone())),
+                        image_id: Some(student.image_id.or(user.image_id.clone())),
+
+                        // date_of_birth is Option<Age>, so assign directly
+                        date_of_birth: Some(student.date_of_birth.or(user.age.clone())),
+
+                        registration_number: Some(
+                            student
+                                .registration_number
+                                .or(generate_school_registration_number(&school)),
+                        ), // Already Option
+                        admission_year: Some(student.admission_year), // Already Option
+
+                        status: Some(student.status), // StudentStatus -> Option<StudentStatus>
+                        is_active: Some(student.is_active), // bool -> Option<bool>
+                        tags: Some(student.tags),     // Vec -> Option<Vec>
+
+                        created_at: None,
+                        updated_at: None,
+                    };
+
+                    student_service
+                        .update(
+                            &IdType::from_object_id(student.id.unwrap()),
+                            &update_student,
+                        )
+                        .await?;
+                } else {
+                    let new_student = Student {
+                        id: None,
+                        user_id: Some(user_id),
+                        school_id: Some(school_id),
+                        class_id: request.class_id,
+                        creator_id: Some(request.sent_by),
+                        name: user.name.clone(),
+                        email: user.email.clone(),
+                        phone: user.phone.clone(),
+                        gender: user.gender.clone(),
+                        date_of_birth: user.age.clone(),
+                        subclass_id: None,
+                        image: user.image.clone(),
+                        image_id: user.image_id.clone(),
+                        registration_number: generate_school_registration_number(&school),
+                        admission_year: Some(Utc::now().year()),
+                        status: StudentStatus::Active,
+                        is_active: false,
+                        tags: vec!["join-request".to_string()],
+                        created_at: Utc::now(),
+                        updated_at: Utc::now(),
+                    };
+                    student_service.create(new_student, None).await?;
+                }
+            }
+
+            JoinRole::Teacher => {
+                let teacher_service = TeacherService::new(&school_db);
+                let teacher_type = parse_teacher_type(&request.r#type);
+
+                let new_teacher = Teacher {
+                    id: None,
+                    user_id: Some(user_id),
+                    school_id: Some(school_id),
+                    creator_id: Some(request.sent_by),
+                    name: user.name.clone(),
+                    email: user.email.clone(),
+                    phone: user.phone.clone(),
+                    gender: user.gender.clone(),
+                    r#type: teacher_type,
+                    class_ids: None,
+                    subject_ids: None,
+                    is_active: false,
+                    image: user.image.clone(),
+                    image_id: user.image_id.clone(),
+                    tags: vec!["join-request".to_string()],
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                };
+
+                teacher_service.create(new_teacher, None).await?;
+            }
+
+            JoinRole::Staff => {
+                let staff_service = SchoolStaffService::new(&school_db);
+
+                // Validate staff type and check limits in school database
+                let staff_type = parse_staff_type(&request.r#type);
+
+                // Check staff limits in school database
+                match staff_type {
+                    SchoolStaffType::Director => {
+                        let count = staff_service
+                            .count_staff(None, Some(doc! {"type": "Director"}))
+                            .await?;
+
+                        if count.count >= 1 {
+                            return Err(AppError {
+                                message: "This school already has a Director".into(),
+                            });
+                        }
+                    }
+                    SchoolStaffType::HeadOfStudies => {
+                        let count = staff_service
+                            .count_staff(None, Some(doc! {"type": "HeadOfStudies"}))
+                            .await?;
+
+                        if count.count >= 5 {
+                            return Err(AppError {
+                                message: "This school already has 5 HeadOfStudies".into(),
+                            });
+                        }
+                    }
+                }
+
+                let staff = SchoolStaff {
+                    id: None,
+                    user_id: Some(user_id),
+                    school_id: Some(school_id),
+                    creator_id: Some(request.sent_by),
+                    name: user.name.clone(),
+                    email: user.email.clone(),
+                    r#type: staff_type,
+                    is_active: false,
+                    tags: vec!["join-request".to_string()],
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                };
+
+                staff_service.create(staff, None).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn join_school_by_code(
+        &self,
+        request: &JoinSchoolByCode,
+        auth_user: &AuthUserDto,
+        state: web::Data<AppState>,
+    ) -> Result<JoinSchoolRequestResponseToken, AppError> {
+        let user_repo = UserRepo::new(&state.db.main_db());
+        let user_service = UserService::new(&user_repo);
+        let user = user_service
+            .get_user_by_email(&auth_user.email)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to find user: {}", e),
+            })?;
+
+        let school_service = SchoolService::new(&state.db.main_db());
+        let school = school_service
+            .find_one(None, Some(doc! {"code": &request.code}))
+            .await?;
+
+        let school_id = school.id.clone().ok_or_else(|| AppError {
+            message: "School ID not found".into(),
+        })?;
+
+        let user_id = user.id.clone().ok_or_else(|| AppError {
+            message: "User ID not found".into(),
+        })?;
+
+        let join_request = JoinSchoolRequest::new(&user, &school_id, &user_id);
+
+        self.create_role_entity_school_db(&join_request, &user, &state)
+            .await?;
+
+        user_service
+            .add_school_to_user(
+                &IdType::ObjectId(user_id),
+                &IdType::from_object_id(school_id.clone()),
+            )
+            .await
+            .map_err(|e| AppError { message: e })?;
+
+        let school_service = SchoolService::new(&state.db.main_db());
+
+        let school_token = school_service
+            .create_school_token(&IdType::ObjectId(school_id))
+            .await?;
+
+        Ok(JoinSchoolRequestResponseToken { school_token })
+    }
+
+    pub async fn count(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let searchable = [
+            "email",
+            "type",
+            "role",
+            "status",
+            "message",
+            "_id",
+            "school_id",
+            "class_id",
+            "invited_user_id",
+            "sent_by",
+        ];
+
+        repo.count(filter, &searchable, extra_match).await
     }
 }

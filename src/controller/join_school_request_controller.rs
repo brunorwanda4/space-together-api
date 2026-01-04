@@ -327,13 +327,12 @@ impl<'a> JoinSchoolRequestController<'a> {
             JoinRole::Student => {
                 let student_service = StudentService::new(&school_db);
                 // ✅ Validate class exists before creating student
-                let class_repo = ClassRepo::new(school_db);
-                let class_service = ClassService::new(&class_repo);
+                let class_service = ClassService::new(&school_db);
                 // ✅ Validate class exists before creating student
 
                 if let Some(class_id) = request.class_id {
                     if class_service
-                        .get_class_by_id(&IdType::ObjectId(class_id))
+                        .find_one(Some(&IdType::ObjectId(class_id)), None)
                         .await
                         .is_err()
                     {

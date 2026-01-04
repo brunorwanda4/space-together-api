@@ -13,7 +13,7 @@ pub fn generate_code() -> String {
         .collect()
 }
 
-pub async fn generate_school_registration_number(school: &School) -> Option<String> {
+pub fn generate_school_registration_number(school: &School) -> Option<String> {
     let year = Utc::now().year();
     let random = rand::random::<u16>() % 10000;
     Some(format!("{}-{}-{:04}", school.username, year, random))

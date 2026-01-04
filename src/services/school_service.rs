@@ -22,7 +22,7 @@ use crate::{
         id_model::IdType,
         mongo_model::{CountDoc, IndexDef},
     },
-    repositories::{base_repo::BaseRepository, class_repo::ClassRepo},
+    repositories::base_repo::BaseRepository,
     services::{
         class_service::ClassService, class_subject_service::ClassSubjectService,
         cloudinary_service::CloudinaryService, main_class_service::MainClassService,
