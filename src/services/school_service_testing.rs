@@ -1,25 +1,20 @@
-use actix_web::App;
+use actix_web::{web, };
 use mongodb::{
-    bson::{self, doc, oid::ObjectId, Document},
+    bson::{self, doc,Document},
     Collection, Database,
 };
 
 use crate::{
-    domain::{
+    config::state::AppState, domain::{
+        auth_user::AuthUserDto,
         common_details::Paginated,
-        school::{School, SchoolPartial},
-    },
-    errors::AppError,
-    mappers::school_mapper::to_school_school_token,
-    models::{
+        school::{School, SchoolAcademicRequest, SchoolAcademicResponse, SchoolPartial},
+    }, errors::AppError, mappers::school_mapper::to_school_school_token, models::{
         id_model::IdType,
         mongo_model::{CountDoc, IndexDef},
-    },
-    repositories::base_repo::BaseRepository,
-    utils::{
-        mongo_utils::extract_valid_fields,
-        school_token::{create_school_token, verify_school_token},
-    },
+    }, repositories::base_repo::BaseRepository, services::cloudinary_service::CloudinaryService, utils::{
+        code::generate_code, mongo_utils::extract_valid_fields, names::{is_valid_name, is_valid_username}, school_token::{create_school_token, verify_school_token}
+    }
 };
 
 pub struct SchoolService {
@@ -56,6 +51,8 @@ impl SchoolService {
     // =========================
     pub async fn create(&self, dto: School) -> Result<School, AppError> {
         self.ensure_indexes().await?;
+        is_valid_username(&dto.username).map_err(|e| AppError{message: e})?;
+        is_valid_name(&dto.name).map_err(|e| AppError{message: e})?;
 
         // unique name
         if let Ok(existing) = self.find_one(None, Some(doc! { "name": &dto.name })).await {
@@ -84,17 +81,35 @@ impl SchoolService {
         }
 
         let mut new_school = dto.clone();
-        new_school.created_at = Some(chrono::Utc::now());
-        new_school.is_active = Some(true);
+        new_school.is_active = Some(false);
+        new_school.code = Some(generate_code());
+
+        if let Some(logo_file) = new_school.logo.clone() {
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&logo_file).await.map_err(|e| AppError{message: e})?;
+            new_school.logo_id = Some(cloud_res.public_id);
+            new_school.logo = Some(cloud_res.secure_url);
+        }
+
 
         let full_doc = bson::to_document(&new_school).map_err(|e| AppError {
             message: format!("Failed to serialize School: {}", e),
         })?;
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create::<School>(extract_valid_fields(full_doc), None)
-            .await
-    }
+      let school =  repo.create::<School>(extract_valid_fields(full_doc), None)
+            .await?;
+
+    let school_id = match school.id {
+        Some(id) => id,
+        None => return Err(AppError{message: "Failed to get school id".into()}),
+    };
+     let db_name_clone = format!("school_{}", school_id.to_hex());
+
+
+let update_school = self.update(&IdType::from_object_id(school_id), &SchoolPartial{  database_name: Some(Some(db_name_clone))  , ..Default::default()}).await?;
+
+Ok(update_school)
+}
 
     // =========================
     // FIND ONE (NO RELATIONS)
@@ -149,6 +164,18 @@ impl SchoolService {
     // UPDATE
     // =========================
     pub async fn update(&self, id: &IdType, update: &SchoolPartial) -> Result<School, AppError> {
+        if let Some(ref name) = update.name {
+            if let Err(e) = is_valid_name(name) {
+                return Err(AppError { message: e });
+            }
+        }
+
+        if let Some(ref username) = update.username {
+            if let Err(e) = is_valid_username(username) {
+                return Err(AppError { message: e });
+            }
+        }
+
         let existing = self.find_one(Some(id), None).await?;
 
         // name uniqueness
@@ -177,17 +204,37 @@ impl SchoolService {
         }
 
         // code uniqueness
-        if let Some(ref code) = update.code {
-            if existing.code.as_deref() != Some(code) {
+        if let Some(code) = update.code.clone().flatten() {
+            if existing.code.as_deref() != Some(&code) {
                 if let Ok(_) = self.find_one(None, Some(doc! { "code": code })).await {
                     return Err(AppError {
-                        message: format!("School code already exists: {}", code),
+                        message: format!("School code already exists: {:?}", code),
                     });
                 }
             }
         }
 
-        let mut update_doc = bson::to_document(update).map_err(|e| AppError {
+        let mut update_data = update.clone();
+
+        if let Some(new_logo_data) = update.logo.clone().flatten() {
+            if Some(new_logo_data.clone()) != existing.logo {
+                if let Some(old_logo_id) = existing.logo_id.clone() {
+                    CloudinaryService::delete_from_cloudinary(&old_logo_id)
+                        .await
+                        .ok();
+                }
+
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_logo_data)
+                    .await
+                    .map_err(|e| AppError { message: e })?;
+
+                update_data.logo_id = Some(Some(cloud_res.public_id));
+                update_data.logo = Some(Some(cloud_res.secure_url));
+            }
+        }
+
+
+        let update_doc = bson::to_document(&update_data).map_err(|e| AppError {
             message: format!("Serialize update failed: {}", e),
         })?;
 
@@ -246,5 +293,26 @@ impl SchoolService {
         let token = create_school_token(school_token);
 
         Ok(token)
+    }
+
+    pub async fn setup_school_academics(
+        &self,
+        school_id: &IdType,
+        req: SchoolAcademicRequest,
+        state: web::Data<AppState>,
+        logged_user: AuthUserDto,
+    ) -> Result<SchoolAcademicResponse, AppError> {
+        let school_data = SchoolPartial {
+            curriculum: Some(req.sector_ids.clone()),
+            education_level: Some(req.trade_ids.clone()),
+            ..Default::default()
+        };
+
+        let school = self.update(school_id, &school_data).await?;
+        let school_db_name = school
+            .database_name
+            .as_ref().?;
+
+        todo!()
     }
 }

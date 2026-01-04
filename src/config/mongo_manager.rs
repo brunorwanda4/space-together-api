@@ -1,4 +1,3 @@
-
 use dashmap::DashMap;
 use mongodb::{Client, Database};
 use std::sync::Arc;

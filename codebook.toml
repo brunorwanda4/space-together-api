@@ -1,1 +1,4 @@
-words = ["dto"]
+words = [
+    "dto",
+    "oid",
+]
