@@ -1,4 +1,9 @@
-use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
+use std::str::FromStr;
+
+use actix_web::{
+    cookie::time::error, delete, get, post, put, web, HttpRequest, HttpResponse, Responder,
+};
+use mongodb::bson::oid::ObjectId;
 
 use crate::{
     config::state::AppState,
@@ -6,6 +11,7 @@ use crate::{
         auth_user::AuthUserDto,
         class::{Class, UpdateClass},
     },
+    errors::AppError,
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{class_service_testing::ClassService, event_service::EventService},
     utils::{
@@ -266,6 +272,74 @@ async fn count_classes(
     }
 }
 
+#[post("/{main_class_id}/subclasses/count/{count}")]
+async fn create_many_subclasses_by_class_id(
+    user: web::ReqData<AuthUserDto>,
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let db = get_database(&req, &state);
+    let service = ClassService::new(&db);
+
+    let logged_user = user.into_inner();
+
+    if let Err(err) = crate::guards::role_guard::check_admin_or_staff(&logged_user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err.to_string()
+        }));
+    }
+
+    let (main_class_id_str, count) = path.into_inner();
+    let main_class_id = IdType::String(main_class_id_str);
+
+    let user_id = match ObjectId::from_str(&logged_user.id) {
+        Ok(i) => i,
+        Err(e) => {
+            return HttpResponse::BadRequest().json(AppError {
+                message: format!("field to change user id into object id: {}", e),
+            })
+        }
+    };
+
+    let count_num = match count.parse::<u8>() {
+        Ok(c) if c > 0 => c,
+        _ => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "message": "Invalid count value. It must be a positive number."
+            }))
+        }
+    };
+
+    match service
+        .create_many_sub_class_by_class_id(&main_class_id, count_num, user_id)
+        .await
+    {
+        Ok(subclasses) => {
+            let state_clone = state.clone();
+            let subclasses_for_spawn = subclasses.clone();
+
+            // 📡 Broadcast events async
+            actix_rt::spawn(async move {
+                for subclass in &subclasses_for_spawn {
+                    if let Some(id) = subclass.id {
+                        EventService::broadcast_created(
+                            &state_clone,
+                            "class",
+                            &id.to_hex(),
+                            subclass,
+                        )
+                        .await;
+                    }
+                }
+            });
+
+            HttpResponse::Created().json(subclasses)
+        }
+        Err(error) => HttpResponse::BadRequest().json(error),
+    }
+}
+
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(get_all_classes)
         .service(get_all_classes_with_relations)
@@ -279,7 +353,8 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
                 .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
                 .service(create_class)
                 .service(update_class)
-                .service(delete_class),
+                .service(delete_class)
+                .service(create_many_subclasses_by_class_id),
         );
 }
 

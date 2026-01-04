@@ -1,3 +1,4 @@
+use chrono::Utc;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
     Collection, Database,
@@ -5,7 +6,7 @@ use mongodb::{
 
 use crate::{
     domain::{
-        class::{Class, ClassWithOthers, UpdateClass},
+        class::{Class, ClassLevelType, ClassSettings, ClassWithOthers, UpdateClass},
         common_details::{Image, Paginated},
     },
     errors::AppError,
@@ -330,5 +331,116 @@ impl ClassService {
         let searchable = ["name", "username", "school_id", "type", "is_active", "tags"];
 
         repo.count(filter, &searchable, extra_match).await
+    }
+
+    pub async fn create_many(&self, classes: Vec<Class>) -> Result<Vec<Class>, AppError> {
+        self.ensure_indexes().await?;
+        let docs = classes
+            .into_iter()
+            .map(|dto| bson::to_document(&dto.to_partial()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError {
+                message: format!("Failed to serialize DTO: {}", e),
+            })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.create_many::<Class>(docs, None).await
+    }
+
+    pub async fn create_many_sub_class_by_class_id(
+        &self,
+        main_class_id: &IdType,
+        num_sub_classes: u8,
+        creator_id: ObjectId,
+    ) -> Result<Vec<Class>, AppError> {
+        if !(1..=12).contains(&num_sub_classes) {
+            return Err(AppError {
+                message: "Number of sub-classes must be between 1 and 12".into(),
+            });
+        }
+
+        let main_class = self.find_one(Some(main_class_id), None).await?;
+        let main_obj_id = IdType::to_object_id(main_class_id)?;
+        let start_index = main_class.subclass_ids.as_ref().map_or(0, |ids| ids.len()) as u8;
+
+        let mut subclasses = Vec::new();
+
+        for i in 0..num_sub_classes {
+            // Letter = 'A' + start_index + i
+            let letter = ((b'A' + start_index + i) as char).to_string();
+
+            let subclass_name = format!("{} {}", main_class.name, letter);
+            let subclass_username = format!("{}_{}", main_class.username, letter.to_lowercase());
+
+            let now = Utc::now();
+
+            // Build subclass object
+            let subclass = Class {
+                id: None,
+                name: subclass_name,
+                username: subclass_username,
+                code: Some(generate_code()),
+                school_id: main_class.school_id,
+                creator_id: Some(creator_id),
+                class_teacher_id: None,
+                r#type: main_class.r#type.clone(),
+                level_type: Some(ClassLevelType::SubClass),
+                parent_class_id: Some(main_obj_id.clone()),
+                subclass_ids: None,
+                main_class_id: main_class.main_class_id,
+                trade_id: main_class.trade_id,
+                is_active: Some(true),
+                image_id: main_class.image_id.clone(),
+                image: main_class.image.clone(),
+                background_images: main_class.background_images.clone(),
+                description: Some(format!("Sub class of {}", main_class.name)),
+                capacity: main_class.capacity,
+                subject: main_class.subject.clone(),
+                grade_level: main_class.grade_level.clone(),
+                tags: vec!["subclass".to_string()],
+                created_at: now,
+                updated_at: now,
+                settings: Some(ClassSettings::default()),
+            };
+
+            subclasses.push(subclass);
+        }
+
+        let inserted_subclasses = self.create_many(subclasses).await?;
+        let subclass_ids: Vec<ObjectId> = inserted_subclasses.iter().filter_map(|c| c.id).collect();
+
+        if subclass_ids.is_empty() {
+            return Ok(inserted_subclasses);
+        }
+
+        let subclass_ids_bson = bson::to_bson(&subclass_ids).map_err(|e| AppError {
+            message: format!("Failed to serialize subclass IDs for update: {}", e),
+        })?;
+
+        let update_pipeline = vec![
+            doc! {
+                "$set": {
+                    "subclass_ids": { "$ifNull": [ "$subclass_ids", [] ] },
+                    "updated_at": bson::to_bson(&Utc::now()).unwrap()
+                }
+            },
+            doc! {
+                "$set": {
+                    "subclass_ids": {
+                        "$concatArrays": [ "$subclass_ids", subclass_ids_bson ]
+                    }
+                }
+            },
+        ];
+
+        self.collection
+            .update_one(doc! { "_id": main_obj_id }, update_pipeline)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to update main class with subclasses: {}", e),
+            })?;
+
+        Ok(inserted_subclasses)
     }
 }
