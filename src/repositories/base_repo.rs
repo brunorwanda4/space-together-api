@@ -190,6 +190,7 @@ impl BaseRepository {
         let mut update_doc = update_data.clone();
         update_doc.insert("updated_at", bson::to_bson(&chrono::Utc::now()).unwrap());
 
+        // self.collection.find_one_and_update(filter, update) use this instead update_one ?
         // Perform update
         let result = self
             .collection

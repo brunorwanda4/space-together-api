@@ -53,7 +53,7 @@ pub struct JoinSchoolRequest {
         deserialize_with = "object_id_helpers::deserialize",
         default
     )]
-    pub class_id: Option<ObjectId>, // ✅ fixed here
+    pub class_id: Option<ObjectId>,
 
     pub role: JoinRole,
     pub email: String,
@@ -121,27 +121,20 @@ pub struct BulkCreateJoinSchoolRequest {
 /// Payload to respond to a request (accept/reject/cancel)
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RespondToJoinRequest {
-    /// the request id (string form)
     pub request_id: String,
 
-    /// new status: Accepted | Rejected | Cancelled
     pub status: JoinStatus,
 
-    /// who responded (string id of staff/admin); optional if server infers from auth
     pub responded_by: Option<String>,
 
-    /// optional: when accepting, you may want to attach the invited_user_id (ObjectId string)
     pub invited_user_id: Option<String>,
 
-    /// optional custom message
     pub message: Option<String>,
 }
 
-/// Payload to update the expiration date for a request
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateRequestExpiration {
     pub request_id: String,
-    /// ISO8601 datetime string expected; server should parse into chrono::DateTime<Utc>
     pub expires_at: DateTime<Utc>,
 }
 

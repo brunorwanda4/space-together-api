@@ -21,10 +21,7 @@ use crate::{
     errors::AppError,
     helpers::object_id_helpers::parse_object_id,
     models::id_model::IdType,
-    repositories::{
-        class_repo::ClassRepo, join_school_request_repo::JoinSchoolRequestRepo,
-        school_repo::SchoolRepo,
-    },
+    repositories::{class_repo::ClassRepo, join_school_request_repo::JoinSchoolRequestRepo},
     services::{
         class_service::ClassService, school_service::SchoolService,
         school_staff_service::SchoolStaffService, student_service::StudentService,
@@ -36,7 +33,7 @@ use crate::{
 pub struct JoinSchoolRequestController<'a> {
     pub join_request_repo: JoinSchoolRequestRepo,
     pub user_service: &'a UserService<'a>,
-    pub school_service: &'a SchoolService<'a>,
+    pub school_service: &'a SchoolService,
 }
 
 impl<'a> JoinSchoolRequestController<'a> {
