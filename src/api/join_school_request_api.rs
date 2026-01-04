@@ -9,7 +9,6 @@ use crate::{
         auth_user::AuthUserDto,
         join_school_request::{CreateJoinSchoolRequest, JoinSchoolByCode},
     },
-    errors::AppError,
     guards::role_guard,
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{
@@ -316,6 +315,20 @@ async fn cleanup_expired_join_requests(
     }
 }
 
+#[get("/my/pending")]
+async fn get_my_pending_join_requests(
+    user: web::ReqData<AuthUserDto>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let logged_user = user.into_inner();
+    let service = JoinSchoolRequestService::new(&state.db.main_db());
+
+    match service.get_my_pending_request(&logged_user.email).await {
+        Ok(requests) => HttpResponse::Ok().json(requests),
+        Err(e) => HttpResponse::BadRequest().json(e),
+    }
+}
+
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/join-school-requests")
@@ -327,6 +340,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_join_request_by_id_with_relations)
             .service(get_join_request_by_id)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
+            .service(get_my_pending_join_requests)
             .service(create_join_school)
             .service(join_school_by_code)
             .service(accept_join_request)

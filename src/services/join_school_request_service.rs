@@ -703,4 +703,18 @@ impl JoinSchoolRequestService {
 
         repo.count(filter, &searchable, extra_match).await
     }
+
+    pub async fn get_my_pending_request(
+        &self,
+        user_email: &str,
+    ) -> Result<Paginated<JoinSchoolRequest>, AppError> {
+        let filter = doc! {
+            "email": user_email,
+            "status": bson::to_bson(&JoinStatus::Pending).map_err(|e| AppError {
+                message: format!("Failed to serialize status: {}", e),
+            })?
+        };
+
+        self.get_all(None, None, None, Some(filter)).await
+    }
 }
