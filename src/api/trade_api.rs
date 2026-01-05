@@ -38,7 +38,7 @@ async fn get_all_trades(
 /// ------------------------------------------------------
 /// GET /trades/with-relations
 /// ------------------------------------------------------
-#[get("/with-relations")]
+#[get("/others")]
 async fn get_all_trades_with_relations(
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
@@ -76,7 +76,7 @@ async fn get_trade_by_id(path: web::Path<String>, state: web::Data<AppState>) ->
 /// ------------------------------------------------------
 /// GET /trades/{id}/with-relations
 /// ------------------------------------------------------
-#[get("/{id}/with-relations")]
+#[get("/{id}/others")]
 async fn get_trade_by_id_with_relations(
     path: web::Path<String>,
     state: web::Data<AppState>,
