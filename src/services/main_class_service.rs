@@ -15,7 +15,7 @@ use crate::{
     },
     pipeline::main_class_pipeline::main_class_pipeline,
     repositories::base_repo::BaseRepository,
-    utils::mongo_utils::extract_valid_fields,
+    utils::mongo_utils::{build_search_filter, extract_valid_fields},
 };
 
 pub struct MainClassService {
@@ -117,7 +117,7 @@ impl MainClassService {
     ) -> Result<Paginated<MainClass>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let searchable = ["name", "username", "description", "_id"];
+        let searchable = ["name", "username", "level", "trade_id", "description"];
 
         let (data, total, total_pages, current_page) = repo
             .get_all::<MainClass>(filter, &searchable, limit, skip, extra_match)
@@ -216,18 +216,12 @@ impl MainClassService {
         let mut match_stage = extra_match.unwrap_or_default();
 
         if let Some(f) = filter {
-            let mut or_conditions = vec![
-                doc! { "name": { "$regex": &f, "$options": "i" } },
-                doc! { "username": { "$regex": &f, "$options": "i" } },
-                doc! { "description": { "$regex": &f, "$options": "i" } },
-            ];
+            let search = build_search_filter(
+                Some(f),
+                &["name", "username", "level", "trade_id", "description"],
+            );
 
-            if let Ok(oid) = ObjectId::parse_str(&f) {
-                or_conditions.push(doc! { "_id": oid });
-                or_conditions.push(doc! { "trade_id": oid });
-            }
-
-            match_stage.insert("$or", or_conditions);
+            match_stage.extend(search);
         }
 
         repo.aggregate_with_paginate::<MainClassWithOthers>(
@@ -259,5 +253,20 @@ impl MainClassService {
             .ok_or(AppError {
                 message: "MainClass not found".into(),
             })
+    }
+
+    pub async fn create_many(&self, classes: Vec<MainClass>) -> Result<Vec<MainClass>, AppError> {
+        self.ensure_indexes().await?;
+        let docs = classes
+            .into_iter()
+            .map(|dto| bson::to_document(&dto.to_partial()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError {
+                message: format!("Failed to serialize DTO: {}", e),
+            })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.create_many::<MainClass>(docs, None).await
     }
 }

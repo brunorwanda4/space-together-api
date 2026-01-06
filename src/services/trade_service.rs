@@ -1,3 +1,4 @@
+use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::{
     bson::{self, doc, oid::ObjectId, Document},
@@ -5,8 +6,10 @@ use mongodb::{
 };
 
 use crate::{
+    config::state::AppState,
     domain::{
         common_details::Paginated,
+        main_class::MainClass,
         trade::{Trade, TradePartial, TradeWithOthers},
     },
     errors::AppError,
@@ -16,6 +19,7 @@ use crate::{
     },
     pipeline::trade_pipeline::trade_pipeline,
     repositories::base_repo::BaseRepository,
+    services::main_class_service::MainClassService,
     utils::mongo_utils::extract_valid_fields,
 };
 
@@ -52,7 +56,7 @@ impl TradeService {
     // =========================
     // CREATE
     // =========================
-    pub async fn create(&self, dto: Trade) -> Result<Trade, AppError> {
+    pub async fn create(&self, dto: Trade, state: Option<&AppState>) -> Result<Trade, AppError> {
         self.ensure_indexes().await?;
 
         // unique name
@@ -72,16 +76,67 @@ impl TradeService {
             });
         }
 
-        let mut new_trade = dto.clone();
-        new_trade.created_at = Some(chrono::Utc::now());
-
-        let full_doc = bson::to_document(&new_trade).map_err(|e| AppError {
+        let full_doc = bson::to_document(&dto).map_err(|e| AppError {
             message: format!("Failed to serialize trade: {}", e),
         })?;
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create::<Trade>(extract_valid_fields(full_doc), None)
-            .await
+        let trade = repo
+            .create::<Trade>(extract_valid_fields(full_doc), None)
+            .await?;
+
+        if let Some(state) = state {
+            let trade_oid = trade.id.clone().ok_or_else(|| AppError {
+                message: "Inserted trade has no id".to_string(),
+            })?;
+
+            let mut min = trade.class_min.clone();
+            let mut max = trade.class_max.clone();
+            if min > max {
+                std::mem::swap(&mut min, &mut max);
+            }
+
+            if max < min {
+                return Ok(trade);
+            }
+
+            let trade_type_name = trade.r#type.to_string();
+
+            let mut main_classes_to_create = Vec::new();
+            for level in min..=max {
+                let name = format!("{} {} {}", trade_type_name, level, trade.clone().name);
+                let username = format!(
+                    "{}_{}_{}",
+                    trade_type_name.to_lowercase(),
+                    level,
+                    trade.username.replace(' ', "_").to_lowercase()
+                );
+
+                main_classes_to_create.push(MainClass {
+                    id: None,
+                    name,
+                    username,
+                    trade_id: Some(trade_oid),
+                    level: Some(level),
+                    description: Some(format!("Auto-created for trade {}", trade.name)),
+                    disable: Some(false),
+                    created_at: Some(Utc::now()),
+                    updated_at: Some(Utc::now()),
+                });
+            }
+
+            let main_class_service = MainClassService::new(&state.db.main_db());
+
+            let _ = if main_classes_to_create.is_empty() {
+                vec![]
+            } else {
+                main_class_service
+                    .create_many(main_classes_to_create)
+                    .await?
+            };
+        }
+
+        Ok(trade)
     }
 
     // =========================

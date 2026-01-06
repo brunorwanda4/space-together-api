@@ -140,7 +140,7 @@ async fn create_trade(
 ) -> impl Responder {
     let service = TradeService::new(&state.db.main_db());
 
-    match service.create(data.into_inner()).await {
+    match service.create(data.into_inner(), Some(&state)).await {
         Ok(trade) => {
             let trade_clone = trade.clone();
             let state_clone = state.clone();
