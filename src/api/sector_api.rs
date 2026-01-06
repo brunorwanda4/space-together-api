@@ -4,9 +4,12 @@ use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        sector::{GetSectorsByIdsBody, Sector, SectorPartial},
+        sector::{Sector, SectorPartial},
     },
-    models::{api_request_model::RequestQuery, id_model::IdType},
+    models::{
+        api_request_model::{GetByIdsBody, RequestQuery},
+        id_model::IdType,
+    },
     services::{event_service::EventService, sector_service::SectorService},
     utils::api_utils::build_extra_match,
 };
@@ -198,7 +201,7 @@ async fn count_sectors(
 
 #[post("/by-ids")]
 async fn get_sectors_by_ids(
-    body: web::Json<GetSectorsByIdsBody>,
+    body: web::Json<GetByIdsBody>,
     state: web::Data<AppState>,
 ) -> impl Responder {
     let service = SectorService::new(&state.db.main_db());

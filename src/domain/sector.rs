@@ -32,8 +32,3 @@ pub struct Sector {
     pub updated_at: Option<DateTime<Utc>>,
 } => SectorPartial
 }
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GetSectorsByIdsBody {
-    pub ids: Vec<String>,
-}

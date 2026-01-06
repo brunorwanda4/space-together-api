@@ -6,7 +6,10 @@ use crate::{
         auth_user::AuthUserDto,
         trade::{Trade, TradePartial},
     },
-    models::{api_request_model::RequestQuery, id_model::IdType},
+    models::{
+        api_request_model::{GetByIdsBody, RequestQuery},
+        id_model::IdType,
+    },
     services::{event_service::EventService, trade_service::TradeService},
     utils::api_utils::build_extra_match,
 };
@@ -126,6 +129,23 @@ async fn get_trade_by_match(
     match service.find_one(None, extra_match).await {
         Ok(trade) => HttpResponse::Ok().json(trade),
         Err(err) => HttpResponse::NotFound().json(err),
+    }
+}
+
+#[post("/by-ids")]
+async fn get_by_ids(body: web::Json<GetByIdsBody>, state: web::Data<AppState>) -> impl Responder {
+    let service = TradeService::new(&state.db.main_db());
+
+    // Convert the string IDs into IdType
+    let ids: Vec<IdType> = body
+        .ids
+        .iter()
+        .map(|id| IdType::from_string(id.clone()))
+        .collect();
+
+    match service.find_by_ids(ids).await {
+        Ok(sectors) => HttpResponse::Ok().json(sectors),
+        Err(error) => HttpResponse::NotFound().json(error),
     }
 }
 
@@ -266,6 +286,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_trade_by_match)
             .service(get_trade_by_others_relations)
             .service(count_trades)
+            .service(get_by_ids)
             .service(get_trade_by_id)
             .service(get_trade_by_id_with_relations)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

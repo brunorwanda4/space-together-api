@@ -14,3 +14,8 @@ pub struct RequestQuery {
     pub field: Option<String>,
     pub value: Option<String>,
 }
+
+#[derive(Deserialize)]
+pub struct GetByIdsBody {
+    pub ids: Vec<String>,
+}
