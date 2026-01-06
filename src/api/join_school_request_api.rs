@@ -59,7 +59,7 @@ async fn get_join_request_by_id(
 }
 
 /// ------------------------------------------------------
-/// GET /join-school-requests/with-relations
+/// GET /join-school-requests/others
 /// ------------------------------------------------------
 #[get("/others")]
 async fn get_join_requests_with_relations(

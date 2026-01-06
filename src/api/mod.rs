@@ -15,7 +15,6 @@ mod school_collections;
 mod school_staff;
 mod sector_api;
 mod students_api;
-mod subject;
 mod subjects;
 mod teachers;
 mod template_subject;
@@ -41,7 +40,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     subjects::subject_learning_material::init(cfg);
     subjects::subject_grading_schemes::init(cfg);
     school_api::init(cfg);
-    subject::init(cfg);
     students_api::init(cfg);
     teachers::init(cfg);
     school_staff::init(cfg);

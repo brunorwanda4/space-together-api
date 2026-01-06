@@ -36,9 +36,9 @@ async fn get_all_main_classes(
 }
 
 /// ------------------------------------------------------
-/// GET /main-classes/with-relations
+/// GET /main-classes/others
 /// ------------------------------------------------------
-#[get("/with-relations")]
+#[get("/others")]
 async fn get_all_main_classes_with_relations(
     query: web::Query<RequestQuery>,
     state: web::Data<AppState>,
@@ -77,9 +77,9 @@ async fn get_main_class_by_id(
 }
 
 /// ------------------------------------------------------
-/// GET /main-classes/{id}/with-relations
+/// GET /main-classes/{id}/others
 /// ------------------------------------------------------
-#[get("/{id}/with-relations")]
+#[get("/{id}/others")]
 async fn get_main_class_by_id_with_relations(
     path: web::Path<String>,
     state: web::Data<AppState>,
