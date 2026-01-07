@@ -60,6 +60,27 @@ async fn get_all_main_classes_with_relations(
 }
 
 /// ------------------------------------------------------
+/// GET /main-classes/others
+/// ------------------------------------------------------
+#[get("/others/match")]
+async fn get_all_main_classes_by_other_match(
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let service = MainClassService::new(&state.db.main_db());
+
+    let extra_match = match build_extra_match(&query.field, &query.value) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service.find_one_with_relations(None, extra_match).await {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+/// ------------------------------------------------------
 /// GET /main-classes/{id}
 /// ------------------------------------------------------
 #[get("/{id}")]
@@ -249,6 +270,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_all_main_classes)
             .service(get_all_main_classes_with_relations)
             .service(get_main_class_by_match)
+            .service(get_all_main_classes_by_other_match)
             .service(count_main_classes)
             .service(get_main_class_by_id)
             .service(get_main_class_by_id_with_relations)
