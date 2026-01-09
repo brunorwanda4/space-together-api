@@ -1,6 +1,6 @@
 use actix_web::web;
 
-mod announcement;
+mod announcement_api;
 mod auth;
 mod class_api;
 mod class_subject;
@@ -43,5 +43,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     class_subject::init(cfg);
     class_timetable::init(cfg);
     education_year::init(cfg);
-    announcement::init(cfg);
+    announcement_api::init(cfg);
 }
