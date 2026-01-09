@@ -43,7 +43,9 @@ make_partial! {
             default
         )]
         pub id: Option<ObjectId>,
-        pub content: String,
+
+    pub content: String,
+    pub type: Option<String>,
 
     pub mention: Option<Vec<Mention>>,
     pub published: Published,

@@ -34,6 +34,7 @@ impl AnnouncementService {
             IndexDef::compound(vec![("class_id", 1), ("created_at", -1)], false),
             IndexDef::compound(vec![("published.role", 1), ("created_at", -1)], false),
             IndexDef::single("created_at", false),
+            IndexDef::single("type", false),
             IndexDef::single("published.id", false),
             IndexDef::single("mention.id", false),
         ];
