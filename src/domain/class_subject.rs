@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     domain::{
         class::Class,
+        common_details::SubjectCategory,
         school::School,
-        subjects::subject_category::SubjectCategory,
         teacher::Teacher,
         template_subject::{TemplateSubject, TemplateTopic},
     },

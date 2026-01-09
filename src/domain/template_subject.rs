@@ -3,7 +3,7 @@ use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    domain::{main_class::MainClass, subjects::subject_category::SubjectCategory, user::User},
+    domain::{common_details::SubjectCategory, main_class::MainClass, user::User},
     helpers::object_id_helpers,
     make_partial,
 };

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     domain::{
+        common_details::SubjectCategory,
         common_details::{
             Age, AgeGroup, CertificationOrTraining, CommunicationMethod, DailyAvailability,
             Department, EducationLevel, EmploymentType, Gender, Image, JobTitle, Language,
@@ -11,7 +12,6 @@ use crate::{
             TeachingStyle, UserRole,
         },
         guardian::GuardianInfo,
-        subjects::subject_category::SubjectCategory,
     },
     helpers::object_id_helpers,
 };

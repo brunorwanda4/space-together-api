@@ -15,8 +15,6 @@ pub mod school_staff;
 pub mod school_timetable;
 pub mod sector;
 pub mod student;
-pub mod subject;
-pub mod subjects;
 pub mod teacher;
 pub mod template_subject;
 pub mod trade;

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
-    domain::{class::Class, common_details::Gender, school::School, subject::Subject, user::User},
+    domain::{class::Class, common_details::Gender, school::School, user::User, class_subject::ClassSubject},
     helpers::object_id_helpers,
     make_partial,
 };
@@ -102,7 +102,7 @@ pub struct TeacherWithRelations {
     pub creator: Option<User>,
     pub school: Option<School>,
     pub classes: Option<Vec<Class>>,
-    pub subjects: Option<Vec<Subject>>,
+    pub subjects: Option<Vec<ClassSubject>>,
 }
 
 impl fmt::Display for TeacherType {

@@ -1,6 +1,6 @@
 use mongodb::bson::oid::ObjectId;
 
-use crate::{errors::AppError, models::id_model::IdType};
+use crate::{errors::AppError, };
 
 
 
