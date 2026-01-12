@@ -6,6 +6,7 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
         // MATCH
         // ======================================================
         doc! { "$match": match_stage },
+
         // ======================================================
         // NORMALIZE IDS
         // ======================================================
@@ -18,15 +19,23 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                         "$published.id"
                     ]
                 },
-                "class_id": {
-                    "$cond": [
-                        { "$eq": [{ "$type": "$class_id" }, "string"] },
-                        { "$toObjectId": "$class_id" },
-                        "$class_id"
-                    ]
+
+                "classes_ids": {
+                    "$map": {
+                        "input": { "$ifNull": ["$classes_ids", []] },
+                        "as": "cid",
+                        "in": {
+                            "$cond": [
+                                { "$eq": [{ "$type": "$$cid" }, "string"] },
+                                { "$toObjectId": "$$cid" },
+                                "$$cid"
+                            ]
+                        }
+                    }
                 }
             }
         },
+
         // ======================================================
         // NORMALIZE MENTIONS
         // ======================================================
@@ -50,8 +59,9 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 }
             }
         },
+
         // ======================================================
-        // PUBLISHED USER (ROLE-AWARE + user_type)
+        // PUBLISHED USER (ROLE-AWARE)
         // ======================================================
         doc! {
             "$lookup": {
@@ -113,6 +123,7 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 "as": "published_staff"
             }
         },
+
         // ======================================================
         // MERGE PUBLISHED USER
         // ======================================================
@@ -129,17 +140,16 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 }
             }
         },
+
         // ======================================================
-        // MENTIONED USERS (TAGGED)
+        // MENTIONED USERS
         // ======================================================
         doc! {
             "$lookup": {
                 "from": "students",
                 "localField": "mention.id",
                 "foreignField": "_id",
-                "pipeline": [
-                    { "$addFields": { "user_type": "STUDENT" } }
-                ],
+                "pipeline": [{ "$addFields": { "user_type": "STUDENT" } }],
                 "as": "mentioned_students"
             }
         },
@@ -148,9 +158,7 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 "from": "teachers",
                 "localField": "mention.id",
                 "foreignField": "_id",
-                "pipeline": [
-                    { "$addFields": { "user_type": "TEACHER" } }
-                ],
+                "pipeline": [{ "$addFields": { "user_type": "TEACHER" } }],
                 "as": "mentioned_teachers"
             }
         },
@@ -159,9 +167,7 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 "from": "school_staff",
                 "localField": "mention.id",
                 "foreignField": "_id",
-                "pipeline": [
-                    { "$addFields": { "user_type": "SCHOOLSTAFF" } }
-                ],
+                "pipeline": [{ "$addFields": { "user_type": "SCHOOLSTAFF" } }],
                 "as": "mentioned_staff"
             }
         },
@@ -176,23 +182,19 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 }
             }
         },
+
         // ======================================================
-        // CLASS LOOKUP
+        // CLASSES LOOKUP (ARRAY)
         // ======================================================
         doc! {
             "$lookup": {
                 "from": "classes",
-                "localField": "class_id",
+                "localField": "classes_ids",
                 "foreignField": "_id",
-                "as": "class"
+                "as": "classes"
             }
         },
-        doc! {
-            "$unwind": {
-                "path": "$class",
-                "preserveNullAndEmptyArrays": true
-            }
-        },
+
         // ======================================================
         // CLEANUP
         // ======================================================
@@ -206,9 +208,10 @@ pub fn announcement_pipeline(match_stage: Document) -> Vec<Document> {
                 "mentioned_staff": 0
             }
         },
+
         // ======================================================
         // SORT
         // ======================================================
-        doc! { "$sort": { "created_at": -1 } },
+        doc! { "$sort": { "updated_at": -1 } },
     ]
 }

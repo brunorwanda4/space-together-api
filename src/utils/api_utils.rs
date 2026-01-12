@@ -11,7 +11,7 @@ pub fn build_extra_match(
         let mut bson_value: Bson = value.clone().into();
 
         // If ends with "_id" convert to ObjectId
-        if field.ends_with("_id") {
+        if field.ends_with("_id") || field.ends_with("_ids"){
             match parse_object_id_value(value) {
                 Ok(object_id) => bson_value = object_id.into(),
                 Err(e) => return Err(HttpResponse::BadRequest().json(e)),

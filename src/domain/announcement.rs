@@ -51,11 +51,11 @@ make_partial! {
     pub published: Published,
 
     #[serde(
-        serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize",
+        serialize_with = "object_id_helpers::serialize_opt_vec",
+        deserialize_with = "object_id_helpers::deserialize_opt_vec",
         default
     )]
-    pub class_id: Option<ObjectId>,
+  pub classes_ids: Option<Vec<ObjectId>>,
 
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
@@ -70,10 +70,7 @@ pub struct AnnouncementWithRelations {
     #[serde(flatten)]
     pub announcement: Announcement,
 
-    // ========================
-    // RELATIONS (READ-ONLY)
-    // ========================
     pub published_user: Option<RelatedUser>,
     pub mentioned_users: Option<Vec<RelatedUser>>,
-    pub class: Option<Class>,
+    pub classes: Option<Vec<Class>>, // also i update this on from class into classes
 }

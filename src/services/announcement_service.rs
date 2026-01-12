@@ -31,13 +31,23 @@ impl AnnouncementService {
 
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
         let indexes = vec![
-            IndexDef::compound(vec![("class_id", 1), ("created_at", -1)], false),
-            IndexDef::compound(vec![("published.role", 1), ("created_at", -1)], false),
+            IndexDef::compound(
+                vec![("classes_ids", 1), ("created_at", -1)],
+                false,
+            ),
+            IndexDef::compound(
+                vec![("published.role", 1), ("created_at", -1)],
+                false,
+            ),
+            IndexDef::compound(
+                vec![("published.id", 1), ("created_at", -1)],
+                false,
+            ),
+            IndexDef::single("mention.id", false),
             IndexDef::single("created_at", false),
             IndexDef::single("type", false),
-            IndexDef::single("published.id", false),
-            IndexDef::single("mention.id", false),
         ];
+
 
         let repo = BaseRepository::new(
             self.collection
@@ -100,7 +110,7 @@ impl AnnouncementService {
     ) -> Result<Paginated<Announcement>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let searchable = ["content", "_id"];
+        let searchable = ["content", "_id", "classes_ids"];
 
         let (data, total, total_pages, current_page) = repo
             .get_all::<Announcement>(filter, &searchable, limit, skip, extra_match)
@@ -210,7 +220,7 @@ impl AnnouncementService {
             "published.role",
             "mention.id",
             "mention.role",
-            "class_id",
+            "classes_ids"
         ];
 
         let total = base_repo.count(filter, &searchable, extra_match).await?;
