@@ -1,7 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::school::{AffiliationType, SchoolType};
+use crate::domain::{
+    common_details::RelatedUser,
+    school::{AffiliationType, SchoolType},
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SchoolToken {
@@ -20,6 +23,7 @@ pub struct SchoolToken {
 
     pub created_at: Option<DateTime<Utc>>,
 
+    pub member: Option<RelatedUser>,
     pub exp: usize,
     pub iat: usize,
 }

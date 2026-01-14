@@ -228,6 +228,7 @@ impl JoinSchoolRequestService {
         invited_user_id: ObjectId,
         responded_by: Option<ObjectId>,
         state: web::Data<AppState>,
+        logged_user: &AuthUserDto,
     ) -> Result<JoinSchoolRequestResponseToken, AppError> {
         let request = self.find_one(Some(id), None).await?;
         if !matches!(request.status, JoinStatus::Pending) {
@@ -259,7 +260,7 @@ impl JoinSchoolRequestService {
         let school_service = SchoolService::new(&state.db.main_db());
 
         let school_token = school_service
-            .create_school_token(&IdType::ObjectId(request.school_id))
+            .create_school_token(&IdType::ObjectId(request.school_id), logged_user, &state)
             .await?;
 
         Ok(JoinSchoolRequestResponseToken { school_token })
@@ -675,7 +676,7 @@ impl JoinSchoolRequestService {
         let school_service = SchoolService::new(&state.db.main_db());
 
         let school_token = school_service
-            .create_school_token(&IdType::ObjectId(school_id))
+            .create_school_token(&IdType::ObjectId(school_id), auth_user, &state)
             .await?;
 
         Ok(JoinSchoolRequestResponseToken { school_token })

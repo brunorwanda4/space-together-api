@@ -8,11 +8,9 @@ use crate::{
         user::UpdateUserDto,
     },
     middleware::jwt_middleware::JwtMiddleware,
-    models::{id_model::IdType, request_error_model::ReqErrModel},
+    models::request_error_model::ReqErrModel,
     repositories::user_repo::UserRepo,
-    services::{
-        auth_service::AuthService, school_service::SchoolService, user_service::UserService,
-    },
+    services::{auth_service::AuthService, user_service::UserService},
 };
 
 #[post("/register")]

@@ -13,7 +13,7 @@ use crate::{
         auth_user::AuthUserDto,
         class::{Class, ClassLevelType, ClassSettings, ClassType},
         class_subject::ClassSubject,
-        common_details::Paginated,
+        common_details::{Paginated, RelatedUser, UserRole},
         school::{School, SchoolAcademicRequest, SchoolAcademicResponse, SchoolPartial},
     },
     errors::AppError,
@@ -22,16 +22,19 @@ use crate::{
         id_model::IdType,
         mongo_model::{CountDoc, IndexDef},
     },
-    repositories::base_repo::BaseRepository,
+    repositories::{base_repo::BaseRepository, user_repo::UserRepo},
     services::{
         class_service::ClassService, class_subject_service::ClassSubjectService,
         cloudinary_service::CloudinaryService, main_class_service::MainClassService,
-        template_subject_service::TemplateSubjectService, trade_service::TradeService,
+        school_staff_service::SchoolStaffService, student_service::StudentService,
+        teacher_service::TeacherService, template_subject_service::TemplateSubjectService,
+        trade_service::TradeService,
     },
     utils::{
         code::generate_code,
         mongo_utils::extract_valid_fields,
         names::{is_valid_name, is_valid_username},
+        object_id::parse_object_id_value,
         school_token::{create_school_token, verify_school_token},
     },
 };
@@ -296,15 +299,81 @@ impl SchoolService {
         let school = self.find_one(Some(&school_id), None).await?;
 
         // create a fresh token
-        let dto = to_school_school_token(&school).map_err(|e| AppError { message: e })?;
+        let dto = to_school_school_token(&school, claims.member)?;
         let new_token = create_school_token(dto);
 
         Ok(new_token)
     }
 
-    pub async fn create_school_token(&self, id: &IdType) -> Result<String, AppError> {
+    pub async fn create_school_token(
+        &self,
+        id: &IdType,
+        member: &AuthUserDto,
+        state: &AppState,
+    ) -> Result<String, AppError> {
         let school = self.find_one(Some(id), None).await?;
-        let school_token = to_school_school_token(&school).map_err(|e| AppError { message: e })?;
+        let member_id = parse_object_id_value(&member.id)?;
+        let member_role = member.role.as_ref().ok_or(AppError {
+            message: "You should have user role".to_string(),
+        })?;
+
+        let school_member: Option<RelatedUser> = match member_role {
+            UserRole::TEACHER => {
+                let teacher_service =
+                    TeacherService::new(&state.db.get_db(&school.database_name.clone().unwrap()));
+
+                let teacher = teacher_service
+                    .find_one(None, Some(doc! {"user_id": member_id}))
+                    .await?;
+
+                Some(RelatedUser::TEACHER(teacher))
+            }
+
+            UserRole::STUDENT => {
+                let student_service =
+                    StudentService::new(&state.db.get_db(&school.database_name.clone().unwrap()));
+
+                let student = student_service
+                    .find_one(None, Some(doc! {"user_id": member_id}))
+                    .await?;
+
+                Some(RelatedUser::STUDENT(student))
+            }
+
+            UserRole::SCHOOLSTAFF => {
+                let school_staff_service = SchoolStaffService::new(
+                    &state.db.get_db(&school.database_name.clone().unwrap()),
+                );
+
+                let school_staff = match school_staff_service
+                    .find_one(None, Some(doc! { "user_id": member_id }))
+                    .await
+                {
+                    Ok(school_staff) => Some(RelatedUser::SCHOOLSTAFF(school_staff)),
+                    Err(_) => {
+                        if school.creator_id == Some(member_id) {
+                            let user_repo = UserRepo::new(&state.db.main_db());
+                            let user = user_repo
+                                .find_by_id(&IdType::from_object_id(member_id))
+                                .await?;
+
+                            match user {
+                                Some(user) => Some(RelatedUser::USER(user)),
+                                None => None,
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                };
+
+                school_staff
+            }
+
+            UserRole::ADMIN => None,
+        };
+
+        let school_token = to_school_school_token(&school, school_member)?;
         let token = create_school_token(school_token);
 
         Ok(token)

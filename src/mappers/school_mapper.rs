@@ -1,12 +1,20 @@
-use crate::{domain::school::School, models::school_token_model::SchoolToken};
+use crate::{
+    domain::{common_details::RelatedUser, school::School},
+    errors::AppError,
+    models::school_token_model::SchoolToken,
+};
 
-pub fn to_school_school_token(school: &School) -> Result<SchoolToken, String> {
+pub fn to_school_school_token(
+    school: &School,
+    member: Option<RelatedUser>,
+) -> Result<SchoolToken, AppError> {
     let school_db = match &school.database_name {
         Some(db_name) => db_name.clone(),
         None => {
-            return Err(
-                "❌ School does not have a database_name. Token cannot be created.".to_string(),
-            );
+            return Err(AppError {
+                message: "School does not have a database_name. Token cannot be created."
+                    .to_string(),
+            });
         }
     };
     Ok(SchoolToken {
@@ -29,6 +37,7 @@ pub fn to_school_school_token(school: &School) -> Result<SchoolToken, String> {
         affiliation: school.affiliation.clone(),
         database_name: school_db.clone(),
         created_at: school.created_at,
+        member,
         exp: 0,
         iat: 0,
     })

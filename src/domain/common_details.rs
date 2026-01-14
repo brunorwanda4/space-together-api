@@ -2,7 +2,7 @@ use chrono::{NaiveTime, Weekday};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::domain::{school_staff::SchoolStaff, student::Student, teacher::Teacher};
+use crate::domain::{school_staff::SchoolStaff, student::Student, teacher::Teacher, user::User};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
@@ -30,6 +30,7 @@ pub enum RelatedUser {
     STUDENT(Student),
     TEACHER(Teacher),
     SCHOOLSTAFF(SchoolStaff),
+    USER(User),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

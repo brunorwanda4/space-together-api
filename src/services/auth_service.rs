@@ -150,7 +150,7 @@ impl<'a> AuthService<'a> {
 
                 Some(
                     school_service
-                        .create_school_token(&IdType::from_object_id(school_id))
+                        .create_school_token(&IdType::from_object_id(school_id), &dto, state)
                         .await
                         .map_err(|e| e.message)?,
                 )

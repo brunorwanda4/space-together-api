@@ -126,7 +126,10 @@ async fn create_school(
                 }
             }
 
-            let token = match service.create_school_token(&school_id).await {
+            let token = match service
+                .create_school_token(&school_id, &logged_user, &state)
+                .await
+            {
                 Ok(token) => token,
                 Err(err) => {
                     return HttpResponse::BadRequest().json(err);

@@ -23,6 +23,7 @@ pub fn create_school_token(school: SchoolToken) -> String {
         created_at: school.created_at,
         exp: expiration as usize,
         iat: issued_at as usize,
+        member: school.member,
     };
 
     encode(

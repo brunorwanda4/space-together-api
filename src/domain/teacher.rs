@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
-    domain::{class::Class, common_details::Gender, school::School, user::User, class_subject::ClassSubject},
+    domain::{
+        class::Class, class_subject::ClassSubject, common_details::Gender, school::School,
+        user::User,
+    },
     helpers::object_id_helpers,
     make_partial,
 };
@@ -22,7 +25,6 @@ make_partial! {
 pub struct Teacher {
     #[serde(
         rename = "_id",
-        alias = "id",
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
         skip_serializing_if = "Option::is_none",

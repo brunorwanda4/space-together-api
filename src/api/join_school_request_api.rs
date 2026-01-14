@@ -172,7 +172,13 @@ async fn accept_join_request(
     let service = JoinSchoolRequestService::new(&state.db.main_db());
 
     match service
-        .accept_request(&id, invited_user_id, Some(invited_user_id), state.clone())
+        .accept_request(
+            &id,
+            invited_user_id,
+            Some(invited_user_id),
+            state.clone(),
+            &logged_user,
+        )
         .await
     {
         Ok(token) => HttpResponse::Ok().json(token),
