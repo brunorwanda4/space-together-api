@@ -1,13 +1,14 @@
 use crate::{
+    config::state::AppState,
     domain::{
-        auth::{LoginUser, RegisterUser},
+        auth::{LoginResponse, LoginUser, RegisterUser},
         common_details::UserRole,
         user::{UpdateUserDto, User},
     },
     mappers::user_mapper::to_auth_dto,
     models::id_model::IdType,
     repositories::user_repo::UserRepo,
-    services::user_service::UserService,
+    services::{school_service::SchoolService, user_service::UserService},
     utils::{
         email::is_valid_email,
         hash::verify_password,
@@ -121,28 +122,59 @@ impl<'a> AuthService<'a> {
     }
 
     /// ✅ Log in existing user
-    pub async fn login(&self, data: LoginUser) -> Result<(String, User), String> {
+    pub async fn login(&self, data: LoginUser, state: &AppState) -> Result<LoginResponse, String> {
         let user = self
             .repo
             .find_by_email(&data.email)
             .await
-            .map_err(|_| "Failed to connect to database, please try again".to_string())?;
+            .map_err(|_| "Failed to connect to database, please try again")?;
 
-        if let Some(user) = user {
-            if let Some(ref hash) = user.password_hash {
-                if verify_password(hash, &data.password) {
-                    let dto = to_auth_dto(&user);
-                    let token = create_jwt(&dto);
-                    return Ok((token, sanitize_user(user)));
-                } else {
-                    return Err("Incorrect password, please try again".to_string());
-                }
-            } else {
-                return Err("This account does not have a password set".to_string());
-            }
+        let user = user.ok_or("No user found with this email address")?;
+
+        let hash = user
+            .password_hash
+            .as_ref()
+            .ok_or("This account does not have a password set")?;
+
+        if !verify_password(hash, &data.password) {
+            return Err("Incorrect password, please try again".into());
         }
 
-        Err("No user found with this email address".to_string())
+        let dto = to_auth_dto(&user);
+        let access_token = create_jwt(&dto);
+
+        let school_access_token = match user.current_school_id {
+            Some(school_id) => {
+                let db = state.db.main_db();
+                let school_service = SchoolService::new(&db);
+
+                Some(
+                    school_service
+                        .create_school_token(&IdType::from_object_id(school_id))
+                        .await
+                        .map_err(|e| e.message)?,
+                )
+            }
+            None => None,
+        };
+
+        let user = sanitize_user(user);
+
+        Ok(LoginResponse {
+            id: user.id.map(|i| i.to_string()),
+            email: user.email,
+            name: user.name,
+            access_token,
+            image: user.image,
+            role: user.role,
+            username: user.username,
+            bio: user.bio,
+            schools: user
+                .schools
+                .map(|ids| ids.into_iter().map(|id| id.to_string()).collect()),
+            current_school_id: user.current_school_id.map(|id| id.to_string()),
+            school_access_token,
+        })
     }
 
     /// ✅ Get user info from JWT

@@ -42,49 +42,13 @@ async fn register_user(
 #[post("/login")]
 async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> impl Responder {
     let db = state.db.main_db();
-
     let user_repo = UserRepo::new(&db);
     let auth_service = AuthService::new(&user_repo);
 
-    let (access_token, user) = match auth_service.login(data.into_inner()).await {
-        Ok(res) => res,
-        Err(message) => {
-            return HttpResponse::Unauthorized().json(ReqErrModel { message });
-        }
-    };
-
-    let school_access_token: Option<String> = match user.current_school_id {
-        Some(school_id) => {
-            let school_service = SchoolService::new(&db);
-
-            match school_service
-                .create_school_token(&IdType::from_object_id(school_id))
-                .await
-            {
-                Ok(token) => Some(token),
-                Err(e) => {
-                    return HttpResponse::BadRequest().json(e);
-                }
-            }
-        }
-        None => None, // User has no school → undefined (null in JSON)
-    };
-
-    HttpResponse::Ok().json(serde_json::json!({
-        "id": user.id.map(|i| i.to_string()),
-        "email": user.email,
-        "name": user.name,
-        "accessToken": access_token,
-        "image": user.image,
-        "role": user.role,
-        "username": user.username,
-        "bio": user.bio,
-        "schools": user.schools.map(|ids| {
-            ids.into_iter().map(|id| id.to_string()).collect::<Vec<_>>()
-        }),
-        "current_school_id": user.current_school_id.map(|id| id.to_string()),
-        "schoolAccessToken": school_access_token
-    }))
+    match auth_service.login(data.into_inner(), &state).await {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
+    }
 }
 
 #[get("/me")]

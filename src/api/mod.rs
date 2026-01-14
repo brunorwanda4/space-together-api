@@ -1,7 +1,7 @@
 use actix_web::web;
 
 mod announcement_api;
-mod auth;
+mod auth_api;
 mod class_api;
 mod class_subject;
 mod class_timetable;
@@ -26,7 +26,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
 
     database_status::init(cfg);
     sector_api::init(cfg);
-    auth::init(cfg);
+    auth_api::init(cfg);
     users::init(cfg);
     trade_api::init(cfg);
     main_class_api::init(cfg);
