@@ -31,7 +31,7 @@ async fn register_user(
             "role": user.role,
             "username": user.username,
             "bio": user.bio,
-            "schoolAccessToken": ""
+            "school_access_token": ""
         })),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
@@ -114,7 +114,7 @@ async fn onboarding_user(
             "role": user.role,
             "username": user.username,
             "bio": user.bio,
-            "schoolAccessToken": ""
+            "school_access_token": ""
         })),
         Err(message) => HttpResponse::BadRequest().json(ReqErrModel { message }),
     }
