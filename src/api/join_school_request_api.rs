@@ -4,17 +4,12 @@ use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
-    config::state::AppState,
-    domain::{
+    config::state::AppState, domain::{
         auth_user::AuthUserDto,
         join_school_request::{CreateJoinSchoolRequest, JoinSchoolByCode},
-    },
-    guards::role_guard,
-    models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{
+    }, guards::role_guard,  models::{api_request_model::RequestQuery, id_model::IdType}, services::{
         event_service::EventService, join_school_request_service::JoinSchoolRequestService,
-    },
-    utils::api_utils::build_extra_match,
+    }, utils::api_utils::build_extra_match
 };
 
 /// ------------------------------------------------------
@@ -105,6 +100,7 @@ async fn create_join_school(
                     &state_clone,
                     "join_school_request",
                     "new",
+                   None,
                     &serde_json::json!({ "action": "created", "by_user": auth_user.id }),
                 )
                 .await;
@@ -138,6 +134,7 @@ async fn join_school_by_code(
                     &state_clone,
                     "join_school_request",
                     "new",
+                     None,
                     &serde_json::json!({ "action": "created", "by_user": auth_user.id }),
                 )
                 .await;

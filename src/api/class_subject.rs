@@ -2,11 +2,7 @@ use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responde
 use mongodb::bson::doc;
 
 use crate::{
-    config::state::AppState,
-    domain::class_subject::{ClassSubject, ClassSubjectPartial},
-    models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{class_subject_service::ClassSubjectService, event_service::EventService},
-    utils::{api_utils::build_extra_match, db_utils::get_database},
+    config::state::AppState, domain::class_subject::{ClassSubject, ClassSubjectPartial}, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{class_subject_service::ClassSubjectService, event_service::EventService}, utils::{api_utils::build_extra_match, db_utils::get_database}
 };
 
 /// --------------------------------------
@@ -167,6 +163,7 @@ async fn create_class_subject(
                         &state_clone,
                         "class_subject",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &clone,
                     )
                     .await;
@@ -204,6 +201,7 @@ async fn update_class_subject(
                         &state_clone,
                         "class_subject",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &clone,
                     )
                     .await;
@@ -240,6 +238,7 @@ async fn delete_class_subject(
                         &state_clone,
                         "class_subject",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &clone,
                     )
                     .await;

@@ -2,16 +2,12 @@ use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responde
 use mongodb::bson::doc;
 
 use crate::{
-    config::state::AppState,
-    domain::{
+    config::state::AppState, domain::{
         auth_user::AuthUserDto,
         teacher::{Teacher, UpdateTeacher},
-    },
-    models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{event_service::EventService, teacher_service::TeacherService},
-    utils::{
+    }, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{event_service::EventService, teacher_service::TeacherService}, utils::{
         api_utils::build_extra_match, db_utils::get_database, object_id::parse_object_id_value,
-    },
+    }
 };
 
 /// ------------------------------------------------------
@@ -186,6 +182,7 @@ async fn create_teacher(
                         &state_clone,
                         "teacher",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &teacher_clone,
                     )
                     .await;
@@ -224,6 +221,7 @@ async fn update_teacher(
                         &state_clone,
                         "teacher",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &teacher_clone,
                     )
                     .await;
@@ -261,6 +259,7 @@ async fn delete_teacher(
                         &state_clone,
                         "teacher",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &teacher_clone,
                     )
                     .await;

@@ -2,14 +2,10 @@ use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 use mongodb::bson::doc;
 
 use crate::{
-    config::state::AppState,
-    domain::{
+    config::state::AppState, domain::{
         auth_user::AuthUserDto,
         education_year::{EducationYear, EducationYearPartial},
-    },
-    models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{education_year_service::EducationYearService, event_service::EventService},
-    utils::api_utils::build_extra_match,
+    },  models::{api_request_model::RequestQuery, id_model::IdType}, services::{education_year_service::EducationYearService, event_service::EventService}, utils::api_utils::build_extra_match
 };
 
 /// ------------------------------------------------------
@@ -137,6 +133,7 @@ async fn create_education_year(
                         &state_clone,
                         "education_year",
                         &id.to_hex(),
+                         None,
                         &cloned,
                     )
                     .await;
@@ -183,6 +180,7 @@ async fn update_education_year(
                         &state_clone,
                         "education_year",
                         &id.to_hex(),
+                        None,
                         &cloned,
                     )
                     .await;
@@ -232,6 +230,7 @@ async fn delete_education_year(
                             &state_clone,
                             "education_year",
                             &id.to_hex(),
+                            None,
                             &cloned,
                         )
                         .await;

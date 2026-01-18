@@ -1,4 +1,5 @@
 use chrono::{NaiveTime, Weekday};
+use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -31,6 +32,18 @@ pub enum RelatedUser {
     TEACHER(Teacher),
     SCHOOLSTAFF(SchoolStaff),
     USER(User),
+}
+
+// Add this implementation to RelatedUser in common_details.rs
+impl RelatedUser {
+    pub fn get_id(&self) -> Option<String> {
+        match self {
+            RelatedUser::STUDENT(s) => s.id.as_ref().map(|id| id.to_hex()),
+            RelatedUser::TEACHER(t) => t.id.as_ref().map(|id| id.to_hex()),
+            RelatedUser::SCHOOLSTAFF(ss) => ss.id.as_ref().map(|id| id.to_hex()),
+            RelatedUser::USER(u) => u.id.as_ref().map(|id| id.to_hex()),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

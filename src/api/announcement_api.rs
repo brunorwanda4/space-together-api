@@ -1,15 +1,10 @@
 use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
-use mongodb::bson::doc;
 
 use crate::{
-    config::state::AppState,
-    domain::{
+    config::state::AppState, domain::{
         announcement::{Announcement, AnnouncementPartial},
         auth_user::AuthUserDto,
-    },
-    models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{announcement_service::AnnouncementService, event_service::EventService},
-    utils::{api_utils::build_extra_match, db_utils::get_database},
+    }, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{announcement_service::AnnouncementService, event_service::EventService}, utils::{api_utils::build_extra_match, db_utils::get_database}
 };
 
 #[get("")]
@@ -150,6 +145,7 @@ async fn create_announcement(
                         &state_clone,
                         "announcement",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &cloned,
                     )
                     .await;
@@ -186,6 +182,7 @@ async fn update_announcement(
                         &state_clone,
                         "announcement",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &cloned,
                     )
                     .await;
@@ -221,6 +218,7 @@ async fn delete_announcement(
                         &state_clone,
                         "announcement",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &cloned,
                     )
                     .await;

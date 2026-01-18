@@ -157,6 +157,7 @@ async fn create_main_class(
                         &state_clone,
                         "main_class",
                         &id.to_hex(),
+                        None,
                         &clone,
                     )
                     .await;
@@ -193,6 +194,7 @@ async fn update_main_class(
                         &state_clone,
                         "main_class",
                         &id.to_hex(),
+                        None,
                         &clone,
                     )
                     .await;
@@ -228,6 +230,7 @@ async fn delete_main_class(
                         &state_clone,
                         "main_class",
                         &id.to_hex(),
+                        None,
                         &clone,
                     )
                     .await;

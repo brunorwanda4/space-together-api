@@ -185,6 +185,7 @@ async fn create_template_subject(
                         &state_clone,
                         "template_subject",
                         &id.to_hex(),
+                        None,
                         &subject_clone,
                     )
                     .await;
@@ -238,6 +239,7 @@ async fn update_template_subject(
                         &state_clone,
                         "template_subject",
                         &id.to_hex(),
+                        None,
                         &subject_clone,
                     )
                     .await;
@@ -283,6 +285,7 @@ async fn delete_template_subject(
                         &state_clone,
                         "template_subject",
                         &id.to_hex(),
+                        None,
                         &subject_clone,
                     )
                     .await;

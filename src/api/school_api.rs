@@ -100,7 +100,7 @@ async fn create_school(
 
             actix_rt::spawn(async move {
                 if let Some(id) = clone.id {
-                    EventService::broadcast_created(&state_clone, "school", &id.to_hex(), &clone)
+                    EventService::broadcast_created(&state_clone, "school", &id.to_hex(),None, &clone)
                         .await;
                 }
             });
@@ -168,7 +168,7 @@ async fn update_school(
 
             actix_rt::spawn(async move {
                 if let Some(id) = clone.id {
-                    EventService::broadcast_updated(&state_clone, "school", &id.to_hex(), &clone)
+                    EventService::broadcast_updated(&state_clone, "school", &id.to_hex(),None, &clone)
                         .await;
                 }
             });
@@ -198,7 +198,7 @@ async fn delete_school(
 
             actix_rt::spawn(async move {
                 if let Some(id) = clone.id {
-                    EventService::broadcast_deleted(&state_clone, "school", &id.to_hex(), &clone)
+                    EventService::broadcast_deleted(&state_clone, "school", &id.to_hex(), None,&clone)
                         .await;
                 }
             });
@@ -303,7 +303,8 @@ async fn setup_school_academics(
                 EventService::broadcast_updated(
                     &state_clone,
                     "school_academics",
-                    &school_id_hex,
+                    &school_id_hex.clone(),
+                   None,
                     &serde_json::json!({
                         "school_id": school_id_hex,
                         "created_classes": response.created_classes,

@@ -171,6 +171,7 @@ async fn create_trade(
                         &state_clone,
                         "trade",
                         &id.to_hex(),
+                        None,
                         &trade_clone,
                     )
                     .await;
@@ -207,6 +208,7 @@ async fn update_trade(
                         &state_clone,
                         "trade",
                         &id.to_hex(),
+                        None,
                         &trade_clone,
                     )
                     .await;
@@ -242,6 +244,7 @@ async fn delete_trade(
                         &state_clone,
                         "trade",
                         &id.to_hex(),
+                        None,
                         &trade_clone,
                     )
                     .await;

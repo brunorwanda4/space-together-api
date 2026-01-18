@@ -44,6 +44,7 @@ async fn generate_timetable(
                         &state_clone,
                         "class_timetable",
                         &id.to_hex(),
+                        None,
                         &timetable_clone,
                     )
                     .await;

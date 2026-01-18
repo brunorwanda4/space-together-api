@@ -4,17 +4,12 @@ use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responde
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
-    config::state::AppState,
-    domain::{
+    config::state::AppState, domain::{
         auth_user::AuthUserDto,
         class::{Class, UpdateClass},
-    },
-    errors::AppError,
-    models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{class_service::ClassService, event_service::EventService},
-    utils::{
+    }, errors::AppError, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{class_service::ClassService, event_service::EventService}, utils::{
         api_utils::build_extra_match, db_utils::get_database, object_id::parse_object_id_value,
-    },
+    }
 };
 
 #[get("")]
@@ -159,13 +154,13 @@ async fn create_class(
         Ok(class) => {
             let class_clone = class.clone();
             let state_clone = state.clone();
-
             actix_rt::spawn(async move {
                 if let Some(id) = class_clone.id {
                     EventService::broadcast_created(
                         &state_clone,
                         "class",
                         &id.to_hex(),
+                        get_school_id_from_request(&req),
                         &class_clone,
                     )
                     .await;
@@ -201,6 +196,7 @@ async fn update_class(
                         &state_clone,
                         "class",
                         &id.to_hex(),
+                 get_school_id_from_request(&req),
                         &class_clone,
                     )
                     .await;
@@ -228,13 +224,13 @@ async fn delete_class(
         Ok(class) => {
             let class_clone = class.clone();
             let state_clone = state.clone();
-
             actix_rt::spawn(async move {
                 if let Some(id) = class_clone.id {
                     EventService::broadcast_deleted(
                         &state_clone,
                         "class",
                         &id.to_hex(),
+                        get_school_id_from_request(&req),
                         &class_clone,
                     )
                     .await;
@@ -325,6 +321,7 @@ async fn create_many_subclasses_by_class_id(
                             &state_clone,
                             "class",
                             &id.to_hex(),
+                             get_school_id_from_request(&req),
                             subclass,
                         )
                         .await;

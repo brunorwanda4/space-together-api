@@ -96,6 +96,7 @@ async fn create_user(
                         &state_clone,
                         "user",
                         &id.to_hex(),
+                        None,
                         &user_clone,
                     )
                     .await;
@@ -152,6 +153,7 @@ async fn update_user(
                         &state_clone,
                         "user",
                         &id.to_hex(),
+                        None,
                         &user_clone,
                     )
                     .await;
@@ -195,7 +197,7 @@ async fn delete_user(
                 let state_clone = state.clone();
                 actix_rt::spawn(async move {
                     if let Some(id) = user.id {
-                        EventService::broadcast_deleted(&state_clone, "user", &id.to_hex(), &user)
+                        EventService::broadcast_deleted(&state_clone, "user", &id.to_hex(),None, &user)
                             .await;
                     }
                 });
@@ -242,6 +244,7 @@ async fn add_school_to_user(
                         &state_clone,
                         "user",
                         &id.to_hex(),
+                        None,
                         &user_clone,
                     )
                     .await;
@@ -287,6 +290,7 @@ async fn remove_school_from_user(
                         &state_clone,
                         "user",
                         &id.to_hex(),
+                        None,
                         &user_clone,
                     )
                     .await;

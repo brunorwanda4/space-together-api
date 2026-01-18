@@ -4,14 +4,10 @@ use actix_web::{delete, get, post, put, web, HttpMessage, HttpRequest, HttpRespo
 use mongodb::bson::{doc, oid::ObjectId};
 
 use crate::{
-    config::state::AppState,
-    domain::school_timetable::{SchoolTimetable, SchoolTimetablePartial},
-    models::{api_request_model::RequestQuery, id_model::IdType, school_token_model::SchoolToken},
-    services::{
+    config::state::AppState, domain::school_timetable::{SchoolTimetable, SchoolTimetablePartial}, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType, school_token_model::SchoolToken}, services::{
         education_year_service::EducationYearService, event_service::EventService,
         school_timetable_service::SchoolTimetableService,
-    },
-    utils::api_utils::build_extra_match,
+    }, utils::api_utils::build_extra_match
 };
 
 /// ==========================================================================
@@ -218,6 +214,7 @@ async fn create_timetable(
                         &state_clone,
                         "school_timetable",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &clone,
                     )
                     .await;
@@ -264,6 +261,7 @@ async fn update_timetable(
                         &state_clone,
                         "school_timetable",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &clone,
                     )
                     .await;
@@ -311,6 +309,7 @@ async fn delete_timetable(
                             &state_clone,
                             "school_timetable",
                             &id.to_hex(),
+                             get_school_id_from_request(&req),
                             &clone,
                         )
                         .await;
@@ -370,6 +369,7 @@ async fn generate_timetable(
                         &state_clone,
                         "class_timetable",
                         &id.to_hex(),
+                         get_school_id_from_request(&req),
                         &timetable_clone,
                     )
                     .await;
