@@ -5,6 +5,7 @@ mod auth_api;
 mod class_api;
 mod class_subject;
 mod class_timetable;
+mod comment_api;
 mod database_status;
 mod education_year;
 mod events;
@@ -44,4 +45,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     class_timetable::init(cfg);
     education_year::init(cfg);
     announcement_api::init(cfg);
+    comment_api::init(cfg);
 }

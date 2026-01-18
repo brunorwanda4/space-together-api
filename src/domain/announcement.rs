@@ -1,36 +1,15 @@
 use crate::{
     domain::{
         class::Class,
-        common_details::{RelatedUser, UserRole},
+        common_details::{RelatedUser, },
     },
     helpers::object_id_helpers,
     make_partial,
+    schema::common_schema::ActorRef,
 };
 use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Mention {
-    #[serde(
-        serialize_with = "object_id_helpers::serialize_oid",
-        deserialize_with = "object_id_helpers::deserialize_oid",
-        default
-    )]
-    pub id: ObjectId,
-    pub role: UserRole,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Published {
-    #[serde(
-        serialize_with = "object_id_helpers::serialize_oid",
-        deserialize_with = "object_id_helpers::deserialize_oid",
-        default
-    )]
-    pub id: ObjectId,
-    pub role: UserRole,
-}
 
 make_partial! {
     #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,10 +24,8 @@ make_partial! {
         pub id: Option<ObjectId>,
 
     pub content: String,
-    // pub type: Option<String>,
-
-    pub mention: Option<Vec<Mention>>,
-    pub published: Published,
+    pub mention: Option<Vec<ActorRef>>,
+    pub published: ActorRef,
 
     #[serde(
         serialize_with = "object_id_helpers::serialize_opt_vec",

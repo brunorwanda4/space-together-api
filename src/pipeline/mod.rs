@@ -2,6 +2,7 @@ pub mod academic_year_pipeline;
 pub mod announcement_pipeline;
 pub mod class_pipeline;
 pub mod class_subject_pipeline;
+pub mod comment_pipeline;
 pub mod join_school_request_pipeline;
 pub mod learning_outcome_pipeline;
 pub mod main_class_pipeline;

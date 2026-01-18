@@ -11,6 +11,7 @@ mod middleware;
 mod models;
 mod pipeline;
 mod repositories;
+mod schema;
 mod services;
 mod utils;
 

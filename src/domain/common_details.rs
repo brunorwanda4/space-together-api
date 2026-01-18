@@ -1128,9 +1128,3 @@ impl fmt::Display for SubjectCategory {
         }
     }
 }
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum SubjectTypeFor {
-    MainSubject,
-    ClassSubject,
-}
