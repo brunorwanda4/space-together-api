@@ -1,5 +1,4 @@
 use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
-use mongodb::bson::doc;
 
 use crate::{
     config::state::AppState,

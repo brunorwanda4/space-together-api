@@ -8,7 +8,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
 }
 
 example is:
-
+(
 #[post("")]
 async fn create_comment(
     req: HttpRequest,
@@ -38,9 +38,39 @@ async fn create_comment(
     }
 }
 
-and school token schema is:
+fn blueprint(cfg: &mut web::ServiceConfig) {
+    cfg.service(get_all_comments)
+        .service(
+            web::scope("")
+                .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
+                .service(create_comment)
+        );
+}
 
-use chrono::{DateTime, Utc};
+pub fn init(cfg: &mut web::ServiceConfig) {
+    crate::utils::route_utils::mount_dual_routes(cfg, "comments", blueprint);
+}
+)
+
+also this is  crate::utils::route_utils::mount_dual_routes: (use actix_web::web;
+
+pub fn mount_dual_routes<F>(cfg: &mut web::ServiceConfig, path: &str, register_handlers: F)
+where
+    F: Fn(&mut web::ServiceConfig) + Copy,
+{
+    cfg.service(
+        web::scope(&format!("/school/{}", path))
+            .wrap(crate::middleware::school_token_middleware::SchoolTokenMiddleware)
+            .configure(register_handlers),
+    );
+
+    cfg.service(web::scope(&format!("/{}", path)).configure(register_handlers));
+}
+)
+
+and school token schema is school_token_model.rs:
+
+(use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use crate::domain::{
     common_details::RelatedUser,
@@ -61,4 +91,4 @@ pub struct SchoolToken {
     pub exp: usize,
     pub iat: usize,
 }
-
+)
