@@ -1,10 +1,15 @@
 use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
 
 use crate::{
-    config::state::AppState, domain::{
+    config::state::AppState,
+    domain::{
         auth_user::AuthUserDto,
         comment::{Comment, CommentPartial},
-    }, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{comment_service::CommentService, event_service::EventService}, utils::{api_utils::build_extra_match, db_utils::get_database}
+    },
+    helpers::event_helpers::get_school_id_from_request,
+    models::{api_request_model::RequestQuery, id_model::IdType},
+    services::{comment_service::CommentService, event_service::EventService},
+    utils::{api_utils::build_extra_match, db_utils::get_database},
 };
 
 #[get("")]
@@ -16,7 +21,7 @@ async fn get_all_comments(
     let db = get_database(&req, &state);
     let service = CommentService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -39,7 +44,7 @@ async fn get_all_comments_with_relations(
     let db = get_database(&req, &state);
     let service = CommentService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -86,8 +91,14 @@ async fn create_comment(
             let state_clone = state.clone();
             actix_rt::spawn(async move {
                 if let Some(id) = cloned.id {
-                    EventService::broadcast_created(&state_clone, "comment", &id.to_hex(), get_school_id_from_request(&req), &cloned)
-                        .await;
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "comment",
+                        &id.to_hex(),
+                        get_school_id_from_request(&req),
+                        &cloned,
+                    )
+                    .await;
                 }
             });
 
@@ -114,11 +125,17 @@ async fn update_comment(
         Ok(item) => {
             let cloned = item.clone();
             let state_clone = state.clone();
-let school_id = get_school_id_from_request(&req);
+
             actix_rt::spawn(async move {
                 if let Some(id) = cloned.id {
-                    EventService::broadcast_updated(&state_clone, "comment", &id.to_hex(), school_id,&cloned)
-                        .await;
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "comment",
+                        &id.to_hex(),
+                        get_school_id_from_request(&req),
+                        &cloned,
+                    )
+                    .await;
                 }
             });
 
@@ -144,11 +161,17 @@ async fn delete_comment(
         Ok(comment) => {
             let cloned = comment.clone();
             let state_clone = state.clone();
-let school_id = get_school_id_from_request(&req);
+
             actix_rt::spawn(async move {
                 if let Some(id) = cloned.id {
-                    EventService::broadcast_deleted(&state_clone, "comment", &id.to_hex(),school_id, &cloned)
-                        .await;
+                    EventService::broadcast_deleted(
+                        &state_clone,
+                        "comment",
+                        &id.to_hex(),
+                        get_school_id_from_request(&req),
+                        &cloned,
+                    )
+                    .await;
                 }
             });
 
@@ -167,7 +190,7 @@ async fn count_comments(
     let db = get_database(&req, &state);
     let service = CommentService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };

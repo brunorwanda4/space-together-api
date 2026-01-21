@@ -25,7 +25,7 @@ async fn get_all_schools(
 ) -> impl Responder {
     let service = SchoolService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -63,7 +63,7 @@ async fn get_school_by_match(
 ) -> impl Responder {
     let service = SchoolService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -100,8 +100,14 @@ async fn create_school(
 
             actix_rt::spawn(async move {
                 if let Some(id) = clone.id {
-                    EventService::broadcast_created(&state_clone, "school", &id.to_hex(),None, &clone)
-                        .await;
+                    EventService::broadcast_created(
+                        &state_clone,
+                        "school",
+                        &id.to_hex(),
+                        None,
+                        &clone,
+                    )
+                    .await;
                 }
             });
 
@@ -168,8 +174,14 @@ async fn update_school(
 
             actix_rt::spawn(async move {
                 if let Some(id) = clone.id {
-                    EventService::broadcast_updated(&state_clone, "school", &id.to_hex(),None, &clone)
-                        .await;
+                    EventService::broadcast_updated(
+                        &state_clone,
+                        "school",
+                        &id.to_hex(),
+                        None,
+                        &clone,
+                    )
+                    .await;
                 }
             });
 
@@ -198,8 +210,14 @@ async fn delete_school(
 
             actix_rt::spawn(async move {
                 if let Some(id) = clone.id {
-                    EventService::broadcast_deleted(&state_clone, "school", &id.to_hex(), None,&clone)
-                        .await;
+                    EventService::broadcast_deleted(
+                        &state_clone,
+                        "school",
+                        &id.to_hex(),
+                        None,
+                        &clone,
+                    )
+                    .await;
                 }
             });
 
@@ -219,7 +237,7 @@ async fn count_schools(
 ) -> impl Responder {
     let service = SchoolService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -304,7 +322,7 @@ async fn setup_school_academics(
                     &state_clone,
                     "school_academics",
                     &school_id_hex.clone(),
-                   None,
+                    None,
                     &serde_json::json!({
                         "school_id": school_id_hex,
                         "created_classes": response.created_classes,

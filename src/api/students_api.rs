@@ -1,18 +1,19 @@
 use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
-use mongodb::bson::doc;
 
 use crate::{
-    config::state::AppState, domain::{
+    config::state::AppState,
+    domain::{
         auth_user::AuthUserDto,
         student::{Student, StudentPartial},
-    }, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{event_service::EventService, student_service::StudentService}, utils::{
+    },
+    helpers::event_helpers::get_school_id_from_request,
+    models::{api_request_model::RequestQuery, id_model::IdType},
+    services::{event_service::EventService, student_service::StudentService},
+    utils::{
         api_utils::build_extra_match, db_utils::get_database, object_id::parse_object_id_value,
-    }
+    },
 };
 
-/// ------------------------------------------------------
-/// GET /students
-/// ------------------------------------------------------
 #[get("")]
 async fn get_all_students(
     req: HttpRequest,
@@ -22,7 +23,7 @@ async fn get_all_students(
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -36,10 +37,6 @@ async fn get_all_students(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /students/others
-/// ------------------------------------------------------
-
 #[get("/others")]
 async fn get_all_students_with_relations(
     req: HttpRequest,
@@ -49,7 +46,7 @@ async fn get_all_students_with_relations(
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -62,10 +59,6 @@ async fn get_all_students_with_relations(
         Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
-
-/// ------------------------------------------------------
-/// GET /students/{id}/others
-/// ------------------------------------------------------
 
 #[get("/{id}/others")]
 async fn get_student_by_id_with_relations(
@@ -83,9 +76,6 @@ async fn get_student_by_id_with_relations(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /students/{id}
-/// ------------------------------------------------------
 #[get("/{id}")]
 async fn get_student_by_id(
     req: HttpRequest,
@@ -102,9 +92,6 @@ async fn get_student_by_id(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /students/match
-/// ------------------------------------------------------
 #[get("/match")]
 async fn get_student_by_match(
     req: HttpRequest,
@@ -114,7 +101,7 @@ async fn get_student_by_match(
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -125,10 +112,6 @@ async fn get_student_by_match(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /students/others/match
-/// ------------------------------------------------------
-
 #[get("/others/match")]
 async fn get_student_by_other_match(
     req: HttpRequest,
@@ -137,7 +120,7 @@ async fn get_student_by_other_match(
 ) -> impl Responder {
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -148,9 +131,6 @@ async fn get_student_by_other_match(
     }
 }
 
-/// ------------------------------------------------------
-/// POST /students
-/// ------------------------------------------------------
 #[post("")]
 async fn create_student(
     req: HttpRequest,
@@ -181,7 +161,7 @@ async fn create_student(
                         &state_clone,
                         "student",
                         &id.to_hex(),
-                         get_school_id_from_request(&req),
+                        get_school_id_from_request(&req),
                         &student_clone,
                     )
                     .await;
@@ -194,9 +174,6 @@ async fn create_student(
     }
 }
 
-/// ------------------------------------------------------
-/// PUT /students/{id}
-/// ------------------------------------------------------
 #[put("/{id}")]
 async fn update_student(
     req: HttpRequest,
@@ -219,7 +196,7 @@ async fn update_student(
                         &state_clone,
                         "student",
                         &id.to_hex(),
-                         get_school_id_from_request(&req),
+                        get_school_id_from_request(&req),
                         &student_clone,
                     )
                     .await;
@@ -232,9 +209,6 @@ async fn update_student(
     }
 }
 
-/// ------------------------------------------------------
-/// DELETE /students/{id}
-/// ------------------------------------------------------
 #[delete("/{id}")]
 async fn delete_student(
     req: HttpRequest,
@@ -256,7 +230,7 @@ async fn delete_student(
                         &state_clone,
                         "student",
                         &id.to_hex(),
-                         get_school_id_from_request(&req),
+                        get_school_id_from_request(&req),
                         &student_clone,
                     )
                     .await;
@@ -269,9 +243,6 @@ async fn delete_student(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /students/count
-/// ------------------------------------------------------
 #[get("/count")]
 async fn count_students(
     req: HttpRequest,
@@ -281,7 +252,7 @@ async fn count_students(
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -295,9 +266,6 @@ async fn count_students(
     }
 }
 
-/// ------------------------------------------------------
-/// ROUTE BLUEPRINT
-/// ------------------------------------------------------
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(get_all_students)
         .service(get_all_students_with_relations)
@@ -315,9 +283,6 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
         );
 }
 
-/// ------------------------------------------------------
-/// INIT
-/// ------------------------------------------------------
 pub fn init(cfg: &mut web::ServiceConfig) {
     crate::utils::route_utils::mount_dual_routes(cfg, "students", blueprint);
 }

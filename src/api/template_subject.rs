@@ -21,7 +21,7 @@ async fn get_all_template_subjects(
 ) -> impl Responder {
     let service = TemplateSubjectService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -305,7 +305,7 @@ async fn count_template_subjects(
 ) -> impl Responder {
     let service = TemplateSubjectService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };

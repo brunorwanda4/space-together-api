@@ -4,12 +4,18 @@ use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responde
 use mongodb::bson::oid::ObjectId;
 
 use crate::{
-    config::state::AppState, domain::{
+    config::state::AppState,
+    domain::{
         auth_user::AuthUserDto,
         class::{Class, UpdateClass},
-    }, errors::AppError, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{class_service::ClassService, event_service::EventService}, utils::{
+    },
+    errors::AppError,
+    helpers::event_helpers::get_school_id_from_request,
+    models::{api_request_model::RequestQuery, id_model::IdType},
+    services::{class_service::ClassService, event_service::EventService},
+    utils::{
         api_utils::build_extra_match, db_utils::get_database, object_id::parse_object_id_value,
-    }
+    },
 };
 
 #[get("")]
@@ -21,7 +27,7 @@ async fn get_all_classes(
     let db = get_database(&req, &state);
     let service = ClassService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -44,7 +50,7 @@ async fn get_all_classes_with_relations(
     let db = get_database(&req, &state);
     let service = ClassService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -99,7 +105,7 @@ async fn get_class_by_match(
     let db = get_database(&req, &state);
     let service = ClassService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -119,7 +125,7 @@ async fn get_class_by_other_match(
     let db = get_database(&req, &state);
     let service = ClassService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -196,7 +202,7 @@ async fn update_class(
                         &state_clone,
                         "class",
                         &id.to_hex(),
-                 get_school_id_from_request(&req),
+                        get_school_id_from_request(&req),
                         &class_clone,
                     )
                     .await;
@@ -252,7 +258,7 @@ async fn count_classes(
     let db = get_database(&req, &state);
     let service = ClassService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -321,7 +327,7 @@ async fn create_many_subclasses_by_class_id(
                             &state_clone,
                             "class",
                             &id.to_hex(),
-                             get_school_id_from_request(&req),
+                            get_school_id_from_request(&req),
                             subclass,
                         )
                         .await;

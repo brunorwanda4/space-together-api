@@ -10,6 +10,7 @@ pub mod education_year_service;
 pub mod event_bus;
 pub mod event_service;
 pub mod join_school_request_service;
+pub mod like_service;
 pub mod main_class_service;
 pub mod school_service;
 pub mod school_staff_service;

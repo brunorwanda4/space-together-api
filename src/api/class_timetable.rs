@@ -1,10 +1,13 @@
 use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 
 use crate::{
-    config::state::AppState, domain::{
+    config::state::AppState,
+    domain::{
         auth_user::AuthUserDto,
         class_timetable::{ClassTimetable, ClassTimetablePartial},
-    }, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{class_timetable_service::ClassTimetableService, event_service::EventService}
+    },
+    models::{api_request_model::RequestQuery, id_model::IdType},
+    services::{class_timetable_service::ClassTimetableService, event_service::EventService},
 };
 
 /// --------------------------------------
@@ -122,7 +125,7 @@ async fn update_timetable(
                         &state_clone,
                         "class_timetable",
                         &id.to_hex(),
-                      None,
+                        None,
                         &timetable_clone,
                     )
                     .await;
@@ -172,7 +175,7 @@ async fn delete_timetable(
                             &state_clone,
                             "class_timetable",
                             &id.to_hex(),
-                          None,
+                            None,
                             &timetable_clone,
                         )
                         .await;

@@ -2,7 +2,12 @@ use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responde
 use mongodb::bson::doc;
 
 use crate::{
-    config::state::AppState, domain::class_subject::{ClassSubject, ClassSubjectPartial}, helpers::event_helpers::get_school_id_from_request, models::{api_request_model::RequestQuery, id_model::IdType}, services::{class_subject_service::ClassSubjectService, event_service::EventService}, utils::{api_utils::build_extra_match, db_utils::get_database}
+    config::state::AppState,
+    domain::class_subject::{ClassSubject, ClassSubjectPartial},
+    helpers::event_helpers::get_school_id_from_request,
+    models::{api_request_model::RequestQuery, id_model::IdType},
+    services::{class_subject_service::ClassSubjectService, event_service::EventService},
+    utils::{api_utils::build_extra_match, db_utils::get_database},
 };
 
 /// --------------------------------------
@@ -17,7 +22,7 @@ async fn get_all_class_subjects(
     let db = get_database(&req, &state);
     let service = ClassSubjectService::new(&db);
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -44,7 +49,7 @@ async fn get_all_class_subjects_with_others(
     let service = ClassSubjectService::new(&db);
 
     // Build extra match only once
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -89,7 +94,7 @@ async fn get_class_subject_by_match(
 ) -> impl Responder {
     let db = get_database(&req, &state);
     let service = ClassSubjectService::new(&db);
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -127,7 +132,7 @@ async fn get_class_subject_by_match_others(
 ) -> impl Responder {
     let db = get_database(&req, &state);
     let service = ClassSubjectService::new(&db);
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -163,7 +168,7 @@ async fn create_class_subject(
                         &state_clone,
                         "class_subject",
                         &id.to_hex(),
-                         get_school_id_from_request(&req),
+                        get_school_id_from_request(&req),
                         &clone,
                     )
                     .await;
@@ -201,7 +206,7 @@ async fn update_class_subject(
                         &state_clone,
                         "class_subject",
                         &id.to_hex(),
-                         get_school_id_from_request(&req),
+                        get_school_id_from_request(&req),
                         &clone,
                     )
                     .await;
@@ -238,7 +243,7 @@ async fn delete_class_subject(
                         &state_clone,
                         "class_subject",
                         &id.to_hex(),
-                         get_school_id_from_request(&req),
+                        get_school_id_from_request(&req),
                         &clone,
                     )
                     .await;

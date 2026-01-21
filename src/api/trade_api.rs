@@ -24,7 +24,7 @@ async fn get_all_trades(
 ) -> impl Responder {
     let service = TradeService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -48,7 +48,7 @@ async fn get_all_trades_with_relations(
 ) -> impl Responder {
     let service = TradeService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -100,7 +100,7 @@ async fn get_trade_by_others_relations(
 ) -> impl Responder {
     let service = TradeService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -121,7 +121,7 @@ async fn get_trade_by_match(
 ) -> impl Responder {
     let service = TradeService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -267,7 +267,7 @@ async fn count_trades(
 ) -> impl Responder {
     let service = TradeService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };

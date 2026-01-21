@@ -8,19 +8,21 @@ use crate::models::school_token_model::SchoolToken;
 use crate::services::event_bus::{Event, EVENT_CONNECTED};
 
 /// SSE endpoint FOR SCHOOL CONTEXT: /school/events/stream
-/// Protected by SchoolTokenMiddleware
 #[get("/stream")]
 pub async fn school_events_stream(
     req: HttpRequest,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    // Extract school token from request extensions (set by SchoolTokenMiddleware)
+    // Extract school token from request extensions
     let school_token = match req.extensions().get::<SchoolToken>() {
         Some(token) => token.clone(),
         None => {
-            return HttpResponse::Unauthorized().json(serde_json::json!({
-                "error": "School token required"
-            }));
+            return HttpResponse::Unauthorized()
+                .insert_header(("Access-Control-Allow-Origin", "http://localhost:4747"))
+                .insert_header(("Access-Control-Allow-Credentials", "true"))
+                .json(serde_json::json!({
+                    "error": "School token required"
+                }));
         }
     };
 
@@ -66,13 +68,15 @@ let user_id = school_token.member
         .insert_header(("Content-Type", "text/event-stream"))
         .insert_header(("Cache-Control", "no-cache"))
         .insert_header(("Connection", "keep-alive"))
-        .insert_header(("Access-Control-Allow-Origin", "*"))
+        .insert_header(("X-Accel-Buffering", "no")) // Disable nginx buffering
+        // CRITICAL: Fix CORS for credentials
+        .insert_header(("Access-Control-Allow-Origin", "http://localhost:4747")) // Your frontend origin
         .insert_header(("Access-Control-Allow-Credentials", "true"))
+        .insert_header(("Access-Control-Allow-Headers", "Content-Type, Authorization"))
         .streaming(stream)
 }
 
 /// SSE endpoint FOR NON-SCHOOL CONTEXT: /events/stream
-/// Protected by JwtMiddleware (regular user auth)
 #[get("/stream")]
 pub async fn global_events_stream(
     _req: HttpRequest,
@@ -82,7 +86,6 @@ pub async fn global_events_stream(
     let logged_user = user.into_inner();
     let user_id = logged_user.id.clone();
 
-    // No school context - school_id is None
     let (client_id, mut rx) = state
         .event_bus
         .register_client(user_id.clone(), None)
@@ -97,7 +100,7 @@ pub async fn global_events_stream(
             "user_id": user_id
         }),
     )
-    .for_school(None); // Global event
+    .for_school(None);
 
     let initial_message = connected_event.to_sse_format();
 
@@ -118,8 +121,10 @@ pub async fn global_events_stream(
         .insert_header(("Content-Type", "text/event-stream"))
         .insert_header(("Cache-Control", "no-cache"))
         .insert_header(("Connection", "keep-alive"))
-        .insert_header(("Access-Control-Allow-Origin", "*"))
+        .insert_header(("X-Accel-Buffering", "no"))
+        .insert_header(("Access-Control-Allow-Origin", "http://localhost:4747"))
         .insert_header(("Access-Control-Allow-Credentials", "true"))
+        .insert_header(("Access-Control-Allow-Headers", "Content-Type, Authorization"))
         .streaming(stream)
 }
 
@@ -159,9 +164,7 @@ pub async fn global_clients_count(state: web::Data<AppState>) -> impl Responder 
     }))
 }
 
-/// Initialize event routes using dual mount pattern
 pub fn init(cfg: &mut web::ServiceConfig) {
-    // School events endpoint - wrapped with SchoolTokenMiddleware
     cfg.service(
         web::scope("/school/events")
             .wrap(crate::middleware::school_token_middleware::SchoolTokenMiddleware)
@@ -169,7 +172,6 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(school_clients_count),
     );
 
-    // Global events endpoint - wrapped with JwtMiddleware
     cfg.service(
         web::scope("/events")
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)

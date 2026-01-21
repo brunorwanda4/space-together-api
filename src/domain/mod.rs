@@ -10,6 +10,7 @@ pub mod database_status;
 pub mod education_year;
 pub mod guardian;
 pub mod join_school_request;
+pub mod like;
 pub mod main_class;
 pub mod school;
 pub mod school_staff;

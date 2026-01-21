@@ -1,15 +1,15 @@
 use mongodb::bson::{doc, Document};
 
-pub fn comment_pipeline(match_stage: Document) -> Vec<Document> {
+pub fn like_pipeline(match_stage: Document) -> Vec<Document> {
     vec![
         doc! { "$match": match_stage },
         doc! {
             "$addFields": {
-                "author.id": {
+                "actor.id": {
                     "$cond": [
-                        { "$eq": [{ "$type": "$author.id" }, "string"] },
-                        { "$toObjectId": "$author.id" },
-                        "$author.id"
+                        { "$eq": [{ "$type": "$actor.id" }, "string"] },
+                        { "$toObjectId": "$actor.id" },
+                        "$actor.id"
                     ]
                 }
             }
@@ -17,7 +17,7 @@ pub fn comment_pipeline(match_stage: Document) -> Vec<Document> {
         doc! {
             "$lookup": {
                 "from": "students",
-                "let": { "uid": "$author.id", "role": "$author.role" },
+                "let": { "uid": "$actor.id", "role": "$actor.role" },
                 "pipeline": [
                     {
                         "$match": {
@@ -37,7 +37,7 @@ pub fn comment_pipeline(match_stage: Document) -> Vec<Document> {
         doc! {
             "$lookup": {
                 "from": "teachers",
-                "let": { "uid": "$author.id", "role": "$author.role" },
+                "let": { "uid": "$actor.id", "role": "$actor.role" },
                 "pipeline": [
                     {
                         "$match": {
@@ -57,7 +57,7 @@ pub fn comment_pipeline(match_stage: Document) -> Vec<Document> {
         doc! {
             "$lookup": {
                 "from": "school_staff",
-                "let": { "uid": "$author.id", "role": "$author.role" },
+                "let": { "uid": "$actor.id", "role": "$actor.role" },
                 "pipeline": [
                     {
                         "$match": {
@@ -94,6 +94,6 @@ pub fn comment_pipeline(match_stage: Document) -> Vec<Document> {
                 "author_staff": 0
             }
         },
-        doc! { "$sort": { "updated_at": -1 } },
+        doc! { "$sort": { "created_at": -1 } },
     ]
 }

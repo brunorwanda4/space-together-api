@@ -21,7 +21,7 @@ async fn get_all_main_classes(
 ) -> impl Responder {
     let service = MainClassService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -45,7 +45,7 @@ async fn get_all_main_classes_with_relations(
 ) -> impl Responder {
     let service = MainClassService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -69,7 +69,7 @@ async fn get_all_main_classes_by_other_match(
 ) -> impl Responder {
     let service = MainClassService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -124,7 +124,7 @@ async fn get_main_class_by_match(
 ) -> impl Responder {
     let service = MainClassService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
@@ -253,7 +253,7 @@ async fn count_main_classes(
 ) -> impl Responder {
     let service = MainClassService::new(&state.db.main_db());
 
-    let extra_match = match build_extra_match(&query.field, &query.value) {
+    let extra_match = match build_extra_match(&query) {
         Ok(doc) => doc,
         Err(err) => return err,
     };
