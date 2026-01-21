@@ -58,7 +58,11 @@ Environment variables are loaded from `.env`. See `.exmple.env` for required var
 
 ## License
 
-MIT
+Copyright (c) 2026 Space-Together Organization. All Rights Reserved.
+
+This software is the proprietary and confidential property of Space-Together Organization. 
+No part of this software may be copied, modified, distributed, or disclosed without prior written permission from the copyright owner.
+
 
 ---
 
