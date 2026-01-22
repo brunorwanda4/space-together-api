@@ -14,7 +14,7 @@ mod like_api;
 mod main_class_api;
 mod school_api;
 mod school_collections;
-mod school_staff;
+mod school_staff_api;
 mod sector_api;
 mod students_api;
 mod teachers;
@@ -37,7 +37,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     school_api::init(cfg);
     students_api::init(cfg);
     teachers::init(cfg);
-    school_staff::init(cfg);
+    school_staff_api::init(cfg);
     join_school_request_api::init(cfg);
     school_collections::school_class_timetable::init(cfg);
     school_collections::school_timetable::init(cfg);

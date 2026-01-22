@@ -52,6 +52,9 @@ pub struct SchoolStaff {
     #[serde(default)]
     pub tags: Vec<String>,
 
+    pub image: Option<String>,
+    pub image_id: Option<String>,
+
     // Department or office where the user works (e.g., "Administration", "Finance", "Library", "IT", "HR")
     // pub department: Option<String>,
 

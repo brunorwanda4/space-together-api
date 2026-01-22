@@ -16,7 +16,10 @@ use crate::{
         mongo_model::{CountDoc, IndexDef},
     },
     repositories::base_repo::BaseRepository,
-    services::join_school_request_service::JoinSchoolRequestService,
+    services::{
+        cloudinary_service::CloudinaryService,
+        join_school_request_service::JoinSchoolRequestService,
+    },
     utils::{email::is_valid_email, mongo_utils::extract_valid_fields, names::is_valid_name},
 };
 
@@ -77,7 +80,16 @@ impl SchoolStaffService {
             });
         }
 
-        let full_doc = bson::to_document(&dto).map_err(|e| AppError {
+        let mut partial = dto;
+        if let Some(image_data) = partial.image.clone() {
+            let cloud_res = CloudinaryService::upload_to_cloudinary(&image_data)
+                .await
+                .map_err(|e| AppError { message: e })?;
+            partial.image_id = Some(cloud_res.public_id);
+            partial.image = Some(cloud_res.secure_url);
+        }
+
+        let full_doc = bson::to_document(&partial).map_err(|e| AppError {
             message: format!("Failed to serialize school staff: {}", e),
         })?;
 
@@ -186,7 +198,26 @@ impl SchoolStaffService {
             }
         }
 
-        let full_doc = bson::to_document(update).map_err(|e| AppError {
+        let mut update_data = update.clone();
+
+        if let Some(new_image_data) = update.image.clone().flatten() {
+            if Some(new_image_data.clone()) != existing.image {
+                if let Some(old_image_id) = existing.image_id.clone() {
+                    CloudinaryService::delete_from_cloudinary(&old_image_id)
+                        .await
+                        .ok();
+                }
+
+                let cloud_res = CloudinaryService::upload_to_cloudinary(&new_image_data)
+                    .await
+                    .map_err(|e| AppError { message: e })?;
+
+                update_data.image_id = Some(Some(cloud_res.public_id));
+                update_data.image = Some(Some(cloud_res.secure_url));
+            }
+        }
+
+        let full_doc = bson::to_document(&update_data).map_err(|e| AppError {
             message: format!("Serialize update failed: {}", e),
         })?;
 

@@ -618,6 +618,8 @@ impl JoinSchoolRequestService {
                     creator_id: Some(request.sent_by),
                     name: user.name.clone(),
                     email: user.email.clone(),
+                    image: user.image.clone(),
+                    image_id: user.image_id.clone(),
                     r#type: staff_type,
                     is_active: false,
                     tags: vec!["join-request".to_string()],
