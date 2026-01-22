@@ -131,7 +131,7 @@ impl LikeService {
         &self,
         id: Option<&IdType>,
         extra_match: Option<Document>,
-    ) -> Result<Paginated<LikeWithRelations>, AppError> {
+    ) -> Result<LikeWithRelations, AppError> {
         let mut match_stage = extra_match.unwrap_or_default();
 
         if let Some(id) = id {

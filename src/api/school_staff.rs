@@ -15,9 +15,6 @@ use crate::{
     },
 };
 
-/// ------------------------------------------------------
-/// GET /school-staff
-/// ------------------------------------------------------
 #[get("")]
 async fn get_all_school_staff(
     req: HttpRequest,
@@ -41,9 +38,6 @@ async fn get_all_school_staff(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /school-staff/{id}
-/// ------------------------------------------------------
 #[get("/{id}")]
 async fn get_school_staff_by_id(
     req: HttpRequest,
@@ -60,9 +54,6 @@ async fn get_school_staff_by_id(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /school-staff/match
-/// ------------------------------------------------------
 #[get("/match")]
 async fn get_school_staff_by_match(
     req: HttpRequest,
@@ -83,9 +74,6 @@ async fn get_school_staff_by_match(
     }
 }
 
-/// ------------------------------------------------------
-/// POST /school-staff
-/// ------------------------------------------------------
 #[post("")]
 async fn create_school_staff(
     req: HttpRequest,
@@ -130,9 +118,6 @@ async fn create_school_staff(
     }
 }
 
-/// ------------------------------------------------------
-/// PUT /school-staff/{id}
-/// ------------------------------------------------------
 #[put("/{id}")]
 async fn update_school_staff(
     req: HttpRequest,
@@ -169,9 +154,6 @@ async fn update_school_staff(
     }
 }
 
-/// ------------------------------------------------------
-/// DELETE /school-staff/{id}
-/// ------------------------------------------------------
 #[delete("/{id}")]
 async fn delete_school_staff(
     req: HttpRequest,
@@ -207,9 +189,6 @@ async fn delete_school_staff(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /school-staff/count
-/// ------------------------------------------------------
 #[get("/count")]
 async fn count_school_staff(
     req: HttpRequest,
@@ -230,9 +209,6 @@ async fn count_school_staff(
     }
 }
 
-/// ------------------------------------------------------
-/// ROUTE BLUEPRINT
-/// ------------------------------------------------------
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(get_all_school_staff)
         .service(get_school_staff_by_match)
@@ -247,9 +223,6 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
         );
 }
 
-/// ------------------------------------------------------
-/// INIT
-/// ------------------------------------------------------
 pub fn init(cfg: &mut web::ServiceConfig) {
     crate::utils::route_utils::mount_dual_routes(cfg, "school-staff", blueprint);
 }

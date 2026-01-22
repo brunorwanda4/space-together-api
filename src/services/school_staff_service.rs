@@ -31,9 +31,6 @@ impl SchoolStaffService {
         }
     }
 
-    // =========================
-    // INDEXES
-    // =========================
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
         let indexes = vec![
             IndexDef::single("email", true),
@@ -56,9 +53,6 @@ impl SchoolStaffService {
         Ok(())
     }
 
-    // =========================
-    // CREATE
-    // =========================
     pub async fn create(
         &self,
         dto: SchoolStaff,
@@ -120,9 +114,6 @@ impl SchoolStaffService {
         Ok(school_staff)
     }
 
-    // =========================
-    // FIND ONE
-    // =========================
     pub async fn find_one(
         &self,
         id: Option<&IdType>,
@@ -143,9 +134,6 @@ impl SchoolStaffService {
             })
     }
 
-    // =========================
-    // GET ALL
-    // =========================
     pub async fn get_all(
         &self,
         filter: Option<String>,
@@ -169,9 +157,6 @@ impl SchoolStaffService {
         })
     }
 
-    // =========================
-    // UPDATE
-    // =========================
     pub async fn update(
         &self,
         id: &IdType,
@@ -211,9 +196,6 @@ impl SchoolStaffService {
             .await
     }
 
-    // =========================
-    // DELETE
-    // =========================
     pub async fn delete(&self, id: &IdType) -> Result<SchoolStaff, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
@@ -224,9 +206,6 @@ impl SchoolStaffService {
         Ok(staff)
     }
 
-    // =========================
-    // COUNT
-    // =========================
     pub async fn count_staff(
         &self,
         filter: Option<String>,

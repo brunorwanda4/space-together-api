@@ -267,7 +267,6 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
         .service(count_announcements)
         .service(get_announcement_by_id)
         .service(get_announcement_by_id_with_relations)
-        // Add all other services here...
         .service(
             web::scope("")
                 .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
