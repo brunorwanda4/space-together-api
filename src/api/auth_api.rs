@@ -26,7 +26,7 @@ async fn register_user(
           "id": user.id.map(|i| i.to_string()),
             "email": user.email,
             "name": user.name,
-            "accessToken": token,
+            "access_token": token,
             "image": user.image,
             "role": user.role,
             "username": user.username,

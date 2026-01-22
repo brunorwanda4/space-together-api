@@ -25,19 +25,20 @@ pub struct SchoolStaff {
 
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
+        default
     )]
     pub user_id: Option<ObjectId>,
 
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
     )]
     pub school_id: Option<ObjectId>,
 
     #[serde(
         serialize_with = "object_id_helpers::serialize",
-        deserialize_with = "object_id_helpers::deserialize"
+        deserialize_with = "object_id_helpers::deserialize",
     )]
     pub creator_id: Option<ObjectId>,
 

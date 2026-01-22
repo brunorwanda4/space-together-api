@@ -107,7 +107,7 @@ impl SchoolStaffService {
                         class_id: None,
                         message: Some("Join School request".to_string()),
                         r#type: "SchoolStaff".to_string(),
-                        role: JoinRole::Student,
+                        role: JoinRole::Staff,
                         email: school_staff.email.clone(),
                         sent_by: sent_by.to_hex(),
                     };

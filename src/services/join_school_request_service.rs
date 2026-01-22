@@ -45,9 +45,6 @@ pub struct JoinSchoolRequestService {
 }
 
 impl JoinSchoolRequestService {
-    // ======================================================
-    // INIT
-    // ======================================================
     pub fn new(db: &Database) -> Self {
         Self {
             collection: db.collection::<JoinSchoolRequest>("join_school_requests"),
@@ -71,9 +68,6 @@ impl JoinSchoolRequestService {
         Ok(())
     }
 
-    // ======================================================
-    // CREATE
-    // ======================================================
     pub async fn create(
         &self,
         request: CreateJoinSchoolRequest,
@@ -219,9 +213,6 @@ impl JoinSchoolRequestService {
         })
     }
 
-    // ======================================================
-    // STATUS UPDATES
-    // ======================================================
     pub async fn accept_request(
         &self,
         id: &IdType,
@@ -311,9 +302,6 @@ impl JoinSchoolRequestService {
             .await
     }
 
-    // ======================================================
-    // EXPIRATION
-    // ======================================================
     pub async fn update_expiration(
         &self,
         id: &IdType,
@@ -381,9 +369,6 @@ impl JoinSchoolRequestService {
         })
     }
 
-    // ======================================================
-    // RELATIONS (PIPELINE)
-    // ======================================================
     pub async fn get_all_with_relations(
         &self,
         filter: Option<String>,
@@ -495,13 +480,11 @@ impl JoinSchoolRequestService {
                         name: Some(student.name), // String -> Option<String>
                         email: Some(student.email), // String -> Option<String>
 
-                        // These are already Option<T>, so do NOT wrap in Some()
                         phone: Some(student.phone.or(user.phone.clone())),
                         gender: Some(student.gender.or(user.gender.clone())),
                         image: Some(student.image.or(user.image.clone())),
                         image_id: Some(student.image_id.or(user.image_id.clone())),
 
-                        // date_of_birth is Option<Age>, so assign directly
                         date_of_birth: Some(student.date_of_birth.or(user.age.clone())),
 
                         registration_number: Some(
@@ -582,10 +565,8 @@ impl JoinSchoolRequestService {
             JoinRole::Staff => {
                 let staff_service = SchoolStaffService::new(&school_db);
 
-                // Validate staff type and check limits in school database
                 let staff_type = parse_staff_type(&request.r#type);
 
-                // Check staff limits in school database
                 match staff_type {
                     SchoolStaffType::Director => {
                         let count = staff_service

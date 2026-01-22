@@ -98,19 +98,20 @@ async fn create_join_school(
         .create(data.into_inner(), sent_by, &state.clone().into_inner())
         .await
     {
-        Ok(token) => {
+        Ok(join_school) => {
             let state_clone = state.clone();
+            let join_school_clone = join_school.clone();
             actix_rt::spawn(async move {
                 EventService::broadcast_created(
                     &state_clone,
                     "join_school_request",
                     "new",
                     None,
-                    &serde_json::json!({ "action": "created", "by_user": auth_user.id }),
+                    &join_school_clone,
                 )
                 .await;
             });
-            HttpResponse::Ok().json(token)
+            HttpResponse::Ok().json(join_school)
         }
         Err(err) => HttpResponse::BadRequest().json(err),
     }
@@ -344,8 +345,8 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_join_requests_with_relations)
             .service(get_join_request_by_match)
             .service(get_join_request_by_other_match)
-            .service(count_join_requests)
             .service(get_join_request_by_id_with_relations)
+            .service(count_join_requests)
             .service(get_join_request_by_id)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(get_my_pending_join_requests)
