@@ -43,6 +43,7 @@ pub struct JoinSchoolRequest {
     #[serde(
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
         default
     )]
     pub invited_user_id: Option<ObjectId>,
@@ -50,6 +51,7 @@ pub struct JoinSchoolRequest {
     #[serde(
         serialize_with = "object_id_helpers::serialize",
         deserialize_with = "object_id_helpers::deserialize",
+        skip_serializing_if = "Option::is_none",
         default
     )]
     pub class_id: Option<ObjectId>,

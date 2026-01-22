@@ -109,7 +109,7 @@ async fn onboarding_user(
             "id": user.id,
             "email": user.email,
             "name": user.name,
-            "accessToken": new_token,
+            "access_token": new_token,
             "image": user.image,
             "role": user.role,
             "username": user.username,

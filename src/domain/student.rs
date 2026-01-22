@@ -29,32 +29,31 @@ make_partial! {
         )]
         pub id: Option<ObjectId>,
 
-        // Connected user
         #[serde(
             serialize_with = "object_id_helpers::serialize",
             deserialize_with = "object_id_helpers::deserialize",
+            skip_serializing_if = "Option::is_none",
             default
         )]
         pub user_id: Option<ObjectId>,
 
-        // Connected school
+
         #[serde(
             serialize_with = "object_id_helpers::serialize",
             deserialize_with = "object_id_helpers::deserialize",
+            skip_serializing_if = "Option::is_none",
             default
         )]
         pub school_id: Option<ObjectId>,
 
-        // Connected class
         #[serde(
             serialize_with = "object_id_helpers::serialize",
             deserialize_with = "object_id_helpers::deserialize",
+            skip_serializing_if = "Option::is_none",
             default
         )]
         pub class_id: Option<ObjectId>,
 
-        // ✅ NEW: If student belongs to a subclass specifically
-        // Example: Primary 1 A (subclass of Primary 1)
         #[serde(
             serialize_with = "object_id_helpers::serialize",
             deserialize_with = "object_id_helpers::deserialize",
@@ -62,11 +61,10 @@ make_partial! {
             default
         )]
         pub subclass_id: Option<ObjectId>,
-
-        // Creator (school admin or system)
         #[serde(
             serialize_with = "object_id_helpers::serialize",
             deserialize_with = "object_id_helpers::deserialize",
+            skip_serializing_if = "Option::is_none",
             default
         )]
         pub creator_id: Option<ObjectId>,
