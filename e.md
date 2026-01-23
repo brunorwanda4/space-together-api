@@ -1,94 +1,104 @@
-i think it's better if every school have they on the endpoint to listen example is:
-pub fn init(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/school/timetables")
-            .wrap(crate::middleware::school_token_middleware::SchoolTokenMiddleware)
-            .service(create_timetable)
-    );
-}
+ I am building a Rust backend with **MongoDB**, **Serde**, and **custom macros**.
 
-example is:
-(
-#[post("")]
-async fn create_comment(
-    req: HttpRequest,
-    user: web::ReqData<AuthUserDto>,
-    data: web::Json<Comment>,
-    state: web::Data<AppState>,
-) -> impl Responder {
-    let _logged_user = user.into_inner();
-    let db = get_database(&req, &state);
-    let service = CommentService::new(&db);
+ I added a macro `make_partial!` that generates:
 
-    match service.create(data.into_inner()).await {
-        Ok(item) => {
-            let cloned = item.clone();
-            let state_clone = state.clone();
+ * a main schema struct
+ * a corresponding `Partial` struct where **all fields are wrapped in `Option<T`**
+ * `merge()` and `to_partial()` helpers
 
-            actix_rt::spawn(async move {
-                if let Some(id) = cloned.id {
-                    EventService::broadcast_created(&state_clone, "comment", &id.to_hex(), &cloned)
-                        .await;
-                }
-            });
+ After introducing this macro, MongoDB **still stores `_id` correctly as BSON ObjectId**, but **other ObjectId fields (foreign keys)** are now being saved as **plain strings**, which did not happen before.
 
-            HttpResponse::Created().json(item)
-        }
-        Err(err) => HttpResponse::BadRequest().json(err),
-    }
-}
+ ### Before introducing `make_partial!`
 
-fn blueprint(cfg: &mut web::ServiceConfig) {
-    cfg.service(get_all_comments)
-        .service(
-            web::scope("")
-                .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
-                .service(create_comment)
-        );
-}
+ MongoDB stored all ObjectId fields correctly:
 
-pub fn init(cfg: &mut web::ServiceConfig) {
-    crate::utils::route_utils::mount_dual_routes(cfg, "comments", blueprint);
-}
-)
+ ```json
+ {
+   "_id": { "$oid": "68f54f8f5dcf8e45cc9e9435" },
+   "user_id": { "$oid": "68e8f0dd34977dbe21b076e1" },
+   "school_id": { "$oid": "68ee51b7308ac2887839085c" },
+   "class_id": { "$oid": "68ee51f8308ac28878390863" },
+   "creator_id": { "$oid": "68ee1f79ec81c70bfe9954f6" }
+ }
+ ```
 
-also this is  crate::utils::route_utils::mount_dual_routes: (use actix_web::web;
+ ### After introducing `make_partial!`
 
-pub fn mount_dual_routes<F>(cfg: &mut web::ServiceConfig, path: &str, register_handlers: F)
-where
-    F: Fn(&mut web::ServiceConfig) + Copy,
-{
-    cfg.service(
-        web::scope(&format!("/school/{}", path))
-            .wrap(crate::middleware::school_token_middleware::SchoolTokenMiddleware)
-            .configure(register_handlers),
-    );
+ Only `_id` remains BSON, **other ObjectIds are now strings**:
 
-    cfg.service(web::scope(&format!("/{}", path)).configure(register_handlers));
-}
-)
+ ```json
+ {
+   "_id": { "$oid": "6972a66c7acfeb914cd7e5bf" },
+   "school_id": "68ee51b7308ac2887839085c",
+   "creator_id": "68ee1f79ec81c70bfe9954f6"
+ }
+ ```
 
-and school token schema is school_token_model.rs:
+ ### Important constraints
 
-(use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use crate::domain::{
-    common_details::RelatedUser,
-    school::{AffiliationType, SchoolType},
-};
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SchoolToken {
-    pub id: String,
-    pub creator_id: Option<String>,
-    pub name: String,
-    pub username: String,
-    pub logo: Option<String>,
-    pub school_type: Option<SchoolType>, // or SchoolType if you want enum in token
-    pub affiliation: Option<AffiliationType>, // optional string form of affiliation
-    pub database_name: String,
-    pub created_at: Option<DateTime<Utc>>,
-    pub member: Option<RelatedUser>,
-    pub exp: usize,
-    pub iat: usize,
-}
-)
+ * This is **not a MongoDB issue** (`_id` proves BSON works)
+ * I already use **custom Serde helpers** for `ObjectId` that:
+
+   * serialize as string for **human-readable formats (JSON/API)**
+   * serialize as **BSON ObjectId** for database writes
+ * The problem appeared **only after introducing the macro**
+
+ ### Suspected causes
+
+ I suspect the issue is related to one or more of:
+
+ * wrapping ObjectId fields into `Option<ObjectId` inside the macro
+ * how `serialize_with` / `deserialize_with` behave on `Option<T`
+ * `serializer.is_human_readable()` being triggered during DB writes
+ * the `merge()` or `to_partial()` logic cloning values
+ * partial structs being used during insert instead of full structs
+
+ ### What I want help with
+
+ Please **analyze the root cause**, not just suggest patches:
+
+ 1. Why does `_id` remain BSON but other ObjectId fields become strings?
+ 2. Which layer is actually responsible:
+
+    * Serde `human_readable`
+    * BSON conversion
+    * macro expansion
+    * or partial-update flow?
+ 3. What are **best-practice design patterns** for:
+
+    * partial/update schemas
+    * ObjectId serialization
+    * MongoDB inserts vs updates
+    * avoiding string ObjectIds in BSON when using macros
+
+ I am **not asking for a rewrite**, but for:
+
+ * a clear technical diagnosis
+ * guidance that keeps:
+
+   * API JSON IDs as strings
+   * MongoDB storage as BSON ObjectId
+   * macro-based partial updates
+
+ I can provide:
+
+ * the macro definition
+ * ObjectId serde helpers
+ * example schema (`Student`)
+
+ Please reason step-by-step and assume MongoDB + Rust experience.
+
+---
+
+## Why this version is *much better*
+
+* Explicitly acknowledges MongoDB behavior (`_id` vs others)
+* Uses **real BSON vs string evidence**
+* Prevents “MongoDB can’t store ObjectId” nonsense
+* Forces analysis of:
+
+  * `Option<T`
+  * `human_readable`
+  * insert vs update payloads
+  * macro side effects
+* Reads like a **senior-level Rust debugging request**

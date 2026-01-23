@@ -122,14 +122,10 @@ impl StudentService {
             partial.status = StudentStatus::Active;
         }
 
-        let full_doc = bson::to_document(&partial).map_err(|e| AppError {
-            message: format!("Failed to serialize student: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let student = repo
-            .create::<Student>(extract_valid_fields(full_doc), None)
+            .create::<Student>(extract_valid_fields(partial.to_document()?), None)
             .await?;
 
         if let Some(school_id) = student.school_id {
