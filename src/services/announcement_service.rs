@@ -65,14 +65,9 @@ impl AnnouncementService {
     pub async fn create(&self, dto: Announcement) -> Result<Announcement, AppError> {
         self.ensure_indexes().await?;
 
-        let partial = dto.to_partial();
-
-        let full_doc = bson::to_document(&partial).map_err(|e| AppError {
-            message: format!("Failed to serialize announcement: {}", e),
-        })?;
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create::<Announcement>(full_doc, None).await
+        repo.create::<Announcement>(dto.to_document()?, None).await
     }
 
     // =========================
