@@ -28,6 +28,37 @@ macro_rules! make_partial {
         }
 
         impl $name {
+            // SHARED HELPER: Recursive BSON Fixer
+            fn _fix_bson_recursive(val: mongodb::bson::Bson) -> mongodb::bson::Bson {
+                use mongodb::bson::{Bson, Document, oid::ObjectId};
+                match val {
+                    Bson::Document(doc) => {
+                        let mut new_doc = Document::new();
+                        for (k, v) in doc {
+                            let processed_v = if k == "id" || k == "_id" || k.ends_with("_id") {
+                                if let Bson::String(ref s) = v {
+                                    ObjectId::parse_str(s).map(Bson::ObjectId).unwrap_or(v)
+                                } else { v }
+                            } else if k.ends_with("_ids") {
+                                if let Bson::Array(ref arr) = v {
+                                    Bson::Array(arr.iter().map(|item| {
+                                        if let Bson::String(s) = item {
+                                            ObjectId::parse_str(s).map(Bson::ObjectId).unwrap_or(Bson::String(s.clone()))
+                                        } else { item.clone() }
+                                    }).collect())
+                                } else { v }
+                            } else { v };
+                            new_doc.insert(k, Self::_fix_bson_recursive(processed_v));
+                        }
+                        Bson::Document(new_doc)
+                    }
+                    Bson::Array(arr) => {
+                        Bson::Array(arr.into_iter().map(Self::_fix_bson_recursive).collect())
+                    }
+                    _ => val,
+                }
+            }
+
             #[allow(dead_code)]
             pub fn merge(&mut self, partial: $partial_name) {
                 $(
@@ -46,47 +77,9 @@ macro_rules! make_partial {
                 }
             }
 
-            /// Forces conversion to ObjectId for fields ending in _id or _ids
-           /// Converts to BSON and recursively fixes all IDs in nested documents/arrays
             #[allow(dead_code)]
             pub fn to_document(&self) -> Result<mongodb::bson::Document, $crate::errors::AppError> {
-                use mongodb::bson::{Bson, Document, oid::ObjectId};
-
-                // Helper function to recursively fix ObjectIds anywhere in the BSON tree
-                fn fix_bson_recursive(val: Bson) -> Bson {
-                    match val {
-                        Bson::Document(doc) => {
-                            let mut new_doc = Document::new();
-                            for (k, v) in doc {
-                                // 1. Apply conversion logic to the current key
-                                let processed_v = if k == "id" || k.ends_with("_id") {
-                                    if let Bson::String(ref s) = v {
-                                        ObjectId::parse_str(s).map(Bson::ObjectId).unwrap_or(v)
-                                    } else { v }
-                                } else if k.ends_with("_ids") {
-                                    if let Bson::Array(ref arr) = v {
-                                        Bson::Array(arr.iter().map(|item| {
-                                            if let Bson::String(s) = item {
-                                                ObjectId::parse_str(s).map(Bson::ObjectId).unwrap_or(Bson::String(s.clone()))
-                                            } else { item.clone() }
-                                        }).collect())
-                                    } else { v }
-                                } else { v };
-
-                                // 2. Recurse deeper into the value to catch nested structures
-                                new_doc.insert(k, fix_bson_recursive(processed_v));
-                            }
-                            Bson::Document(new_doc)
-                        }
-                        Bson::Array(arr) => {
-                            Bson::Array(arr.into_iter().map(fix_bson_recursive).collect())
-                        }
-                        _ => val,
-                    }
-                }
-
-                let mut final_document = Document::new();
-
+                let mut final_doc = mongodb::bson::Document::new();
                 $(
                     {
                         #[derive(serde::Serialize)]
@@ -94,68 +87,22 @@ macro_rules! make_partial {
                             $(#[$field_meta])*
                             pub $field_name: &'a $field_type,
                         }
-
-                        let wrapper = FieldWrapper { $field_name: &self.$field_name };
-                        let bson_val = mongodb::bson::to_bson(&wrapper)
+                        let bson_val = mongodb::bson::to_bson(&FieldWrapper { $field_name: &self.$field_name })
                             .map_err(|e| $crate::errors::AppError {
                                 message: format!("Serialization error for {}: {}", stringify!($field_name), e)
                             })?;
                         
-                        // Process the serialized field through our recursive fixer
-                        let fixed_bson = fix_bson_recursive(bson_val);
-
-                        if let Bson::Document(doc) = fixed_bson {
-                            for (k, v) in doc {
-                                final_document.insert(k, v);
-                            }
+                        if let mongodb::bson::Bson::Document(doc) = Self::_fix_bson_recursive(bson_val) {
+                            for (k, v) in doc { final_doc.insert(k, v); }
                         }
                     }
                 )*
-
-                Ok(final_document)
+                Ok(final_doc)
             }
 
-            /// Used for UPDATE - Corrected to use dynamic field names
-           /// Converts a partial struct to a BSON document for DATABASE operations (UPDATE)
-            /// Recursively fixes IDs in nested objects or arrays
             #[allow(dead_code)]
             pub fn from_partial(partial: $partial_name) -> Result<mongodb::bson::Document, $crate::errors::AppError> {
-                use mongodb::bson::{Bson, Document, oid::ObjectId};
-
-                // Internal helper to fix ObjectIds deep in the tree
-                fn fix_bson_recursive(val: Bson) -> Bson {
-                    match val {
-                        Bson::Document(doc) => {
-                            let mut new_doc = Document::new();
-                            for (k, v) in doc {
-                                // Conversion logic for id, *_id, or *_ids
-                                let processed_v = if k == "id" || k == "_id" || k.ends_with("_id") {
-                                    if let Bson::String(ref s) = v {
-                                        ObjectId::parse_str(s).map(Bson::ObjectId).unwrap_or(v)
-                                    } else { v }
-                                } else if k.ends_with("_ids") {
-                                    if let Bson::Array(ref arr) = v {
-                                        Bson::Array(arr.iter().map(|item| {
-                                            if let Bson::String(s) = item {
-                                                ObjectId::parse_str(s).map(Bson::ObjectId).unwrap_or(Bson::String(s.clone()))
-                                            } else { item.clone() }
-                                        }).collect())
-                                    } else { v }
-                                } else { v };
-
-                                new_doc.insert(k, fix_bson_recursive(processed_v));
-                            }
-                            Bson::Document(new_doc)
-                        }
-                        Bson::Array(arr) => {
-                            Bson::Array(arr.into_iter().map(fix_bson_recursive).collect())
-                        }
-                        _ => val,
-                    }
-                }
-
-                let mut document = Document::new();
-
+                let mut final_doc = mongodb::bson::Document::new();
                 $(
                     if let Some(value) = partial.$field_name {
                         #[derive(serde::Serialize)]
@@ -163,25 +110,17 @@ macro_rules! make_partial {
                             $(#[$field_meta])*
                             pub $field_name: &'a $field_type,
                         }
-
-                        let wrapper = FieldWrapper { $field_name: &value };
-                        let bson_val = mongodb::bson::to_bson(&wrapper)
+                        let bson_val = mongodb::bson::to_bson(&FieldWrapper { $field_name: &value })
                             .map_err(|e| $crate::errors::AppError {
                                 message: format!("Failed to serialize field '{}': {}", stringify!($field_name), e)
                             })?;
 
-                        // Apply the recursive fix to the serialized field
-                        let fixed_bson = fix_bson_recursive(bson_val);
-
-                        if let Bson::Document(doc) = fixed_bson {
-                            for (k, v) in doc {
-                                document.insert(k, v);
-                            }
+                        if let mongodb::bson::Bson::Document(doc) = Self::_fix_bson_recursive(bson_val) {
+                            for (k, v) in doc { final_doc.insert(k, v); }
                         }
                     }
                 )*
-
-                Ok(document)
+                Ok(final_doc)
             }
         }
     };

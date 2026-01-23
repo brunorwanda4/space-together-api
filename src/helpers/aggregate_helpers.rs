@@ -44,27 +44,3 @@ where
         Ok(None)
     }
 }
-
-/// Run an aggregation pipeline and return multiple items.
-pub async fn aggregate_many<T>(
-    collection: &Collection<Document>,
-    pipeline: Vec<Document>,
-) -> Result<Vec<T>, AppError>
-where
-    T: DeserializeOwned,
-{
-    let mut cursor = collection.aggregate(pipeline).await.map_err(|e| AppError {
-        message: format!("Aggregation failed: {}", e),
-    })?;
-
-    let mut results = Vec::new();
-    while let Some(doc) = cursor.try_next().await.map_err(|e| AppError {
-        message: format!("Failed to iterate aggregate cursor: {}", e),
-    })? {
-        // ✅ This handles both single objects and arrays correctly
-        let item = bson_doc_to_struct(doc)?;
-        results.push(item);
-    }
-
-    Ok(results)
-}
