@@ -1,5 +1,4 @@
 use crate::{
-    config::state::AppState,
     errors::AppError,
     services::{comment_service, like_service::LikeService},
 };
@@ -15,6 +14,7 @@ pub async fn delete_target_handler(db: &Database, target_id: &ObjectId) -> Resul
     like_service
         .delete_many(doc! {"target_id": target_id})
         .await?;
+
     comment_service
         .delete_many(doc! {"target_id": target_id})
         .await?;

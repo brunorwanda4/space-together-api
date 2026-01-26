@@ -143,7 +143,7 @@ impl CommentService {
         let searchable = ["content", "target_post_id", "author.id"];
         let total = base_repo.count(filter, &searchable, extra_match).await?;
         Ok(total)
-    }k
+    }
 
     pub async fn delete_many(&self, filter: Document) -> Result<(), AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
