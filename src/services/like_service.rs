@@ -157,4 +157,10 @@ impl LikeService {
         let total = repo.count(filter, &searchable, extra_match).await?;
         Ok(total)
     }
+
+    pub async fn delete_many(&self, filter: Document) -> Result<(), AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.delete_many(filter).await?;
+        Ok(())
+    }
 }

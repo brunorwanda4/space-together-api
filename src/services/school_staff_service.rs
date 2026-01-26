@@ -1,5 +1,5 @@
 use mongodb::{
-    bson::{self, doc, Document},
+    bson::{doc, Document},
     Collection, Database,
 };
 
@@ -89,14 +89,10 @@ impl SchoolStaffService {
             partial.image = Some(cloud_res.secure_url);
         }
 
-        let full_doc = bson::to_document(&partial).map_err(|e| AppError {
-            message: format!("Failed to serialize school staff: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let school_staff = repo
-            .create::<SchoolStaff>(extract_valid_fields(full_doc), None)
+            .create::<SchoolStaff>(extract_valid_fields(partial.to_document()?), None)
             .await?;
 
         if let Some(school_id) = school_staff.school_id {
@@ -217,14 +213,13 @@ impl SchoolStaffService {
             }
         }
 
-        let full_doc = bson::to_document(&update_data).map_err(|e| AppError {
-            message: format!("Serialize update failed: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        repo.update_one_and_fetch::<SchoolStaff>(id, extract_valid_fields(full_doc))
-            .await
+        repo.update_one_and_fetch::<SchoolStaff>(
+            id,
+            extract_valid_fields(SchoolStaff::from_partial(update_data)?),
+        )
+        .await
     }
 
     pub async fn delete(&self, id: &IdType) -> Result<SchoolStaff, AppError> {

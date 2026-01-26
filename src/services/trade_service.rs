@@ -1,7 +1,7 @@
 use chrono::Utc;
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{self, doc, oid::ObjectId, Document},
+    bson::{doc, oid::ObjectId, Document},
     Collection, Database,
 };
 
@@ -76,13 +76,9 @@ impl TradeService {
             });
         }
 
-        let full_doc = bson::to_document(&dto).map_err(|e| AppError {
-            message: format!("Failed to serialize trade: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
         let trade = repo
-            .create::<Trade>(extract_valid_fields(full_doc), None)
+            .create::<Trade>(extract_valid_fields(dto.to_document()?), None)
             .await?;
 
         if let Some(state) = state {
@@ -217,13 +213,12 @@ impl TradeService {
             }
         }
 
-        let full_doc = bson::to_document(&update).map_err(|e| AppError {
-            message: format!("Serialize update failed: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.update_one_and_fetch::<Trade>(id, extract_valid_fields(full_doc))
-            .await
+        repo.update_one_and_fetch::<Trade>(
+            id,
+            extract_valid_fields(Trade::from_partial(update.clone())?),
+        )
+        .await
     }
 
     // =========================

@@ -1,6 +1,6 @@
 use futures::TryStreamExt;
 use mongodb::{
-    bson::{self, doc, oid::ObjectId, Document},
+    bson::{doc, oid::ObjectId, Document},
     Collection, Database,
 };
 
@@ -83,13 +83,9 @@ impl SectorService {
             new_sector.logo = Some(cloud_res.secure_url);
         }
 
-        let full_doc = bson::to_document(&new_sector).map_err(|e| AppError {
-            message: format!("Failed to serialize sector: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        repo.create::<Sector>(extract_valid_fields(full_doc), None)
+        repo.create::<Sector>(extract_valid_fields(new_sector.to_document()?), None)
             .await
     }
 
@@ -194,14 +190,13 @@ impl SectorService {
             }
         }
 
-        let full_doc = bson::to_document(&update_data).map_err(|e| AppError {
-            message: format!("Serialize update failed: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        repo.update_one_and_fetch::<Sector>(id, extract_valid_fields(full_doc))
-            .await
+        repo.update_one_and_fetch::<Sector>(
+            id,
+            extract_valid_fields(Sector::from_partial(update_data)?),
+        )
+        .await
     }
 
     // =========================

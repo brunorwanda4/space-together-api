@@ -73,12 +73,8 @@ impl MainClassService {
         let mut new_class = dto.clone();
         new_class.created_at = Some(chrono::Utc::now());
 
-        let full_doc = bson::to_document(&new_class).map_err(|e| AppError {
-            message: format!("Failed to serialize MainClass: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create::<MainClass>(extract_valid_fields(full_doc), None)
+        repo.create::<MainClass>(extract_valid_fields(new_class.to_document()?), None)
             .await
     }
 

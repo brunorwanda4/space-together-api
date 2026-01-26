@@ -102,12 +102,8 @@ impl ClassService {
         dto.code = Some(generate_code());
         dto.is_active = Some(true);
 
-        let full_doc = bson::to_document(&dto).map_err(|e| AppError {
-            message: format!("Failed to serialize class: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.create::<Class>(extract_valid_fields(full_doc), None)
+        repo.create::<Class>(extract_valid_fields(dto.to_document()?), None)
             .await
     }
 
@@ -243,13 +239,12 @@ impl ClassService {
             update_class.background_images = Some(Some(uploaded_bgs));
         }
 
-        let full_doc = bson::to_document(&update_class).map_err(|e| AppError {
-            message: format!("Serialize update failed: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.update_one_and_fetch::<Class>(id, extract_valid_fields(full_doc))
-            .await
+        repo.update_one_and_fetch::<Class>(
+            id,
+            extract_valid_fields(Class::from_partial(update_class)?),
+        )
+        .await
     }
 
     // =========================

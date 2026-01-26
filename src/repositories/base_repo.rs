@@ -282,6 +282,19 @@ impl BaseRepository {
         }
     }
 
+    /// Delete many documents
+    pub async fn delete_many(&self, filter: Document) -> Result<(), AppError> {
+        let _res = self
+            .collection
+            .delete_many(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to delete documents: {}", e),
+            })?;
+
+        Ok(())
+    }
+
     pub async fn create<T>(
         &self,
         mut doc: Document,

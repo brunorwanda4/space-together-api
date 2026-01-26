@@ -1,5 +1,5 @@
 use mongodb::{
-    bson::{self, doc, Document},
+    bson::{doc, Document},
     Collection, Database,
 };
 
@@ -281,13 +281,12 @@ impl StudentService {
             }
         }
 
-        let full_doc = bson::to_document(&update_data).map_err(|e| AppError {
-            message: format!("Serialize update failed: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.update_one_and_fetch::<Student>(id, extract_valid_fields(full_doc))
-            .await
+        repo.update_one_and_fetch::<Student>(
+            id,
+            extract_valid_fields(Student::from_partial(update_data)?),
+        )
+        .await
     }
 
     // =========================

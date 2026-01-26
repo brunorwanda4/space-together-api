@@ -98,13 +98,9 @@ impl SchoolService {
             new_school.logo = Some(cloud_res.secure_url);
         }
 
-        let full_doc = bson::to_document(&new_school).map_err(|e| AppError {
-            message: format!("Failed to serialize School: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
         let school = repo
-            .create::<School>(extract_valid_fields(full_doc), None)
+            .create::<School>(extract_valid_fields(new_school.to_document()?), None)
             .await?;
 
         let school_id = match school.id {

@@ -104,14 +104,10 @@ impl TeacherService {
             dto.image = Some(cloud_res.secure_url);
         }
 
-        let full_doc = bson::to_document(&dto).map_err(|e| AppError {
-            message: format!("Failed to serialize teacher: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let teacher = repo
-            .create::<Teacher>(extract_valid_fields(full_doc), None)
+            .create::<Teacher>(extract_valid_fields(dto.to_document()?), None)
             .await?;
 
         if let Some(school_id) = teacher.school_id {
@@ -241,13 +237,12 @@ impl TeacherService {
             }
         }
 
-        let full_doc = bson::to_document(&update_data).map_err(|e| AppError {
-            message: format!("Serialize update failed: {}", e),
-        })?;
-
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        repo.update_one_and_fetch::<Teacher>(id, extract_valid_fields(full_doc))
-            .await
+        repo.update_one_and_fetch::<Teacher>(
+            id,
+            extract_valid_fields(Teacher::from_partial(update_data)?),
+        )
+        .await
     }
 
     // =========================

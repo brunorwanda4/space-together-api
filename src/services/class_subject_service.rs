@@ -9,7 +9,10 @@ use crate::{
         common_details::Paginated,
     },
     errors::AppError,
-    models::{id_model::IdType, mongo_model::IndexDef},
+    models::{
+        id_model::IdType,
+        mongo_model::{CountDoc, IndexDef},
+    },
     pipeline::class_subject_pipeline::class_subject_pipeline,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
@@ -206,6 +209,28 @@ impl ClassSubjectService {
             .ok_or(AppError {
                 message: "Class subject not found".into(),
             })
+    }
+
+    pub async fn count_subject(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let searchable = [
+            "_id",
+            "name",
+            "code",
+            "description",
+            "category",
+            "estimated_hours",
+            "class_id",
+            "school_id",
+            "teacher_id",
+        ];
+
+        repo.count(filter, &searchable, extra_match).await
     }
 
     pub async fn create_many(

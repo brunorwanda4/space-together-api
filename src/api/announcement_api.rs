@@ -6,6 +6,7 @@ use crate::{
         announcement::{Announcement, AnnouncementPartial},
         auth_user::AuthUserDto,
     },
+    handler::delete_target_handler::delete_target_handler,
     helpers::event_helpers::get_school_id_from_request,
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{announcement_service::AnnouncementService, event_service::EventService},
@@ -214,6 +215,13 @@ async fn delete_announcement(
 
     match service.delete(&id).await {
         Ok(announcement) => {
+            if let Some(target_id) = announcement.id {
+                match delete_target_handler(&db, &target_id).await {
+                    Ok(_) => {}
+                    Err(err) => return HttpResponse::BadRequest().json(err),
+                }
+            }
+
             let cloned = announcement.clone();
             let state_clone = state.clone();
 

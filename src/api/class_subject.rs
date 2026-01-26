@@ -1,5 +1,4 @@
 use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse, Responder};
-use mongodb::bson::doc;
 
 use crate::{
     config::state::AppState,
@@ -10,9 +9,6 @@ use crate::{
     utils::{api_utils::build_extra_match, db_utils::get_database},
 };
 
-/// --------------------------------------
-/// GET /class-subjects
-/// --------------------------------------
 #[get("")]
 async fn get_all_class_subjects(
     req: HttpRequest,
@@ -36,9 +32,6 @@ async fn get_all_class_subjects(
     }
 }
 
-/// --------------------------------------
-/// GET /class-subjects/others
-/// --------------------------------------
 #[get("/others")]
 async fn get_all_class_subjects_with_others(
     query: web::Query<RequestQuery>,
@@ -64,9 +57,6 @@ async fn get_all_class_subjects_with_others(
     }
 }
 
-/// --------------------------------------
-/// GET /class-subjects/{id}
-/// --------------------------------------
 #[get("/{id}")]
 async fn get_class_subject_by_id(
     path: web::Path<String>,
@@ -83,9 +73,6 @@ async fn get_class_subject_by_id(
     }
 }
 
-/// --------------------------------------
-/// GET /class-subjects/{id}
-/// --------------------------------------
 #[get("/match")]
 async fn get_class_subject_by_match(
     req: HttpRequest,
@@ -105,9 +92,6 @@ async fn get_class_subject_by_match(
     }
 }
 
-/// --------------------------------------
-/// GET /class-subjects/{id}/others
-/// --------------------------------------
 #[get("/{id}/others")]
 async fn get_class_subject_by_id_others(
     req: HttpRequest,
@@ -143,9 +127,29 @@ async fn get_class_subject_by_match_others(
     }
 }
 
-/// --------------------------------------
-/// POST /class-subjects
-/// --------------------------------------
+#[get("/count")]
+async fn count_students(
+    req: HttpRequest,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let db = get_database(&req, &state);
+    let service = ClassSubjectService::new(&db);
+
+    let extra_match = match build_extra_match(&query) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match service
+        .count_subject(query.filter.clone(), extra_match)
+        .await
+    {
+        Ok(count) => HttpResponse::Ok().json(serde_json::json!(count)),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
 #[post("")]
 async fn create_class_subject(
     data: web::Json<ClassSubject>,
@@ -181,9 +185,6 @@ async fn create_class_subject(
     }
 }
 
-/// --------------------------------------
-/// PUT /class-subjects/{id}
-/// --------------------------------------
 #[put("/{id}")]
 async fn update_class_subject(
     path: web::Path<String>,
@@ -219,9 +220,6 @@ async fn update_class_subject(
     }
 }
 
-/// --------------------------------------
-/// DELETE /class-subjects/{id}
-/// --------------------------------------
 #[delete("/{id}")]
 async fn delete_class_subject(
     path: web::Path<String>,
@@ -261,6 +259,7 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
         .service(get_all_class_subjects_with_others)
         .service(get_class_subject_by_match)
         .service(get_class_subject_by_match_others)
+        .service(count_students)
         .service(get_class_subject_by_id)
         .service(get_class_subject_by_id_others)
         // Add all other services here...
