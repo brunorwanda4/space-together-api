@@ -691,7 +691,7 @@ impl JoinSchoolRequestService {
     pub async fn get_my_pending_request(
         &self,
         user_email: &str,
-    ) -> Result<Paginated<JoinSchoolRequest>, AppError> {
+    ) -> Result<Paginated<JoinSchoolRequestWithRelations>, AppError> {
         let filter = doc! {
             "email": user_email,
             "status": bson::to_bson(&JoinStatus::Pending).map_err(|e| AppError {
@@ -699,6 +699,7 @@ impl JoinSchoolRequestService {
             })?
         };
 
-        self.get_all(None, None, None, Some(filter)).await
+        self.get_all_with_relations(None, None, None, Some(filter))
+            .await
     }
 }

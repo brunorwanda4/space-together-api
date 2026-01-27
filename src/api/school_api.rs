@@ -15,9 +15,6 @@ use crate::{
     utils::api_utils::build_extra_match,
 };
 
-/// ------------------------------------------------------
-/// GET /schools
-/// ------------------------------------------------------
 #[get("")]
 async fn get_all_schools(
     query: web::Query<RequestQuery>,
@@ -39,9 +36,6 @@ async fn get_all_schools(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /schools/{id}
-/// ------------------------------------------------------
 #[get("/{id}")]
 async fn get_school_by_id(path: web::Path<String>, state: web::Data<AppState>) -> impl Responder {
     let id = IdType::from_string(path.into_inner());
@@ -53,9 +47,6 @@ async fn get_school_by_id(path: web::Path<String>, state: web::Data<AppState>) -
     }
 }
 
-/// ------------------------------------------------------
-/// GET /schools/match
-/// ------------------------------------------------------
 #[get("/match")]
 async fn get_school_by_match(
     query: web::Query<RequestQuery>,
@@ -74,9 +65,6 @@ async fn get_school_by_match(
     }
 }
 
-/// ------------------------------------------------------
-/// POST /schools
-/// ------------------------------------------------------
 #[post("")]
 async fn create_school(
     user: web::ReqData<AuthUserDto>,
@@ -154,9 +142,6 @@ async fn create_school(
     }
 }
 
-/// ------------------------------------------------------
-/// PUT /schools/{id}
-/// ------------------------------------------------------
 #[put("/{id}")]
 async fn update_school(
     _user: web::ReqData<AuthUserDto>,
@@ -191,9 +176,6 @@ async fn update_school(
     }
 }
 
-/// ------------------------------------------------------
-/// DELETE /schools/{id}
-/// ------------------------------------------------------
 #[delete("/{id}")]
 async fn delete_school(
     _user: web::ReqData<AuthUserDto>,
@@ -227,9 +209,6 @@ async fn delete_school(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /schools/count
-/// ------------------------------------------------------
 #[get("/count")]
 async fn count_schools(
     query: web::Query<RequestQuery>,
@@ -288,7 +267,6 @@ async fn setup_school_academics(
 
     let target_school_id_str = path.into_inner();
 
-    // Check if user has permission to update school academics
     if let Err(err) =
         crate::guards::role_guard::check_school_access(&logged_user, &target_school_id_str)
     {
@@ -339,9 +317,6 @@ async fn setup_school_academics(
     }
 }
 
-/// ------------------------------------------------------
-/// INIT
-/// ------------------------------------------------------
 pub fn init(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/schools")

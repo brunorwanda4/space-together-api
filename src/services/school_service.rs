@@ -407,7 +407,6 @@ impl SchoolService {
         let template_subject_service = TemplateSubjectService::new(&state.db.main_db());
         let main_class_service = MainClassService::new(&state.db.main_db());
 
-        // Academic year
         let current_year = Utc::now().year();
         let academic_year = format!("{}-{}", current_year, current_year + 1);
 
@@ -470,7 +469,7 @@ impl SchoolService {
                     id: None,
                     name: class_name,
                     username: class_username,
-                    code: None,
+                    code: Some(generate_code()),
                     description: Some(format!("Class for {} - {}", trade.name, academic_year)),
                     school_id: school.id,
                     class_teacher_id: None,
@@ -540,9 +539,15 @@ impl SchoolService {
 
                 let subject_name = format!(
                     "{} {:?} {} {}",
-                    t_sub.name, trade_type, level, academic_year
+                    t_sub.name, trade_type, level, &academic_year
                 );
 
+                let sub_code = format!(
+                    "{}-{}-{}",
+                    t_sub.code.clone(),
+                    academic_year,
+                    generate_code()
+                );
                 class_subjects.push(ClassSubject {
                     id: None,
                     teacher_id: None,
@@ -555,7 +560,7 @@ impl SchoolService {
                     main_subject_id: None, // removed (template subjects do not use this)
                     category: t_sub.category.clone(),
                     description: Some(t_sub.description.clone()),
-                    code: t_sub.code.clone(),
+                    code: sub_code.clone(),
                     topics: t_sub.topics,
                     disable: Some(false),
                     created_at: Some(Utc::now()),
