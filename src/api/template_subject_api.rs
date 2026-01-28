@@ -11,9 +11,6 @@ use crate::{
     utils::api_utils::build_extra_match,
 };
 
-/// --------------------------------------
-/// GET /template-subjects
-/// --------------------------------------
 #[get("")]
 async fn get_all_template_subjects(
     query: web::Query<RequestQuery>,
@@ -51,9 +48,6 @@ async fn get_all_template_subjects_with_others(
     }
 }
 
-/// --------------------------------------
-/// GET /template-subjects/{id}
-/// --------------------------------------
 #[get("/{id}")]
 async fn get_template_subject_by_id(
     path: web::Path<String>,
@@ -68,9 +62,6 @@ async fn get_template_subject_by_id(
     }
 }
 
-/// --------------------------------------
-/// GET /template-subjects/{id}/others
-/// --------------------------------------
 #[get("/{id}/others")]
 async fn get_template_subject_by_id_others(
     path: web::Path<String>,
@@ -85,9 +76,6 @@ async fn get_template_subject_by_id_others(
     }
 }
 
-/// --------------------------------------
-/// GET /template-subjects/code/{code}
-/// --------------------------------------
 #[get("/code/{code}")]
 async fn get_template_subject_by_code(
     path: web::Path<String>,
@@ -102,9 +90,6 @@ async fn get_template_subject_by_code(
     }
 }
 
-/// --------------------------------------
-/// GET /template-subjects/code/{code}/others
-/// --------------------------------------
 #[get("/code/{code}/others")]
 async fn get_template_subject_by_code_others(
     path: web::Path<String>,
@@ -119,9 +104,6 @@ async fn get_template_subject_by_code_others(
     }
 }
 
-/// --------------------------------------
-/// GET /template-subjects/prerequisite/{id}/others
-/// --------------------------------------
 #[get("/prerequisite/{id}/others")]
 async fn find_many_by_prerequisite_with_relations(
     path: web::Path<String>,
@@ -136,9 +118,6 @@ async fn find_many_by_prerequisite_with_relations(
     }
 }
 
-/// --------------------------------------
-/// GET /template-subjects/prerequisite/{id}
-/// --------------------------------------
 #[get("/prerequisite/{id}")]
 async fn find_many_by_prerequisite(
     path: web::Path<String>,
@@ -153,9 +132,6 @@ async fn find_many_by_prerequisite(
     }
 }
 
-/// --------------------------------------
-/// POST /template-subjects
-/// --------------------------------------
 #[post("")]
 async fn create_template_subject(
     user: web::ReqData<AuthUserDto>,
@@ -198,9 +174,6 @@ async fn create_template_subject(
     }
 }
 
-/// --------------------------------------
-/// PUT /template-subjects/{id}
-/// --------------------------------------
 #[put("/{id}")]
 async fn update_template_subject(
     user: web::ReqData<AuthUserDto>,
@@ -252,9 +225,6 @@ async fn update_template_subject(
     }
 }
 
-/// --------------------------------------
-/// DELETE /template-subjects/{id}
-/// --------------------------------------
 #[delete("/{id}")]
 async fn delete_template_subject(
     user: web::ReqData<AuthUserDto>,

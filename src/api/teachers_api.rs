@@ -15,9 +15,6 @@ use crate::{
     },
 };
 
-/// ------------------------------------------------------
-/// GET /teachers
-/// ------------------------------------------------------
 #[get("")]
 async fn get_all_teachers(
     req: HttpRequest,
@@ -41,9 +38,6 @@ async fn get_all_teachers(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /teachers/others
-/// ------------------------------------------------------
 
 #[get("/others")]
 async fn get_all_teachers_with_relations(
@@ -68,9 +62,6 @@ async fn get_all_teachers_with_relations(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /teachers/{id}/others
-/// ------------------------------------------------------
 
 #[get("/{id}/others")]
 async fn get_teacher_by_id_with_relations(
@@ -88,9 +79,6 @@ async fn get_teacher_by_id_with_relations(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /teachers/{id}
-/// ------------------------------------------------------
 #[get("/{id}")]
 async fn get_teacher_by_id(
     req: HttpRequest,
@@ -107,9 +95,6 @@ async fn get_teacher_by_id(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /teachers/match
-/// ------------------------------------------------------
 #[get("/match")]
 async fn get_teacher_by_match(
     req: HttpRequest,
@@ -130,9 +115,6 @@ async fn get_teacher_by_match(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /teachers/others/match
-/// ------------------------------------------------------
 
 #[get("/others/match")]
 async fn get_teacher_by_other_match(
@@ -153,9 +135,6 @@ async fn get_teacher_by_other_match(
     }
 }
 
-/// ------------------------------------------------------
-/// POST /teachers
-/// ------------------------------------------------------
 #[post("")]
 async fn create_teacher(
     req: HttpRequest,
@@ -200,9 +179,6 @@ async fn create_teacher(
     }
 }
 
-/// ------------------------------------------------------
-/// PUT /teachers/{id}
-/// ------------------------------------------------------
 #[put("/{id}")]
 async fn update_teacher(
     req: HttpRequest,
@@ -239,9 +215,6 @@ async fn update_teacher(
     }
 }
 
-/// ------------------------------------------------------
-/// DELETE /teachers/{id}
-/// ------------------------------------------------------
 #[delete("/{id}")]
 async fn delete_teacher(
     req: HttpRequest,
@@ -277,9 +250,6 @@ async fn delete_teacher(
     }
 }
 
-/// ------------------------------------------------------
-/// GET /teachers/count
-/// ------------------------------------------------------
 #[get("/count")]
 async fn count_teachers(
     req: HttpRequest,
@@ -303,9 +273,6 @@ async fn count_teachers(
     }
 }
 
-/// ------------------------------------------------------
-/// ROUTE BLUEPRINT
-/// ------------------------------------------------------
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(get_all_teachers)
         .service(get_all_teachers_with_relations)
@@ -323,9 +290,6 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
         );
 }
 
-/// ------------------------------------------------------
-/// INIT
-/// ------------------------------------------------------
 pub fn init(cfg: &mut web::ServiceConfig) {
     crate::utils::route_utils::mount_dual_routes(cfg, "teachers", blueprint);
 }
