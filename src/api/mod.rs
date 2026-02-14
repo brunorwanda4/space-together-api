@@ -1,6 +1,7 @@
 use actix_web::web;
 
 mod announcement_api;
+mod assessment_category_api;
 mod auth_api;
 mod class_api;
 mod class_subject;
@@ -9,12 +10,17 @@ mod comment_api;
 mod database_status;
 mod education_year;
 mod events;
+mod exam_api;
+mod grading_scale_api;
 mod join_school_request_api;
 mod like_api;
 mod main_class_api;
+mod ranking_api;
+mod results_api;
 mod school_api;
 mod school_collections;
 mod school_staff_api;
+mod score_api;
 mod sector_api;
 mod students_api;
 mod teachers_api;
@@ -48,4 +54,10 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     announcement_api::init(cfg);
     comment_api::init(cfg);
     like_api::init(cfg);
+    exam_api::init(cfg);
+    assessment_category_api::init(cfg);
+    score_api::init(cfg);
+    grading_scale_api::init(cfg);
+    results_api::init(cfg);
+    ranking_api::init(cfg);
 }

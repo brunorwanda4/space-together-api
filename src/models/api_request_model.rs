@@ -7,6 +7,12 @@ pub struct RequestQuery {
     pub skip: Option<i64>,
     pub field: Vec<String>,
     pub value: Vec<String>,
+    pub class_id: Option<String>,
+    pub education_year_id: Option<String>,
+    pub school_id: Option<String>,
+    pub term_id: Option<String>,
+    pub exam_id: Option<String>,
+    pub gpa_threshold: Option<f64>,
 }
 
 impl<'de> Deserialize<'de> for RequestQuery {
@@ -24,6 +30,12 @@ impl<'de> Deserialize<'de> for RequestQuery {
             skip: None,
             field: Vec::new(),
             value: Vec::new(),
+            class_id: None,
+            education_year_id: None,
+            school_id: None,
+            term_id: None,
+            exam_id: None,
+            gpa_threshold: None,
         };
 
         // 2. Manually assign the values from the list
@@ -34,6 +46,12 @@ impl<'de> Deserialize<'de> for RequestQuery {
                 "skip" => query.skip = val.parse().ok(),
                 "field" => query.field.push(val),
                 "value" => query.value.push(val),
+                "class_id" => query.class_id = Some(val),
+                "education_year_id" => query.education_year_id = Some(val),
+                "school_id" => query.school_id = Some(val),
+                "term_id" => query.term_id = Some(val),
+                "exam_id" => query.exam_id = Some(val),
+                "gpa_threshold" => query.gpa_threshold = val.parse().ok(),
                 _ => {} // Ignore unknown fields
             }
         }
