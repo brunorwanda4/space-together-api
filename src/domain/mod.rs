@@ -1,5 +1,6 @@
 pub mod announcement;
 pub mod assessment_category;
+pub mod assignment;
 pub mod auth;
 pub mod auth_user;
 pub mod class;

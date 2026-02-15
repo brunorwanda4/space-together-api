@@ -1,5 +1,6 @@
 pub mod announcement_service;
 pub mod assessment_category_service;
+pub mod assignment_service;
 pub mod auth_service;
 pub mod class_service;
 pub mod class_subject_service;
