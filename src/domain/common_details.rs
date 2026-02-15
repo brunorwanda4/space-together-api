@@ -11,6 +11,7 @@ pub enum UserRole {
     TEACHER,
     ADMIN,
     SCHOOLSTAFF,
+    PARENT,
 }
 
 impl UserRole {
@@ -20,6 +21,7 @@ impl UserRole {
             UserRole::TEACHER => "TEACHER".to_string(),
             UserRole::ADMIN => "ADMIN".to_string(),
             UserRole::SCHOOLSTAFF => "SCHOOLSTAFF".to_string(),
+            UserRole::PARENT => "PARENT".to_string(),
         }
     }
 }

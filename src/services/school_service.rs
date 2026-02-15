@@ -367,6 +367,7 @@ impl SchoolService {
             }
 
             UserRole::ADMIN => None,
+            UserRole::PARENT => None, // Parents don't have school-specific records in this context
         };
 
         let school_token = to_school_school_token(&school, school_member)?;

@@ -2,7 +2,7 @@
 # Critical Functional Gaps (Must Have for V1.5)
 
 Design and implement a complete Academic Records & Assessment System for Space-Together, following the same architecture patterns already used in the project (Rust, Actix-web, MongoDB, database-per-school multi-tenancy, JWT auth, role-based guards, aggregation pipelines, async handlers, structured schemas, validation, soft deletes, pagination, filtering, and audit logging).
-
+ 
 The implementation must integrate cleanly with existing modules such as Users, Classes, ClassSubjects, EducationYear, and Attendance.
 
 Build the following modules:

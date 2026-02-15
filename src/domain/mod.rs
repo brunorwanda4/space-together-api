@@ -15,6 +15,7 @@ pub mod guardian;
 pub mod join_school_request;
 pub mod like;
 pub mod main_class;
+pub mod parent;
 pub mod promotion;
 pub mod school;
 pub mod school_staff;

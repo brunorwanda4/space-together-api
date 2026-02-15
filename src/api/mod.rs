@@ -15,6 +15,7 @@ mod grading_scale_api;
 mod join_school_request_api;
 mod like_api;
 mod main_class_api;
+mod parent_api;
 mod ranking_api;
 mod results_api;
 mod school_api;
@@ -44,6 +45,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     students_api::init(cfg);
     teachers_api::init(cfg);
     school_staff_api::init(cfg);
+    parent_api::init(cfg);
     join_school_request_api::init(cfg);
     school_collections::school_class_timetable::init(cfg);
     school_collections::school_timetable::init(cfg);

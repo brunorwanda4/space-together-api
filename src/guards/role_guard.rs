@@ -385,6 +385,63 @@ pub fn check_teacher_access(user: &AuthUserDto, teacher_id: &str) -> Result<(), 
     Err("Access denied: insufficient permissions for teacher".to_string())
 }
 
+/// Check if user is a parent
+pub fn check_parent(user: &AuthUserDto) -> Result<(), String> {
+    if user.role == Some(UserRole::PARENT) {
+        Ok(())
+    } else {
+        Err("Access denied: Parent role required".to_string())
+    }
+}
+
+/// Check if parent has access to a specific student (async version)
+pub async fn check_parent_access(
+    user: &AuthUserDto,
+    student_id: &str,
+    parent_service: &crate::services::parent_service::ParentService,
+) -> Result<(), String> {
+    // Admin and staff have full access
+    if user.role == Some(UserRole::ADMIN) || user.role == Some(UserRole::SCHOOLSTAFF) {
+        return Ok(());
+    }
+
+    // Check if user is a parent
+    if user.role != Some(UserRole::PARENT) {
+        return Err("Access denied: Parent role required".to_string());
+    }
+
+    // Find parent by user_id
+    let user_oid = match crate::utils::object_id::parse_object_id_value(&user.id) {
+        Ok(id) => id,
+        Err(_) => return Err("Invalid user ID".to_string()),
+    };
+
+    let parent = match parent_service
+        .find_one(None, Some(mongodb::bson::doc! { "user_id": user_oid }))
+        .await
+    {
+        Ok(p) => p,
+        Err(_) => return Err("Parent record not found".to_string()),
+    };
+
+    let parent_id = match parent.id {
+        Some(id) => crate::models::id_model::IdType::ObjectId(id),
+        None => return Err("Parent ID not found".to_string()),
+    };
+
+    let student_id_type = crate::models::id_model::IdType::from_string(student_id.to_string());
+
+    // Validate parent has access to this student
+    match parent_service
+        .validate_parent_student_access(&parent_id, &student_id_type)
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err("Access denied: You do not have access to this student".to_string()),
+        Err(_) => Err("Error validating parent access".to_string()),
+    }
+}
+
 /// Check if user is Admin or Teacher Creator
 pub fn check_admin_or_teacher_creator(user: &AuthUserDto, teacher_id: &str) -> Result<(), String> {
     if user.role == Some(UserRole::ADMIN) {
