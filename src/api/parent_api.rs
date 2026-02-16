@@ -7,7 +7,7 @@ use crate::{
         common_details::UserRole,
         parent::{Parent, ParentPartial},
     },
-    guards::role_guard::{check_admin_or_staff, check_parent_access},
+    guards::role_guard::{check_admin_or_staff, require_parent_child_access},
     helpers::event_helpers::get_school_id_from_request,
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{event_service::EventService, parent_service::ParentService},
@@ -337,8 +337,8 @@ async fn get_student_attendance(
     let db = get_database(&req, &state);
     let service = ParentService::new(&db);
 
-    // Validate parent access
-    if let Err(e) = check_parent_access(&user, &student_id, &service).await {
+    // Validate parent-child access using new guard
+    if let Err(e) = require_parent_child_access(&user, &student_id, &service).await {
         return HttpResponse::Forbidden().json(serde_json::json!({ "error": e }));
     }
 
@@ -372,8 +372,8 @@ async fn get_student_results(
     let db = get_database(&req, &state);
     let service = ParentService::new(&db);
 
-    // Validate parent access
-    if let Err(e) = check_parent_access(&user, &student_id, &service).await {
+    // Validate parent-child access using new guard
+    if let Err(e) = require_parent_child_access(&user, &student_id, &service).await {
         return HttpResponse::Forbidden().json(serde_json::json!({ "error": e }));
     }
 
@@ -409,8 +409,8 @@ async fn get_student_finance(
     let db = get_database(&req, &state);
     let service = ParentService::new(&db);
 
-    // Validate parent access
-    if let Err(e) = check_parent_access(&user, &student_id, &service).await {
+    // Validate parent-child access using new guard
+    if let Err(e) = require_parent_child_access(&user, &student_id, &service).await {
         return HttpResponse::Forbidden().json(serde_json::json!({ "error": e }));
     }
 

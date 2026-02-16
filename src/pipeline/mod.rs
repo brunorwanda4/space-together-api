@@ -9,6 +9,7 @@ pub mod learning_outcome_pipeline;
 pub mod like_pipeline;
 pub mod main_class_pipeline;
 pub mod parent_pipeline;
+pub mod role_pipeline;
 pub mod student_pipeline;
 pub mod subject_pipeline;
 pub mod teacher_pipeline;

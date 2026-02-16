@@ -6,10 +6,14 @@ use crate::{
         announcement::{Announcement, AnnouncementPartial},
         auth_user::AuthUserDto,
     },
+    guards::role_guard::check_admin_or_staff,
     handler::delete_target_handler::delete_target_handler,
     helpers::event_helpers::get_school_id_from_request,
     models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{announcement_service::AnnouncementService, event_service::EventService},
+    services::{
+        announcement_service::AnnouncementService, 
+        event_service::EventService,
+    },
     utils::{api_utils::build_extra_match, db_utils::get_database},
 };
 
@@ -136,7 +140,13 @@ async fn create_announcement(
     data: web::Json<Announcement>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let _logged_user = user.into_inner();
+    // Check permission: Admin or Staff can create announcements
+    if let Err(e) = check_admin_or_staff(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": e
+        }));
+    }
+    
     let db = get_database(&req, &state);
     let service = AnnouncementService::new(&db);
 
@@ -172,7 +182,13 @@ async fn update_announcement(
     data: web::Json<AnnouncementPartial>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    let _logged_user = user.into_inner();
+    // Check permission: Admin or Staff can update announcements
+    if let Err(e) = check_admin_or_staff(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": e
+        }));
+    }
+    
     let id = IdType::from_string(path.into_inner());
     let db = get_database(&req, &state);
     let service = AnnouncementService::new(&db);

@@ -19,6 +19,7 @@ mod main_class_api;
 mod parent_api;
 mod ranking_api;
 mod results_api;
+mod roles_api;
 mod school_api;
 mod school_collections;
 mod school_staff_api;
@@ -64,4 +65,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     results_api::init(cfg);
     ranking_api::init(cfg);
     assignment_api::init(cfg);
+    roles_api::init(cfg);
 }

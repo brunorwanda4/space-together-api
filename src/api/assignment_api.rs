@@ -8,9 +8,16 @@ use crate::{
         auth_user::AuthUserDto,
         common_details::UserRole,
     },
+    guards::role_guard::{require_permission, require_feature_enabled, require_parent_child_access},
     helpers::event_helpers::get_school_id_from_request,
     models::{api_request_model::RequestQuery, id_model::IdType},
-    services::{assignment_service::AssignmentService, event_service::EventService},
+    services::{
+        assignment_service::AssignmentService, 
+        event_service::EventService,
+        role_service::RoleService,
+        feature_service::FeatureService,
+        parent_service::ParentService,
+    },
     utils::{api_utils::build_extra_match, db_utils::get_database, object_id::parse_object_id_value},
 };
 
@@ -72,14 +79,33 @@ async fn create_assignment(
     data: web::Json<Assignment>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    // Only teachers can create assignments
-    if !matches!(user.role, Some(UserRole::TEACHER) | Some(UserRole::ADMIN)) {
+    let db = get_database(&req, &state);
+    
+    // Check if assignments feature is enabled
+    let school_id = match get_school_id_from_request(&req) {
+        Some(id) => id,
+        None => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "message": "School ID required"
+            }));
+        }
+    };
+    
+    let feature_service = FeatureService::new(&db);
+    if let Err(e) = require_feature_enabled(&school_id, "assignments.enabled", &feature_service).await {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": "Only teachers can create assignments"
+            "message": e
+        }));
+    }
+    
+    // Check permission: assignment.create
+    let role_service = RoleService::new(&db);
+    if let Err(e) = require_permission(&user, &school_id, "assignment.create", &role_service).await {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": e
         }));
     }
 
-    let db = get_database(&req, &state);
     let service = AssignmentService::new(&db);
 
     let mut assignment = data.into_inner();
@@ -143,6 +169,24 @@ async fn update_assignment(
 ) -> impl Responder {
     let id = IdType::from_string(path.into_inner());
     let db = get_database(&req, &state);
+    
+    // Check permission: assignment.update
+    let school_id = match get_school_id_from_request(&req) {
+        Some(id) => id,
+        None => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "message": "School ID required"
+            }));
+        }
+    };
+    
+    let role_service = RoleService::new(&db);
+    if let Err(e) = require_permission(&user, &school_id, "assignment.update", &role_service).await {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": e
+        }));
+    }
+    
     let service = AssignmentService::new(&db);
 
     // Verify user is the assignment creator or admin
@@ -201,6 +245,24 @@ async fn delete_assignment(
 ) -> impl Responder {
     let id = IdType::from_string(path.into_inner());
     let db = get_database(&req, &state);
+    
+    // Check permission: assignment.delete
+    let school_id = match get_school_id_from_request(&req) {
+        Some(id) => id,
+        None => {
+            return HttpResponse::BadRequest().json(serde_json::json!({
+                "message": "School ID required"
+            }));
+        }
+    };
+    
+    let role_service = RoleService::new(&db);
+    if let Err(e) = require_permission(&user, &school_id, "assignment.delete", &role_service).await {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": e
+        }));
+    }
+    
     let service = AssignmentService::new(&db);
 
     // Only admin or assignment creator can delete
@@ -561,27 +623,46 @@ async fn get_submission_by_id(
     let db = get_database(&req, &state);
     let service = AssignmentService::new(&db);
 
+    // Get the submission first to check student_id
+    let submission = match service.find_one_submission(Some(&id), None).await {
+        Ok(sub) => sub,
+        Err(err) => return HttpResponse::NotFound().json(err),
+    };
+
     // Students can only view their own submissions
     if matches!(user.role, Some(UserRole::STUDENT)) {
-        match service.find_one_submission(Some(&id), None).await {
-            Ok(submission) => {
-                if let (Some(student_id), Ok(user_oid)) =
-                    (submission.student_id, parse_object_id_value(&user.id))
-                {
-                    let student_collection = db.collection::<mongodb::bson::Document>("students");
-                    match student_collection.find_one(doc! { "_id": student_id, "user_id": user_oid })
-                        .await
-                    {
-                        Ok(None) | Err(_) => {
-                            return HttpResponse::Forbidden().json(serde_json::json!({
-                                "message": "You can only view your own submissions"
-                            }));
-                        }
-                        _ => {}
-                    }
+        if let (Some(student_id), Ok(user_oid)) =
+            (submission.student_id, parse_object_id_value(&user.id))
+        {
+            let student_collection = db.collection::<mongodb::bson::Document>("students");
+            match student_collection.find_one(doc! { "_id": student_id, "user_id": user_oid })
+                .await
+            {
+                Ok(None) | Err(_) => {
+                    return HttpResponse::Forbidden().json(serde_json::json!({
+                        "message": "You can only view your own submissions"
+                    }));
                 }
+                _ => {}
             }
-            Err(err) => return HttpResponse::NotFound().json(err),
+        }
+    }
+    
+    // Parents can view their children's submissions
+    if matches!(user.role, Some(UserRole::PARENT)) {
+        if let Some(student_id) = submission.student_id {
+            let parent_service = ParentService::new(&db);
+            let student_id_str = student_id.to_hex();
+            
+            if let Err(e) = require_parent_child_access(&user, &student_id_str, &parent_service).await {
+                return HttpResponse::Forbidden().json(serde_json::json!({
+                    "message": e
+                }));
+            }
+        } else {
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "message": "Cannot verify parent access: student ID not found"
+            }));
         }
     }
 

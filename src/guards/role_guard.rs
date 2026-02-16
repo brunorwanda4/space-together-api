@@ -507,3 +507,103 @@ pub fn check_admin_or_teacher_creator(user: &AuthUserDto, teacher_id: &str) -> R
 
 //     Err("Access denied: insufficient permissions for teacher management".to_string())
 // }
+
+
+// =========================
+// NEW PERMISSION-BASED GUARDS
+// =========================
+
+/// Require specific role
+pub fn require_role(user: &AuthUserDto, required_role: &UserRole) -> Result<(), String> {
+    if user.role.as_ref() == Some(required_role) {
+        Ok(())
+    } else {
+        Err(format!("Access denied: {:?} role required", required_role))
+    }
+}
+
+/// Require specific permission (async version)
+pub async fn require_permission(
+    user: &AuthUserDto,
+    school_id: &str,
+    permission: &str,
+    role_service: &crate::services::role_service::RoleService,
+) -> Result<(), String> {
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    let user_id = crate::models::id_model::IdType::from_string(user.id.clone());
+    let school_id_type = crate::models::id_model::IdType::from_string(school_id.to_string());
+
+    match role_service
+        .user_has_permission(&user_id, &school_id_type, permission)
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!("Access denied: {} permission required", permission)),
+        Err(_) => Err("Error checking permissions".to_string()),
+    }
+}
+
+/// Require parent-child access (async version)
+pub async fn require_parent_child_access(
+    user: &AuthUserDto,
+    student_id: &str,
+    parent_service: &crate::services::parent_service::ParentService,
+) -> Result<(), String> {
+    if user.role == Some(UserRole::ADMIN) || user.role == Some(UserRole::SCHOOLSTAFF) {
+        return Ok(());
+    }
+
+    if user.role != Some(UserRole::PARENT) {
+        return Err("Access denied: Parent role required".to_string());
+    }
+
+    let user_oid = match crate::utils::object_id::parse_object_id_value(&user.id) {
+        Ok(id) => id,
+        Err(_) => return Err("Invalid user ID".to_string()),
+    };
+
+    let parent = match parent_service
+        .find_one(None, Some(mongodb::bson::doc! { "user_id": user_oid }))
+        .await
+    {
+        Ok(p) => p,
+        Err(_) => return Err("Parent record not found".to_string()),
+    };
+
+    let parent_id = match parent.id {
+        Some(id) => crate::models::id_model::IdType::ObjectId(id),
+        None => return Err("Parent ID not found".to_string()),
+    };
+
+    let student_id_type = crate::models::id_model::IdType::from_string(student_id.to_string());
+
+    match parent_service
+        .validate_parent_student_access(&parent_id, &student_id_type)
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err("Access denied: You do not have access to this student".to_string()),
+        Err(_) => Err("Error validating parent access".to_string()),
+    }
+}
+
+/// Require feature enabled (async version)
+pub async fn require_feature_enabled(
+    school_id: &str,
+    feature_name: &str,
+    feature_service: &crate::services::feature_service::FeatureService,
+) -> Result<(), String> {
+    let school_id_type = crate::models::id_model::IdType::from_string(school_id.to_string());
+
+    match feature_service
+        .is_feature_enabled(&school_id_type, feature_name)
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!("Feature '{}' is disabled for this school", feature_name)),
+        Err(_) => Err("Error checking feature status".to_string()),
+    }
+}

@@ -6,6 +6,7 @@ use crate::{
         auth_user::AuthUserDto,
         exam::{Exam, ExamPartial},
     },
+    guards::role_guard::check_admin_staff_or_teacher,
     helpers::event_helpers::get_school_id_from_request,
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{event_service::EventService, exam_service::ExamService},
@@ -58,6 +59,13 @@ async fn create_exam(
     data: web::Json<Exam>,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    // Check permission: Admin, Staff, or Teacher can create exams
+    if let Err(err) = check_admin_staff_or_teacher(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err
+        }));
+    }
+    
     let db = get_database(&req, &state);
     let service = ExamService::new(&db);
 
@@ -97,11 +105,18 @@ async fn create_exam(
 #[put("/{id}")]
 async fn update_exam(
     req: HttpRequest,
-    _user: web::ReqData<AuthUserDto>,
+    user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<ExamPartial>,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    // Check permission: Admin, Staff, or Teacher can update exams
+    if let Err(err) = check_admin_staff_or_teacher(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err
+        }));
+    }
+    
     let id = IdType::from_string(path.into_inner());
     let db = get_database(&req, &state);
     let service = ExamService::new(&db);
@@ -132,10 +147,17 @@ async fn update_exam(
 #[delete("/{id}")]
 async fn delete_exam(
     req: HttpRequest,
-    _user: web::ReqData<AuthUserDto>,
+    user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    // Check permission: Admin, Staff, or Teacher can delete exams
+    if let Err(err) = check_admin_staff_or_teacher(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err
+        }));
+    }
+    
     let id = IdType::from_string(path.into_inner());
     let db = get_database(&req, &state);
     let service = ExamService::new(&db);

@@ -6,6 +6,7 @@ use crate::{
         auth_user::AuthUserDto,
         student::{Student, StudentPartial},
     },
+    guards::role_guard::check_admin_staff_or_teacher,
     helpers::event_helpers::get_school_id_from_request,
     models::{api_request_model::RequestQuery, id_model::IdType},
     services::{event_service::EventService, student_service::StudentService},
@@ -138,6 +139,13 @@ async fn create_student(
     data: web::Json<Student>,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    // Check permission: Admin, Staff, or Teacher can create students
+    if let Err(err) = check_admin_staff_or_teacher(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err
+        }));
+    }
+
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);
 
@@ -177,11 +185,18 @@ async fn create_student(
 #[put("/{id}")]
 async fn update_student(
     req: HttpRequest,
-    _user: web::ReqData<AuthUserDto>,
+    user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     data: web::Json<StudentPartial>,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    // Check permission: Admin, Staff, or Teacher can update students
+    if let Err(err) = check_admin_staff_or_teacher(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err
+        }));
+    }
+
     let id = IdType::from_string(path.into_inner());
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);
@@ -212,10 +227,17 @@ async fn update_student(
 #[delete("/{id}")]
 async fn delete_student(
     req: HttpRequest,
-    _user: web::ReqData<AuthUserDto>,
+    user: web::ReqData<AuthUserDto>,
     path: web::Path<String>,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    // Check permission: Admin, Staff, or Teacher can delete students
+    if let Err(err) = check_admin_staff_or_teacher(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err
+        }));
+    }
+
     let id = IdType::from_string(path.into_inner());
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);

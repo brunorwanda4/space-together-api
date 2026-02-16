@@ -18,6 +18,7 @@ pub mod like;
 pub mod main_class;
 pub mod parent;
 pub mod promotion;
+pub mod role;
 pub mod school;
 pub mod school_staff;
 pub mod school_timetable;

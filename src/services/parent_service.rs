@@ -663,4 +663,14 @@ impl ParentService {
             .get_all_with_relations(None, limit, skip, Some(filter))
             .await
     }
+
+    /// Check if a user is a parent of a specific student
+    pub async fn is_parent_of(
+        &self,
+        parent_id: &IdType,
+        student_id: &IdType,
+    ) -> Result<bool, AppError> {
+        self.validate_parent_student_access(parent_id, student_id)
+            .await
+    }
 }
