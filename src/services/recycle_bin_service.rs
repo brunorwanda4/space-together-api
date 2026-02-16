@@ -213,7 +213,6 @@ impl RecycleBinService {
         let school_id = entity
             .get_object_id("school_id")
             .ok()
-            .cloned()
             .unwrap_or_else(|| ObjectId::new());
 
         let audit_service = AuditLogService::new(&state.db.main_db());
@@ -279,7 +278,6 @@ impl RecycleBinService {
         let school_id = entity
             .get_object_id("school_id")
             .ok()
-            .cloned()
             .unwrap_or_else(|| ObjectId::new());
 
         let audit_service = AuditLogService::new(&state.db.main_db());

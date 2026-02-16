@@ -75,7 +75,7 @@ impl BackupService {
         let file_path = format!("backups/{}.archive", backup_name);
 
         // Create initial backup record
-        let mut backup = SchoolBackup {
+        let backup = SchoolBackup {
             id: None,
             school_id: Some(school_id),
             backup_name: backup_name.clone(),
@@ -121,7 +121,6 @@ impl BackupService {
 
         // Spawn background task for actual backup
         let backup_id_clone = backup_id;
-        let school_id_clone = school_id;
         let file_path_clone = file_path.clone();
         let collection_clone = self.collection.clone();
         let db_name = format!("school_{}", school_id.to_hex());

@@ -27,9 +27,9 @@ async fn get_recycle_bin(
     state: web::Data<AppState>,
 ) -> impl Responder {
     // Only ADMIN can access recycle bin
-    if let Err(err) = check_admin(&user) {
+    if let Err(err_msg) = check_admin(&user) {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err
+            "message": err_msg.to_string()
         }));
     }
 
@@ -92,9 +92,9 @@ async fn restore_entity(
     state: web::Data<AppState>,
 ) -> impl Responder {
     // Only ADMIN can restore entities
-    if let Err(err) = check_admin(&user) {
+    if let Err(err_msg) = check_admin(&user) {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err
+            "message": err_msg.to_string()
         }));
     }
 
@@ -120,9 +120,9 @@ async fn permanently_delete_entity(
     state: web::Data<AppState>,
 ) -> impl Responder {
     // Only ADMIN can permanently delete entities
-    if let Err(err) = check_admin(&user) {
+    if let Err(err_msg) = check_admin(&user) {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err
+            "message": err_msg.to_string()
         }));
     }
 

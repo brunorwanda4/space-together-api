@@ -94,9 +94,9 @@ async fn create_manual_backup(
     state: web::Data<AppState>,
 ) -> impl Responder {
     // Only ADMIN can create manual backups
-    if let Err(err) = check_admin(&user) {
+    if let Err(err_msg) = check_admin(&user) {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err
+            "message": err_msg.to_string()
         }));
     }
 
@@ -130,9 +130,9 @@ async fn restore_backup(
     state: web::Data<AppState>,
 ) -> impl Responder {
     // Only ADMIN can restore backups
-    if let Err(err) = check_admin(&user) {
+    if let Err(err_msg) = check_admin(&user) {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err
+            "message": err_msg.to_string()
         }));
     }
 
@@ -169,7 +169,7 @@ async fn delete_backup(
     // Only ADMIN can delete backups
     if let Err(err) = check_admin(&user) {
         return HttpResponse::Forbidden().json(serde_json::json!({
-            "message": err
+            "message": err.to_string()
         }));
     }
 
