@@ -242,7 +242,12 @@ async fn delete_student(
     let db = get_database(&req, &state);
     let service = StudentService::new(&db);
 
-    match service.delete(&id).await {
+    let user_id = match parse_object_id_value(&user.id) {
+        Ok(id) => id,
+        Err(err) => return HttpResponse::BadRequest().json(err),
+    };
+
+    match service.delete(&id, user_id).await {
         Ok(student) => {
             let student_clone = student.clone();
             let state_clone = state.clone();
@@ -261,6 +266,30 @@ async fn delete_student(
 
             HttpResponse::Ok().json(student)
         }
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
+#[post("/{id}/restore")]
+async fn restore_student(
+    req: HttpRequest,
+    user: web::ReqData<AuthUserDto>,
+    path: web::Path<String>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    // Check permission: Admin or Staff can restore students
+    if let Err(err) = check_admin_staff_or_teacher(&user) {
+        return HttpResponse::Forbidden().json(serde_json::json!({
+            "message": err
+        }));
+    }
+
+    let id = IdType::from_string(path.into_inner());
+    let db = get_database(&req, &state);
+    let service = StudentService::new(&db);
+
+    match service.restore(&id).await {
+        Ok(student) => HttpResponse::Ok().json(student),
         Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
@@ -301,7 +330,8 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
                 .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
                 .service(create_student)
                 .service(update_student)
-                .service(delete_student),
+                .service(delete_student)
+                .service(restore_student),
         );
 }
 

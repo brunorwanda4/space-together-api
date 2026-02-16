@@ -27,6 +27,7 @@ use crate::{
         names::is_valid_name,
     },
 };
+use chrono::Utc;
 
 pub struct StudentService {
     pub collection: Collection<Student>,
@@ -290,23 +291,42 @@ impl StudentService {
     }
 
     // =========================
-    // DELETE
+    // DELETE (SOFT DELETE)
     // =========================
-    pub async fn delete(&self, id: &IdType) -> Result<Student, AppError> {
-        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-
+    pub async fn delete(&self, id: &IdType, user_id: mongodb::bson::oid::ObjectId) -> Result<Student, AppError> {
         let student = self.find_one(Some(id), None).await?;
 
-        // Delete the student's image from Cloudinary if it exists
-        if let Some(ref image_id) = student.image_id {
-            CloudinaryService::delete_from_cloudinary(image_id)
-                .await
-                .ok();
-        }
+        // Soft delete: set deleted_at and deleted_by
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        
+        let update_doc = doc! {
+            "$set": {
+                "deleted_at": mongodb::bson::to_bson(&Utc::now()).unwrap(),
+                "deleted_by": user_id
+            }
+        };
 
-        repo.delete_one(id).await?;
+        repo.update_one_raw(id, update_doc).await?;
 
         Ok(student)
+    }
+
+    // =========================
+    // RESTORE (UNDO SOFT DELETE)
+    // =========================
+    pub async fn restore(&self, id: &IdType) -> Result<Student, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        
+        let update_doc = doc! {
+            "$unset": {
+                "deleted_at": "",
+                "deleted_by": ""
+            }
+        };
+
+        repo.update_one_raw(id, update_doc).await?;
+
+        self.find_one(Some(id), None).await
     }
 
     pub async fn get_all_with_relations(

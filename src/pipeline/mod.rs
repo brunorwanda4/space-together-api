@@ -2,6 +2,7 @@ pub mod academic_year_pipeline;
 pub mod announcement_pipeline;
 pub mod assignment_pipeline;
 pub mod audit_log_pipeline;
+pub mod backup_pipeline;
 pub mod class_pipeline;
 pub mod class_subject_pipeline;
 pub mod comment_pipeline;

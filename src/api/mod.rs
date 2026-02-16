@@ -5,6 +5,7 @@ mod assessment_category_api;
 mod assignment_api;
 mod audit_logs_api;
 mod auth_api;
+mod backups_api;
 mod class_api;
 mod class_subject;
 mod class_timetable;
@@ -19,6 +20,7 @@ mod like_api;
 mod main_class_api;
 mod parent_api;
 mod ranking_api;
+mod recycle_bin_api;
 mod results_api;
 mod roles_api;
 mod school_api;
@@ -68,4 +70,6 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     assignment_api::init(cfg);
     roles_api::init(cfg);
     audit_logs_api::init(cfg);
+    backups_api::init(cfg);
+    recycle_bin_api::init(cfg);
 }

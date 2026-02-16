@@ -199,6 +199,37 @@ impl BaseRepository {
         Ok(item)
     }
 
+    /// Update a document with raw update document (no automatic updated_at)
+    pub async fn update_one_raw(
+        &self,
+        id: &IdType,
+        update_doc: Document,
+    ) -> Result<(), AppError> {
+        let obj_id = IdType::to_object_id(id)?;
+
+        if update_doc.is_empty() {
+            return Err(AppError {
+                message: "No valid fields to update".into(),
+            });
+        }
+
+        let result = self
+            .collection
+            .update_one(doc! { "_id": obj_id }, update_doc)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to update document: {}", e),
+            })?;
+
+        if result.matched_count == 0 {
+            return Err(AppError {
+                message: "Document not found".into(),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Fast bulk update that returns updated documents using a batch marker
     /// - Uses a temporary `__batch_id` field
     /// - Requires non-empty filter

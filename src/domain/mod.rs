@@ -4,6 +4,7 @@ pub mod assignment;
 pub mod audit_log;
 pub mod auth;
 pub mod auth_user;
+pub mod backup;
 pub mod class;
 pub mod class_subject;
 pub mod class_timetable;

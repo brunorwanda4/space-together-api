@@ -94,6 +94,16 @@ make_partial! {
 
         #[serde(default = "Utc::now")]
         pub updated_at: DateTime<Utc>,
+
+        pub deleted_at: Option<DateTime<Utc>>,
+
+        #[serde(
+            serialize_with = "object_id_helpers::serialize",
+            deserialize_with = "object_id_helpers::deserialize",
+            skip_serializing_if = "Option::is_none",
+            default
+        )]
+        pub deleted_by: Option<ObjectId>,
     } => StudentPartial
 }
 

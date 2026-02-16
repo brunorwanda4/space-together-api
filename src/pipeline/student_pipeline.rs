@@ -9,6 +9,14 @@ pub fn student_pipeline(match_stage: Document) -> Vec<Document> {
             "$match": match_stage
         },
         // ======================================================
+        // FILTER OUT SOFT DELETED
+        // ======================================================
+        doc! {
+            "$match": {
+                "deleted_at": { "$eq": null }
+            }
+        },
+        // ======================================================
         // NORMALIZE OBJECT IDS (string -> ObjectId safety)
         // ======================================================
         doc! {

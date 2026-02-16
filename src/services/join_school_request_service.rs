@@ -500,6 +500,8 @@ impl JoinSchoolRequestService {
 
                         created_at: None,
                         updated_at: None,
+                        deleted_at: None,
+                        deleted_by: None,
                     };
 
                     student_service
@@ -530,6 +532,8 @@ impl JoinSchoolRequestService {
                         tags: vec!["join-request".to_string()],
                         created_at: Utc::now(),
                         updated_at: Utc::now(),
+                        deleted_at: None,
+                        deleted_by: None,
                     };
                     student_service.create(new_student, None).await?;
                 }
