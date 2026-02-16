@@ -513,6 +513,21 @@ pub fn check_admin_or_teacher_creator(user: &AuthUserDto, teacher_id: &str) -> R
 // NEW PERMISSION-BASED GUARDS
 // =========================
 
+/// Check if user has a specific permission (synchronous version for simple checks)
+pub fn check_permission(user: &AuthUserDto, permission: &str) -> Result<(), String> {
+    // Admin always has all permissions
+    if user.role == Some(UserRole::ADMIN) {
+        return Ok(());
+    }
+
+    // School staff has audit.view permission
+    if permission == "audit.view" && user.role == Some(UserRole::SCHOOLSTAFF) {
+        return Ok(());
+    }
+
+    Err(format!("Access denied: {} permission required", permission))
+}
+
 /// Require specific role
 pub fn require_role(user: &AuthUserDto, required_role: &UserRole) -> Result<(), String> {
     if user.role.as_ref() == Some(required_role) {

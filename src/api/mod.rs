@@ -3,6 +3,7 @@ use actix_web::web;
 mod announcement_api;
 mod assessment_category_api;
 mod assignment_api;
+mod audit_logs_api;
 mod auth_api;
 mod class_api;
 mod class_subject;
@@ -66,4 +67,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     ranking_api::init(cfg);
     assignment_api::init(cfg);
     roles_api::init(cfg);
+    audit_logs_api::init(cfg);
 }
