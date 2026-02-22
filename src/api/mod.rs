@@ -1,5 +1,6 @@
 use actix_web::web;
 
+mod analytics_api;
 mod announcement_api;
 mod assessment_category_api;
 mod assignment_api;
@@ -74,4 +75,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     backups_api::init(cfg);
     recycle_bin_api::init(cfg);
     learning_materials_api::init(cfg);
+    analytics_api::init(cfg);
 }

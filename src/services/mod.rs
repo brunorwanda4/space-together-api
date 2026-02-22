@@ -1,3 +1,4 @@
+pub mod analytics_service;
 pub mod announcement_service;
 pub mod assessment_category_service;
 pub mod assignment_service;

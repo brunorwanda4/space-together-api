@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod announcement;
 pub mod assessment_category;
 pub mod assignment;

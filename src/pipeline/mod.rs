@@ -1,4 +1,5 @@
 pub mod academic_year_pipeline;
+pub mod analytics_pipeline;
 pub mod announcement_pipeline;
 pub mod assignment_pipeline;
 pub mod audit_log_pipeline;

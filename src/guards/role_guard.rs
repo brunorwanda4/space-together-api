@@ -525,6 +525,14 @@ pub fn check_permission(user: &AuthUserDto, permission: &str) -> Result<(), Stri
         return Ok(());
     }
 
+    // Analytics permissions
+    if permission == "analytics.read.school" {
+        // Director, Admin, Accountant, Vice President, School Staff can view analytics
+        if user.role == Some(UserRole::SCHOOLSTAFF) {
+            return Ok(());
+        }
+    }
+
     Err(format!("Access denied: {} permission required", permission))
 }
 
