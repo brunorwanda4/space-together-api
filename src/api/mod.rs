@@ -32,6 +32,7 @@ mod students_api;
 mod teachers_api;
 mod template_subject_api;
 mod trade_api;
+mod learning_materials_api;
 mod users;
 mod welcome;
 
@@ -72,4 +73,5 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     audit_logs_api::init(cfg);
     backups_api::init(cfg);
     recycle_bin_api::init(cfg);
+    learning_materials_api::init(cfg);
 }

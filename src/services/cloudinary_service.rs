@@ -19,6 +19,14 @@ pub struct CloudinaryResponse {
     pub secure_url: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CloudinaryUploadResult {
+    pub url: String,
+    pub public_id: String,
+    pub format: Option<String>,
+    pub bytes: usize,
+}
+
 enum ParamValue {
     Str(String),
     Int(i64),
@@ -234,6 +242,71 @@ impl CloudinaryService {
         Ok(cloudinary_response)
     }
 
+    /// Upload raw file bytes to Cloudinary (resource_type = "raw")
+    pub async fn upload_file(
+        file_bytes: Vec<u8>,
+        file_name: &str,
+        folder: &str,
+    ) -> Result<CloudinaryUploadResult, String> {
+        let client = Client::new();
+        let cloud_name = CloudinaryService::env_loader("CLOUDINARY_CLOUD_NAME");
+        let api_secret = CloudinaryService::env_loader("CLOUDINARY_API_SECRET");
+        let api_key = CloudinaryService::env_loader("CLOUDINARY_API_KEY");
+        let timestamp = chrono::Utc::now().timestamp();
+
+        // configurable max size (50MB)
+        const MAX_FILE_SIZE: usize = 50 * 1024 * 1024;
+        if file_bytes.len() > MAX_FILE_SIZE {
+            return Err("File size exceeded 50MB".to_string());
+        }
+
+        let public_id = format!("{}/{}", folder.trim_end_matches('/'), file_name);
+
+        let mut params = HashMap::new();
+        params.insert("public_id", ParamValue::Str(public_id.clone()));
+        params.insert("timestamp", ParamValue::Int(timestamp));
+
+        let signature = CloudinaryService::generate_signature(params, &api_secret);
+
+        let part = Part::bytes(file_bytes.clone()).file_name(file_name.to_string());
+
+        let form = multipart::Form::new()
+            .text("public_id", public_id.clone())
+            .text("timestamp", timestamp.to_string())
+            .text("signature", signature)
+            .text("api_key", api_key)
+            .text("folder", folder.to_string())
+            .part("file", part);
+
+        let res = client
+            .post(format!(
+                "https://api.cloudinary.com/v1_1/{}/raw/upload",
+                cloud_name
+            ))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to send request to Cloudinary: {}", e))?;
+
+        let status = res.status();
+        let result = res
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read Cloudinary response: {}", e))?;
+
+        if !status.is_success() {
+            return Err(format!("Cloudinary upload failed (status {}): {}", status, result));
+        }
+
+        // Parse available fields (secure_url might be missing for raw, use url)
+        let v: serde_json::Value = serde_json::from_str(&result).map_err(|e| format!("Failed to parse Cloudinary response: {}", e))?;
+        let url = v.get("secure_url").and_then(|s| s.as_str()).or_else(|| v.get("url").and_then(|u| u.as_str())).unwrap_or_default().to_string();
+        let public = v.get("public_id").and_then(|p| p.as_str()).unwrap_or_default().to_string();
+        let format = v.get("format").and_then(|f| f.as_str()).map(|s| s.to_string());
+
+        Ok(CloudinaryUploadResult { url, public_id: public, format, bytes: file_bytes.len() })
+    }
+
     /// Helper: decode base64 input into (public_id, buffer)
     fn decode_base64_input(data_uri: &str, timestamp: i64) -> Result<(String, Vec<u8>), String> {
         let parts: Vec<&str> = data_uri.split(',').collect();
@@ -301,6 +374,49 @@ impl CloudinaryService {
                 "Cloudinary delete failed (status {}): {}",
                 status, result
             ));
+        }
+
+        Ok(())
+    }
+
+    /// Delete raw file from Cloudinary by public_id
+    pub async fn delete_file(public_id: &str) -> Result<(), String> {
+        let client = Client::new();
+        let cloud_name = CloudinaryService::env_loader("CLOUDINARY_CLOUD_NAME");
+        let api_secret = CloudinaryService::env_loader("CLOUDINARY_API_SECRET");
+        let api_key = CloudinaryService::env_loader("CLOUDINARY_API_KEY");
+        let timestamp = chrono::Utc::now().timestamp();
+
+        let mut params = HashMap::new();
+        params.insert("public_id", ParamValue::Str(public_id.to_string()));
+        params.insert("timestamp", ParamValue::Int(timestamp));
+
+        let signature = CloudinaryService::generate_signature(params, &api_secret);
+
+        let form = multipart::Form::new()
+            .text("public_id", public_id.to_string())
+            .text("timestamp", timestamp.to_string())
+            .text("signature", signature)
+            .text("api_key", api_key);
+
+        let res = client
+            .post(format!(
+                "https://api.cloudinary.com/v1_1/{}/raw/destroy",
+                cloud_name
+            ))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to send delete request to Cloudinary: {}", e))?;
+
+        let status = res.status();
+        let result = res
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read delete response from Cloudinary: {}", e))?;
+
+        if !status.is_success() {
+            return Err(format!("Cloudinary delete failed (status {}): {}", status, result));
         }
 
         Ok(())

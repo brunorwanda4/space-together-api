@@ -17,3 +17,4 @@ pub mod subject_pipeline;
 pub mod teacher_pipeline;
 pub mod template_subject_pipeline;
 pub mod trade_pipeline;
+pub mod learning_material_pipeline;

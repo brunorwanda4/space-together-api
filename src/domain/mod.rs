@@ -16,6 +16,7 @@ pub mod exam;
 pub mod grading_scale;
 pub mod guardian;
 pub mod join_school_request;
+pub mod learning_material;
 pub mod like;
 pub mod main_class;
 pub mod parent;
