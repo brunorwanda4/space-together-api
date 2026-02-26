@@ -2,11 +2,7 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    domain::common_details::Gender,
-    helpers::object_id_helpers,
-    make_partial,
-};
+use crate::{domain::common_details::Gender, helpers::object_id_helpers, make_partial};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ParentStatus {

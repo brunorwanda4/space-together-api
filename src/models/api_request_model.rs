@@ -13,6 +13,7 @@ pub struct RequestQuery {
     pub term_id: Option<String>,
     pub exam_id: Option<String>,
     pub gpa_threshold: Option<f64>,
+    pub by_ids: Vec<String>,
 }
 
 impl<'de> Deserialize<'de> for RequestQuery {
@@ -36,6 +37,7 @@ impl<'de> Deserialize<'de> for RequestQuery {
             term_id: None,
             exam_id: None,
             gpa_threshold: None,
+            by_ids: Vec::new(),
         };
 
         // 2. Manually assign the values from the list
@@ -52,6 +54,7 @@ impl<'de> Deserialize<'de> for RequestQuery {
                 "term_id" => query.term_id = Some(val),
                 "exam_id" => query.exam_id = Some(val),
                 "gpa_threshold" => query.gpa_threshold = val.parse().ok(),
+                "by_ids" => query.by_ids.push(val),
                 _ => {} // Ignore unknown fields
             }
         }
