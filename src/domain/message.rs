@@ -80,3 +80,11 @@ impl Default for MessageType {
         MessageType::TEXT
     }
 }
+
+impl Message {
+    pub fn to_document(&self) -> Result<mongodb::bson::Document, crate::errors::AppError> {
+        mongodb::bson::to_document(self).map_err(|e| crate::errors::AppError {
+            message: format!("Failed to convert Message to document: {}", e),
+        })
+    }
+}

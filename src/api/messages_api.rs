@@ -10,7 +10,7 @@ use crate::{
     },
     errors::AppError,
     models::id_model::IdType,
-    services::{conversation_service::ConversationService, message_service::MessageService},
+    services::{conversation_service::ConversationService, message_service::MessageService}, utils::db_utils::get_database,
 };
 
 #[derive(Debug, Deserialize)]
@@ -52,7 +52,7 @@ async fn create_message(
     let conversation_id = ObjectId::parse_str(&path.into_inner())
         .map_err(|_| AppError { message: "Invalid conversation ID".to_string() })?;
 
-    let db = state.db.get_db(&format!("school_{}", school_id.to_hex()));
+    let db = get_database(&req, &state);
     let conv_service = ConversationService::new(&db);
     let msg_service = MessageService::new(&db);
 
@@ -101,11 +101,6 @@ async fn get_messages(
     path: web::Path<String>,
     query: web::Query<QueryParams>,
 ) -> Result<HttpResponse, AppError> {
-    let school_id = req
-        .extensions()
-        .get::<ObjectId>()
-        .copied()
-        .ok_or_else(|| AppError { message: "School ID not found".to_string() })?;
 
     let auth_user = req
         .extensions()
@@ -119,7 +114,7 @@ async fn get_messages(
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(50).min(100);
 
-    let db = state.db.get_db(&format!("school_{}", school_id.to_hex()));
+     let db = get_database(&req, &state);
     let conv_service = ConversationService::new(&db);
     let msg_service = MessageService::new(&db);
 
@@ -175,7 +170,7 @@ async fn get_files(
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
-    let db = state.db.get_db(&format!("school_{}", school_id.to_hex()));
+    let db = get_database(&req, &state);
     let conv_service = ConversationService::new(&db);
     let msg_service = MessageService::new(&db);
 
@@ -228,7 +223,7 @@ async fn delete_message(
     let conversation_id = ObjectId::parse_str(&conversation_id_str)
         .map_err(|_| AppError { message: "Invalid conversation ID".to_string() })?;
 
-    let db = state.db.get_db(&format!("school_{}", school_id.to_hex()));
+    let db = get_database(&req, &state);
     let conv_service = ConversationService::new(&db);
     let msg_service = MessageService::new(&db);
 

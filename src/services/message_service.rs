@@ -1,21 +1,24 @@
 use crate::{
     domain::message::Message,
     errors::AppError,
-    models::id_model::IdType,
-    helpers::object_id_helpers::parse_object_id,
+    models::{
+        id_model::IdType,
+        mongo_model::IndexDef,
+    },
+    repositories::base_repo::BaseRepository,
+    utils::mongo_utils::extract_valid_fields,
 };
 use chrono::Utc;
 use mongodb::{
-    bson::{doc, oid::ObjectId},
-    options::{FindOptions, IndexOptions},
-    Collection, Database, IndexModel,
+    bson::{doc, oid::ObjectId, Document},
+    Collection, Database,
 };
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 pub struct MessageService {
-    collection: Collection<Message>,
+    pub collection: Collection<Message>,
     recent_message_ids: Arc<RwLock<HashSet<String>>>,
 }
 
@@ -29,33 +32,26 @@ impl MessageService {
 
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
         let indexes = vec![
-            IndexModel::builder()
-                .keys(doc! { "conversation_id": 1, "created_at": -1 })
-                .build(),
-            IndexModel::builder()
-                .keys(doc! { "school_id": 1 })
-                .build(),
-            IndexModel::builder()
-                .keys(doc! { "sender.sender_id": 1 })
-                .build(),
-            IndexModel::builder()
-                .keys(doc! { "client_message_id": 1 })
-                .options(IndexOptions::builder().unique(true).build())
-                .build(),
-            IndexModel::builder()
-                .keys(doc! { "deleted_at": 1 })
-                .build(),
+            IndexDef::compound(vec![("conversation_id", 1), ("created_at", -1)], false),
+            IndexDef::single("school_id", false),
+            IndexDef::single("sender.sender_id", false),
+            IndexDef::single("client_message_id", true),
+            IndexDef::single("deleted_at", false),
         ];
 
-        self.collection
-            .create_indexes(indexes)
-            .await
-            .map_err(|e| AppError { message: format!("Failed to create indexes: {}", e) })?;
+        let repo = BaseRepository::new(
+            self.collection
+                .clone()
+                .clone_with_type::<Document>(),
+        );
 
+        repo.ensure_indexes(&indexes).await?;
         Ok(())
     }
 
-    pub async fn create(&self, mut dto: Message) -> Result<Message, AppError> {
+    pub async fn create(&self, dto: Message) -> Result<Message, AppError> {
+        self.ensure_indexes().await?;
+
         {
             let mut ids = self.recent_message_ids.write().await;
             if ids.contains(&dto.client_message_id) {
@@ -72,26 +68,28 @@ impl MessageService {
             return Err(AppError { message: "Encrypted payload too large".to_string() });
         }
 
-        dto.created_at = Utc::now();
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let result = self
-            .collection
-            .insert_one(&dto)
-            .await
-            .map_err(|e| AppError { message: format!("Failed to create message: {}", e) })?;
+        let message = repo
+            .create::<Message>(extract_valid_fields(dto.to_document()?), Some(&["client_message_id"]))
+            .await?;
 
-        dto.id = Some(result.inserted_id.as_object_id().unwrap());
-        Ok(dto)
+        Ok(message)
     }
 
     pub async fn find_one(&self, id: &IdType) -> Result<Message, AppError> {
-        let oid = parse_object_id(id).map_err(|e| AppError { message: e })?;
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        self.collection
-            .find_one(doc! { "_id": oid, "deleted_at": { "$exists": false } })
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?
-            .ok_or_else(|| AppError { message: "Message not found".to_string() })
+        let filter = doc! {
+            "_id": IdType::to_object_id(id)?,
+            "deleted_at": { "$exists": false }
+        };
+
+        repo.find_one::<Message>(filter, None)
+            .await?
+            .ok_or(AppError {
+                message: "Message not found".into(),
+            })
     }
 
     pub async fn get_conversation_messages(
@@ -102,36 +100,18 @@ impl MessageService {
     ) -> Result<(Vec<Message>, i64), AppError> {
         let skip = (page - 1) * limit;
 
-        let filter = doc! {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let extra_match = doc! {
             "conversation_id": conversation_id,
             "deleted_at": { "$exists": false }
         };
 
-        let options = FindOptions::builder()
-            .sort(doc! { "created_at": -1 })
-            .skip(skip as u64)
-            .limit(limit)
-            .build();
+        let (messages, total, _, _) = repo
+            .get_all::<Message>(None, &[], Some(limit), Some(skip), Some(extra_match))
+            .await?;
 
-        let mut cursor = self
-            .collection
-            .find(filter.clone())
-            .with_options(options)
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?;
-
-        let mut messages = Vec::new();
-        while cursor.advance().await.map_err(|e| AppError { message: format!("Database error: {}", e) })? {
-            messages.push(cursor.deserialize_current().map_err(|e| AppError { message: format!("Deserialization error: {}", e) })?);
-        }
-
-        let total = self
-            .collection
-            .count_documents(filter)
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?;
-
-        Ok((messages, total as i64))
+        Ok((messages, total))
     }
 
     pub async fn get_conversation_files(
@@ -142,49 +122,34 @@ impl MessageService {
     ) -> Result<(Vec<Message>, i64), AppError> {
         let skip = (page - 1) * limit;
 
-        let filter = doc! {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let extra_match = doc! {
             "conversation_id": conversation_id,
             "message_type": "FILE",
             "deleted_at": { "$exists": false }
         };
 
-        let options = FindOptions::builder()
-            .sort(doc! { "created_at": -1 })
-            .skip(skip as u64)
-            .limit(limit)
-            .build();
+        let (messages, total, _, _) = repo
+            .get_all::<Message>(None, &[], Some(limit), Some(skip), Some(extra_match))
+            .await?;
 
-        let mut cursor = self
-            .collection
-            .find(filter.clone())
-            .with_options(options)
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?;
-
-        let mut messages = Vec::new();
-        while cursor.advance().await.map_err(|e| AppError { message: format!("Database error: {}", e) })? {
-            messages.push(cursor.deserialize_current().map_err(|e| AppError { message: format!("Deserialization error: {}", e) })?);
-        }
-
-        let total = self
-            .collection
-            .count_documents(filter)
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?;
-
-        Ok((messages, total as i64))
+        Ok((messages, total))
     }
 
     pub async fn soft_delete(&self, id: &IdType) -> Result<Message, AppError> {
-        let oid = parse_object_id(id).map_err(|e| AppError { message: e })?;
+        let message = self.find_one(id).await?;
 
-        self.collection
-            .find_one_and_update(
-                doc! { "_id": oid },
-                doc! { "$set": { "deleted_at": mongodb::bson::to_bson(&Utc::now()).unwrap() } },
-            )
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?
-            .ok_or_else(|| AppError { message: "Message not found".to_string() })
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let update_doc = doc! {
+            "$set": {
+                "deleted_at": mongodb::bson::to_bson(&Utc::now()).unwrap()
+            }
+        };
+
+        repo.update_one_raw(id, update_doc).await?;
+
+        Ok(message)
     }
 }
