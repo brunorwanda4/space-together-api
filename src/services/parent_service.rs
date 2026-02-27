@@ -26,7 +26,7 @@ use crate::{
     },
     repositories::base_repo::BaseRepository,
     services::{
-        announcement_service::AnnouncementService, cloudinary_service::CloudinaryService,
+        announcement_service::AnnouncementService, cloudinary_service::CloudinaryService, join_school_request_service::JoinSchoolRequestService,
     },
     utils::{
         email::is_valid_email,
@@ -111,7 +111,21 @@ impl ParentService {
         let parent = repo
             .create::<Parent>(extract_valid_fields(partial.to_document()?), None)
             .await?;
-
+            // Send join school request
+            if let Some(school_id) = parent.school_id.clone() {
+                // TODO: Update with correct arguments based on JoinSchoolRequestService signature
+                // JoinSchoolRequestService::send_join_request(
+                //     join_school_request_service_instance,
+                //     send_request_user_type,
+                //     parent.id,
+                //     &parent.id,
+                //     join_role,
+                //     description,
+                //     app_state,
+                // )
+                // .await
+                // .ok();
+            }
         Ok(parent)
     }
 

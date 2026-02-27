@@ -15,11 +15,11 @@ use crate::{
         common_details::Paginated,
         join_school_request::{
             CreateJoinSchoolRequest, JoinRole, JoinSchoolByCode, JoinSchoolRequest,
-            JoinSchoolRequestResponseToken, JoinSchoolRequestWithRelations, JoinStatus,
+            JoinSchoolRequestResponseToken, JoinSchoolRequestWithRelations, JoinStatus, SendRequestUserType,
         },
-        school_staff::{parse_staff_type, SchoolStaff, SchoolStaffType},
+        school_staff::{SchoolStaff, SchoolStaffType, parse_staff_type},
         student::{Student, StudentPartial, StudentStatus},
-        teacher::{parse_teacher_type, Teacher},
+        teacher::{Teacher, parse_teacher_type},
         user::User,
     },
     errors::AppError,
@@ -614,6 +614,12 @@ impl JoinSchoolRequestService {
 
                 staff_service.create(staff, None).await?;
             }
+
+            JoinRole::Parent => {
+                return Err(AppError {
+                    message: "Parent role is not yet supported".into(),
+                });
+            }
         }
 
         Ok(())
@@ -705,5 +711,36 @@ impl JoinSchoolRequestService {
 
         self.get_all_with_relations(None, None, None, Some(filter))
             .await
+    }
+
+    /// Convenience no-op helper to be called from other services when
+    /// only minimal information is available. This currently does not
+    /// create a persistent join request; implementers can extend it to
+    /// call `create` when `AppState` or more context is available.
+    pub async fn send_join_request(
+        &self,
+        user: SendRequestUserType,
+        sent_by: ObjectId,
+        school_id: &IdType,
+        role: JoinRole,
+        r#type: String,
+        state: &AppState,
+    ) -> Result<JoinSchoolRequest, AppError> {
+        let request = CreateJoinSchoolRequest {
+            sent_by: IdType::ObjectId(sent_by).as_string(),
+            email: match user {
+                SendRequestUserType::Parent(p) => p.email,
+                SendRequestUserType::Teacher(t) => t.email,
+                SendRequestUserType::Student(s) => s.email,
+                SendRequestUserType::SchoolStaff(st) => st.email,
+            },
+            role,
+            r#type,
+            school_id: school_id.as_string(),
+            message: None,
+            class_id: None,
+        };
+
+        self.create(request, sent_by, state).await
     }
 }

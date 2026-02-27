@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
-    domain::{class::Class, school::School, user::User},
+    domain::{class::Class, parent::Parent, school::School, school_staff::SchoolStaff, student::Student, teacher::Teacher, user::User},
     helpers::object_id_helpers,
 };
 
@@ -13,6 +13,7 @@ pub enum JoinRole {
     Teacher,
     Student,
     Staff,
+    Parent,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -140,6 +141,7 @@ impl fmt::Display for JoinRole {
                 JoinRole::Teacher => "Teacher",
                 JoinRole::Student => "Student",
                 JoinRole::Staff => "Staff",
+                JoinRole::Parent => "Parent",
             }
         )
     }
@@ -153,4 +155,13 @@ pub struct JoinSchoolByCode {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JoinSchoolRequestResponseToken {
     pub school_token: String,
+}
+
+// send request 
+
+pub enum SendRequestUserType {
+    Parent(Parent),
+    Teacher(Teacher),
+    Student(Student),
+    SchoolStaff(SchoolStaff),
 }
