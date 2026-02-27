@@ -1,24 +1,23 @@
-# Secure Messaging System 
+# Secure End-to-End Encrypted Messaging 
 
-Before writing code:
+Before writing any code:
 
 1. Read:
+
+   * `MESSAGING_IMPLEMENTATION.md` to understand frontend expectations 
+   * `common_details.rs` (for `RelatedUser`)
+2. Follow architecture:
 
    * `student.rs`
    * `student_service.rs`
    * `student_pipeline.rs`
    * `students_api.rs`
-2. Follow same architecture pattern.
-3. Respect `/m` prefix exactly (per frontend contract ).
-4. Enforce strict school isolation (`school_id` always validated).
-5. Integrate:
-
-   * role_guard
-   * permission system
-   * audit logs
-6. Use WebSocket with authentication.
-7. Apply enterprise-grade security controls.
-8. Prevent common attack vectors.
+3. Use `/m` route prefix.
+4. Do NOT use `/api/v1`.
+5. Every school uses its own DB.
+6. Sender must be stored as `RelatedUser`.
+7. Implement End-to-End Encryption (E2EE).
+8. Add strong anti-hacking protections.
 
 ---
 
@@ -28,15 +27,16 @@ Implement:
 
 * Conversations
 * Messages
-* Attachments
-* Realtime messaging
-* Read receipts
-* Mentions
-* Strict security enforcement
+* Participants
+* File attachments
+* WebSocket real-time
+* End-to-End encryption
+* Role-aware messaging
+* Security hardened
 
 ---
 
-# 1️⃣ FILE STRUCTURE
+# 1️⃣ DOMAIN STRUCTURE
 
 Create:
 
@@ -51,14 +51,12 @@ message_service.rs
 message_pipeline.rs
 messages_api.rs
 
-message_socket.rs
+messaging_socket.rs
 ```
-
-Follow same architecture as students module.
 
 ---
 
-# 2️⃣ DATABASE SCHEMAS
+# 2️⃣ DATA MODELS
 
 ## Conversation
 
@@ -66,283 +64,309 @@ Follow same architecture as students module.
 pub struct Conversation {
     pub _id: ObjectId,
     pub school_id: ObjectId,
-    pub participant_ids: Vec<ObjectId>,
-    pub is_group: bool,
-    pub title: Option<String>,
 
-    pub last_message_at: Option<DateTime<Utc>>,
-    pub created_by: ObjectId,
+    pub participants: Vec<RelatedUser>,
+    pub is_group: bool,
+    pub name: Option<String>,
+
+    pub encryption_key_version: i32,
+
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 ```
-
-Indexes:
-
-* school_id
-* participant_ids
-* last_message_at
 
 ---
 
 ## Message
 
 ```rust
+
+pub struct MessageSender {
+ pub sender_role: UserRole,// This roles are when you getting data only user role you will get those data in common database
+     #[serde(
+            serialize_with = "object_id_helpers::serialize_oid",
+            deserialize_with = "object_id_helpers::deserialize_oid",
+            default
+        )]
+    pub sender_id: ObjectId, 
+}
+
 pub struct Message {
     pub _id: ObjectId,
     pub school_id: ObjectId,
     pub conversation_id: ObjectId,
-    pub sender_id: ObjectId,
 
-    pub content: String,
-    pub sanitized_content: String,
+    pub sender: MessageSender,
 
-    pub attachment_url: Option<String>,
-    pub attachment_public_id: Option<String>,
+    pub encrypted_payload: String,  // ciphertext
+    pub nonce: String,              // encryption nonce
+    pub key_version: i32,
 
-    pub mentions: Vec<ObjectId>,
-    pub is_edited: bool,
-    pub read_by: Vec<ObjectId>,
+    pub message_type: String, // TEXT | FILE | SYSTEM
 
+    pub file_url: Option<String>,
+    pub file_public_id: Option<String>,
+
+    pub read_by: Vec<RelatedUser>,
+
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
 }
 ```
 
-Indexes:
-
-* conversation_id
-* school_id
-* created_at
+⚠️ DO NOT store plaintext content in DB.
 
 ---
 
-# 3️⃣ CRITICAL SECURITY REQUIREMENTS
+# 3️⃣ END-TO-END ENCRYPTION MODEL
 
-## 🔒 1. Strict Authorization
+### Design:
 
-Before ANY action:
+* Encryption is done client-side.
+* Backend stores only ciphertext.
+* Backend NEVER sees plaintext.
+* Use AES-256-GCM.
+* Each conversation has symmetric key.
+* Each user receives encrypted conversation key using their public key.
 
-* Validate user belongs to conversation.
-* Validate user belongs to same school.
-* Reject cross-tenant access.
-* Reject if user suspended.
+Create new model:
 
-Never trust frontend conversationId.
+## ConversationKey
 
----
-
-## 🔒 2. XSS Protection
-
-Messages arrive as HTML (frontend returns HTML ).
-
-You MUST:
-
-* Sanitize HTML server-side.
-* Remove:
-
-  * <script>
-
-  * inline JS
-  * event handlers
-  * iframe
-  * style injection
-* Use whitelist policy (only allow: p, strong, em, ul, li, br).
-
-Store:
-
-* original raw content
-* sanitized version
-
-Always return sanitized_content.
-
----
-
-## 🔒 3. Rate Limiting
-
-Implement per-user rate limiter:
-
-* Max 30 messages per minute.
-* Use in-memory or Redis.
-* Prevent spam and brute-force flood.
-
-Reject with 429.
-
----
-
-## 🔒 4. WebSocket Authentication
-
-WebSocket must:
-
-* Require JWT token on connection.
-* Validate token.
-* Extract user_id and school_id.
-* Refuse connection if invalid.
-
-On join:
-
-User can subscribe only to conversations where:
-
-* user_id ∈ participant_ids
-* school_id matches
-
----
-
-## 🔒 5. File Upload Security
-
-Extend cloudinary_service:
-
-* Only allow:
-
-  * pdf
-  * docx
-  * xlsx
-  * png
-  * jpg
-  * mp4
-* Max 25MB for messaging files.
-* Scan MIME type.
-* Reject executable formats.
-* Store files under:
-  space-together/{school_id}/messages/{conversation_id}
-* Use cloudinary to store those files but use exit services
-
----
-
-## 🔒 6. Prevent ID Enumeration
-
-All endpoints must:
-
-* Validate ObjectId format
-* Return generic error on invalid access
-* Never expose whether conversation exists if user unauthorized
-
----
-
-## 🔒 7. Encryption
-
-* Enable TLS enforcement (assume reverse proxy)
-* Hash sensitive logs
-* Do NOT log message content in plaintext logs
-
-Optional advanced:
-
-* Encrypt message content at rest using AES-256
-* Store encryption key per school (future-ready)
-
----
-
-# 4️⃣ REST ENDPOINTS
-
-Must match frontend contract 
-
-```
-GET    /message/conversations
-POST   /message/conversations
-GET    /message/conversations/{id}
-GET    /message/conversations/{id}/messages
-POST   /message/conversations/{id}/messages
-GET    /message/conversations/{id}/files
+```rust
+pub struct ConversationKey {
+    pub _id: ObjectId,
+    pub conversation_id: ObjectId,
+    pub user: MessageSender,
+    pub encrypted_key_for_user: String,
+}
 ```
 
-No `/api/v1`.
+Flow:
+
+1. Client generates conversation symmetric key.
+2. Client encrypts key using each participant’s public key.
+3. Backend stores encrypted key per user.
+4. Messages are encrypted using symmetric key before sending.
+
+Server validates structure only — not content.
 
 ---
 
-# 5️⃣ WEBSOCKET
+# 4️⃣ SECURITY HARDENING (CRITICAL)
 
-Namespace: `/m`
+Implement:
 
-Events:
+### 1. Strict Participant Validation
 
-Server emits:
+Before sending message:
 
-* message.created
-* message.updated
-* message.read
-* conversation.created
+* Verify sender is in conversation participants.
+* Reject otherwise.
 
-Client sends:
-
-* message.send
-* message.read
-* conversation.join
-
-On new message:
-
-1. Save to DB
-2. Broadcast to conversation room
-3. Update last_message_at
-
----
-
-# 6️⃣ READ RECEIPTS
-
-When user opens conversation:
-
-* Mark messages as read
-* Add user_id to read_by
-* Emit message.read event
-
----
-
-# 7️⃣ AUDIT LOG EVENTS
-
-Log:
-
-* conversation.created
-* message.sent
-* message.deleted
-* participant.added
-* participant.removed
-
-Do NOT log content.
-
----
-
-# 8️⃣ SOFT DELETE SUPPORT
-
-Allow:
-
-* Message delete (mark deleted flag)
-* Replace content with:
-  "Message removed"
-
----
-
-# 🎓 EXPECTED BACKEND RESULT
-
-Secure messaging system with:
-
-* School isolation
-* XSS protection
-* Rate limiting
-* WebSocket auth
-* File validation
-* Audit logging
-* ID enumeration protection
-* Sanitized HTML storage
-* Read receipts
-* Scalable architecture
-
-This prevents:
-
-* Cross-tenant data leak
-* Script injection
-* Spam flood
-* Unauthorized subscription
-* File-based malware upload
-
----
-
----
-
-# ✅ OPTIONAL HARDENING (Tell IDE to Implement)
+### 2. Rate Limiting
 
 Add:
 
-* CSP headers
-* Helmet-like middleware
-* IP throttling
-* Account lockout on abuse
-* Suspicious activity logging
+* 30 messages per minute per user
+* 10 conversation creations per hour
+
+### 3. Payload Size Limit
+
+* Max encrypted payload 100KB
+* Max file upload 50MB
+
+### 4. HTML Sanitization
+
+Even encrypted:
+
+* If fallback REST plaintext used, sanitize.
+
+### 5. Replay Attack Protection
+
+Require:
+
+```rust
+client_message_id: String
+```
+
+Store and reject duplicate client_message_id.
+
+### 6. WebSocket Authentication
+
+* Require JWT during connection
+* Validate school_id from token
+* Reject cross-school access
+
+### 7. Indexing
+
+Indexes:
+
+```
+conversation_id
+school_id
+created_at
+participants.user.id
+```
+
+---
+
+# 5️⃣ REST ENDPOINTS
+
+Based on frontend doc :
+
+```
+GET  /m/conversations
+POST /m/conversations
+GET  /m/conversations/{id}
+GET  /m/conversations/{id}/messages
+POST /m/conversations/{id}/messages
+GET  /m/conversations/{id}/files
+```
+
+---
+
+# 6️⃣ WEBSOCKET IMPLEMENTATION
+
+Namespace:
+
+```
+/m
+```
+
+On connect:
+
+* Validate JWT
+* Join room = conversation_id
+* Ensure user belongs to conversation
+
+Emit events:
+
+```
+message.created
+message.read
+conversation.created
+conversation.participant_added
+```
+
+Payload example must match frontend spec .
+
+Ensure:
+
+* Ordered delivery
+* Idempotent message broadcast
+* No cross-tenant leakage
+
+---
+
+# 7️⃣ FILE ATTACHMENTS
+
+Reuse:
+
+`cloudinary_service.rs`
+
+For file messages:
+
+* Upload file
+* Store only URL + public_id
+* File access must validate:
+
+  * requester is participant
+  * school matches
+
+Optional:
+
+* Signed URLs (short expiry)
+
+---
+
+# 8️⃣ ROLE RULES
+
+Participants can be:
+
+* Student
+* Teacher
+* Staff
+* Parent
+* Admin
+
+Use `RelatedUser` for sender and participant.
+
+Validate:
+
+* Student ↔ Teacher allowed
+* Parent ↔ Teacher allowed
+* Cross-school blocked
+* Super-admin only allowed if special flag
+
+---
+
+# 9️⃣ SOFT DELETE
+
+Message delete:
+
+* Set deleted_at
+* Emit message.deleted event
+* Do NOT physically remove immediately
+
+---
+
+# 🔐 FINAL BACKEND RESULT
+
+Space-Together messaging will be:
+
+* End-to-End encrypted
+* Tenant isolated
+* Replay protected
+* Rate limited
+* JWT secured
+* WebSocket secured
+* File protected
+* Role validated
+* Audit logged
+
+Institution-grade secure messaging.
+
+---
+
+---
+
+# ✅ FRONTEND INTEGRATION PROMPT (Security Alignment)
+
+Since UI already exists, instruct frontend IDE:
+
+1. Implement client-side encryption:
+
+   * Generate symmetric key per conversation.
+   * Use Web Crypto API AES-GCM.
+2. Store encrypted conversation key in backend.
+3. Before sending:
+
+   * Encrypt message content.
+   * Send ciphertext + nonce.
+4. Decrypt messages after fetch.
+5. Store private keys securely (IndexedDB).
+6. Rotate keys on participant change.
+7. Do NOT store plaintext in localStorage.
+
+Also:
+
+* Validate JWT before WebSocket connect.
+* Auto reconnect securely.
+* Handle `message.read` event.
+
+---
+
+# 🚀 What You Now Have
+
+Space-Together messaging will be:
+
+* Fully encrypted
+* Multi-tenant safe
+* School-isolated
+* Real-time
+* Replay-safe
+* Ministry-grade secure
+* Hard to exploit
 
