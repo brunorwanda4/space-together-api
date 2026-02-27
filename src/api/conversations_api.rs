@@ -5,12 +5,14 @@ use serde::{Deserialize, Serialize};
 use crate::{
     config::state::AppState,
     domain::{
+        auth_user::AuthUserDto,
         common_details::{Paginated, RelatedUser, UserRole},
         conversation::{Conversation, ConversationKey},
     },
     errors::AppError,
     models::id_model::IdType,
     services::conversation_service::ConversationService,
+    utils::db_utils::get_database,
 };
 
 #[derive(Debug, Deserialize)]
@@ -37,41 +39,42 @@ struct QueryParams {
 #[post("")]
 async fn create_conversation(
     req: HttpRequest,
+    user: web::ReqData<AuthUserDto>,
     state: web::Data<AppState>,
     body: web::Json<CreateConversationRequest>,
-) -> Result<impl Responder, AppError> {
-    let school_id = req
-        .extensions()
-        .get::<ObjectId>()
-        .copied()
-        .ok_or_else(|| AppError { message: "School ID not found".to_string() })?;
+) -> impl Responder {
+    let auth_user = user.into_inner();
 
-    let auth_user = req
-        .extensions()
-        .get::<crate::domain::auth_user::AuthUserDto>()
-        .cloned()
-        .ok_or_else(|| AppError { message: "User not authenticated".to_string() })?;
+    let school_id = match req.extensions().get::<ObjectId>().copied() {
+        Some(id) => id,
+        None => return HttpResponse::BadRequest().json(AppError { 
+            message: "School ID not found".to_string() 
+        }),
+    };
 
     // Validate participants
     if body.is_group && body.participants.len() < 3 {
-        return Err(AppError { message: "Group conversations require at least 3 participants".to_string() });
+        return HttpResponse::BadRequest().json(AppError { 
+            message: "Group conversations require at least 3 participants".to_string() 
+        });
     }
     if !body.is_group && body.participants.len() != 2 {
-        return Err(AppError { message: "Direct conversations require exactly 2 participants".to_string() });
+        return HttpResponse::BadRequest().json(AppError { 
+            message: "Direct conversations require exactly 2 participants".to_string() 
+        });
     }
 
-    let auth_user_id = ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError { message: "Invalid user ID".to_string() })?;
-    
     let user_in_participants = body.participants.iter().any(|p| {
         p.get_id().map(|id| id == auth_user.id).unwrap_or(false)
     });
 
     if !user_in_participants {
-        return Err(AppError { message: "You must be a participant in the conversation".to_string() });
+        return HttpResponse::BadRequest().json(AppError { 
+            message: "You must be a participant in the conversation".to_string() 
+        });
     }
 
-    let db = state.db.get_db(&format!("school_{}", school_id.to_hex()));
+    let db = get_database(&req, &state);
     let service = ConversationService::new(&db);
 
     let conversation = Conversation {
@@ -85,12 +88,19 @@ async fn create_conversation(
         updated_at: chrono::Utc::now(),
     };
 
-    let created = service.create(conversation).await?;
+    let created = match service.create(conversation).await {
+        Ok(conv) => conv,
+        Err(err) => return HttpResponse::BadRequest().json(err),
+    };
 
     // Store encrypted keys for each participant
     for key_data in &body.encrypted_keys {
-        let user_id = ObjectId::parse_str(&key_data.user_id)
-            .map_err(|_| AppError { message: "Invalid user ID".to_string() })?;
+        let user_id = match ObjectId::parse_str(&key_data.user_id) {
+            Ok(id) => id,
+            Err(_) => return HttpResponse::BadRequest().json(AppError { 
+                message: "Invalid user ID".to_string() 
+            }),
+        };
 
         let key = ConversationKey {
             id: None,
@@ -101,45 +111,52 @@ async fn create_conversation(
             created_at: chrono::Utc::now(),
         };
 
-        service.store_conversation_key(key).await?;
+        if let Err(err) = service.store_conversation_key(key).await {
+            return HttpResponse::BadRequest().json(err);
+        }
     }
 
-    Ok(HttpResponse::Created().json(created))
+    HttpResponse::Created().json(created)
 }
 
 #[get("")]
 async fn get_conversations(
     req: HttpRequest,
+    user: web::ReqData<AuthUserDto>,
     state: web::Data<AppState>,
     query: web::Query<QueryParams>,
-) -> Result<impl Responder, AppError> {
-    let school_id = req
-        .extensions()
-        .get::<ObjectId>()
-        .copied()
-        .ok_or_else(|| AppError { message: "School ID not found".to_string() })?;
+) -> impl Responder {
+    let auth_user = user.into_inner();
 
-    let auth_user = req
-        .extensions()
-        .get::<crate::domain::auth_user::AuthUserDto>()
-        .cloned()
-        .ok_or_else(|| AppError { message: "User not authenticated".to_string() })?;
+    let school_id = match req.extensions().get::<ObjectId>().copied() {
+        Some(id) => id,
+        None => return HttpResponse::BadRequest().json(AppError { 
+            message: "School ID not found".to_string() 
+        }),
+    };
 
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
-    let db = state.db.get_db(&format!("school_{}", school_id.to_hex()));
+    let db = get_database(&req, &state);
     let service = ConversationService::new(&db);
 
-    let auth_user_id = ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError { message: "Invalid user ID".to_string() })?;
+    let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().json(AppError { 
+            message: "Invalid user ID".to_string() 
+        }),
+    };
 
     let filter = doc! {
         "school_id": school_id,
         "participants.user.id": auth_user_id
     };
 
-    let (conversations, total) = service.get_all(filter, page, limit).await?;
+    let (conversations, total) = match service.get_all(filter, page, limit).await {
+        Ok(data) => data,
+        Err(err) => return HttpResponse::BadRequest().json(err),
+    };
 
     let total_pages = (total as f64 / limit as f64).ceil() as i64;
 
@@ -150,90 +167,97 @@ async fn get_conversations(
         current_page: page,
     };
 
-    Ok(HttpResponse::Ok().json(response))
+    HttpResponse::Ok().json(response)
 }
 
 #[get("/{id}")]
 async fn get_conversation(
     req: HttpRequest,
+    user: web::ReqData<AuthUserDto>,
     state: web::Data<AppState>,
     path: web::Path<String>,
-) -> Result<impl Responder, AppError> {
-    let school_id = req
-        .extensions()
-        .get::<ObjectId>()
-        .copied()
-        .ok_or_else(|| AppError { message: "School ID not found".to_string() })?;
-
-    let auth_user = req
-        .extensions()
-        .get::<crate::domain::auth_user::AuthUserDto>()
-        .cloned()
-        .ok_or_else(|| AppError { message: "User not authenticated".to_string() })?;
+) -> impl Responder {
+    let auth_user = user.into_inner();
 
     let id = path.into_inner();
-    let db = state.db.get_db(&format!("school_{}", school_id.to_hex()));
+    let db = get_database(&req, &state);
     let service = ConversationService::new(&db);
 
-    let conversation = service.find_one(&IdType::String(id.clone())).await?;
+    let conversation = match service.find_one(&IdType::String(id.clone())).await {
+        Ok(conv) => conv,
+        Err(err) => return HttpResponse::NotFound().json(err),
+    };
 
-    let auth_user_id = ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError { message: "Invalid user ID".to_string() })?;
+    let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().json(AppError { 
+            message: "Invalid user ID".to_string() 
+        }),
+    };
 
-    let is_participant = service
-        .is_participant(conversation.id.unwrap(), auth_user_id)
-        .await?;
+    let is_participant = match service.is_participant(conversation.id.unwrap(), auth_user_id).await {
+        Ok(result) => result,
+        Err(err) => return HttpResponse::BadRequest().json(err),
+    };
 
     if !is_participant {
-        return Err(AppError { message: "You are not a participant in this conversation".to_string() });
+        return HttpResponse::Forbidden().json(AppError { 
+            message: "You are not a participant in this conversation".to_string() 
+        });
     }
 
-    Ok(HttpResponse::Ok().json(conversation))
+    HttpResponse::Ok().json(conversation)
 }
 
 #[get("/{id}/key")]
 async fn get_conversation_key(
     req: HttpRequest,
+    user: web::ReqData<AuthUserDto>,
     state: web::Data<AppState>,
     path: web::Path<String>,
-) -> Result<impl Responder, AppError> {
-    let school_id = req
-        .extensions()
-        .get::<ObjectId>()
-        .copied()
-        .ok_or_else(|| AppError { message: "School ID not found".to_string() })?;
+) -> impl Responder {
+    let auth_user = user.into_inner();
 
-    let auth_user = req
-        .extensions()
-        .get::<crate::domain::auth_user::AuthUserDto>()
-        .cloned()
-        .ok_or_else(|| AppError { message: "User not authenticated".to_string() })?;
+    let conversation_id = match ObjectId::parse_str(&path.into_inner()) {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().json(AppError { 
+            message: "Invalid conversation ID".to_string() 
+        }),
+    };
 
-    let conversation_id = ObjectId::parse_str(&path.into_inner())
-        .map_err(|_| AppError { message: "Invalid conversation ID".to_string() })?;
-
-    let db = state.db.get_db(&format!("school_{}", school_id.to_hex()));
+    let db = get_database(&req, &state);
     let service = ConversationService::new(&db);
 
-    let auth_user_id = ObjectId::parse_str(&auth_user.id)
-        .map_err(|_| AppError { message: "Invalid user ID".to_string() })?;
+    let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().json(AppError { 
+            message: "Invalid user ID".to_string() 
+        }),
+    };
 
-    let is_participant = service
-        .is_participant(conversation_id, auth_user_id)
-        .await?;
+    let is_participant = match service.is_participant(conversation_id, auth_user_id).await {
+        Ok(result) => result,
+        Err(err) => return HttpResponse::BadRequest().json(err),
+    };
 
     if !is_participant {
-        return Err(AppError { message: "You are not a participant in this conversation".to_string() });
+        return HttpResponse::Forbidden().json(AppError { 
+            message: "You are not a participant in this conversation".to_string() 
+        });
     }
 
-    let key = service.get_conversation_key(conversation_id, auth_user_id).await?;
+    let key = match service.get_conversation_key(conversation_id, auth_user_id).await {
+        Ok(k) => k,
+        Err(err) => return HttpResponse::NotFound().json(err),
+    };
 
-    Ok(HttpResponse::Ok().json(key))
+    HttpResponse::Ok().json(key)
 }
 
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("")
+            .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_conversation)
             .service(get_conversations)
             .service(get_conversation)
