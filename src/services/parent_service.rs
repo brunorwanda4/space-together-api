@@ -26,7 +26,7 @@ use crate::{
     },
     repositories::base_repo::BaseRepository,
     services::{
-        announcement_service::AnnouncementService, cloudinary_service::CloudinaryService, join_school_request_service::JoinSchoolRequestService,
+        announcement_service::AnnouncementService, cloudinary_service::CloudinaryService,
     },
     utils::{
         email::is_valid_email,

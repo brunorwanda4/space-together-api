@@ -36,3 +36,4 @@ pub mod teacher;
 pub mod template_subject;
 pub mod trade;
 pub mod user;
+pub mod user_public_key;

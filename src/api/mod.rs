@@ -22,6 +22,7 @@ mod like_api;
 mod main_class_api;
 mod messages_api;
 mod messaging_socket;
+mod messaging_users_api;
 mod parent_api;
 mod ranking_api;
 mod recycle_bin_api;
@@ -85,6 +86,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/m")
             .configure(conversations_api::init)
             .configure(messages_api::init)
+            .configure(messaging_users_api::init)
     );
     
     // WebSocket route

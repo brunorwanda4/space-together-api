@@ -55,18 +55,55 @@ async fn create_conversation(
         .get::<SchoolToken>()
         .and_then(|token| ObjectId::from_str(&token.id).ok());
 
-    // Validate participants
-    if body.is_group && body.participants.len() < 3 {
+    // Validate minimum participants
+    if body.participants.len() < 2 {
         return HttpResponse::BadRequest().json(AppError { 
-            message: "Group conversations require at least 3 participants".to_string() 
-        });
-    }
-    if !body.is_group && body.participants.len() != 2 {
-        return HttpResponse::BadRequest().json(AppError { 
-            message: "Direct conversations require exactly 2 participants".to_string() 
+            message: "Minimum 2 participants required".to_string() 
         });
     }
 
+    // Validate maximum participants for group conversations
+    if body.participants.len() > 50 {
+        return HttpResponse::BadRequest().json(AppError { 
+            message: "Maximum 50 participants allowed for group conversations".to_string() 
+        });
+    }
+
+    // Validate group conversation name
+    if body.is_group {
+        if body.name.is_none() || body.name.as_ref().unwrap().trim().is_empty() {
+            return HttpResponse::BadRequest().json(AppError { 
+                message: "Group name is required for group conversations".to_string() 
+            });
+        }
+        if let Some(ref name) = body.name {
+            if name.len() > 100 {
+                return HttpResponse::BadRequest().json(AppError { 
+                    message: "Group name must be 1-100 characters".to_string() 
+                });
+            }
+        }
+    } else {
+        // For non-group conversations, name must be null
+        if body.name.is_some() {
+            return HttpResponse::BadRequest().json(AppError { 
+                message: "Name must be null for direct conversations".to_string() 
+            });
+        }
+    }
+
+    // Check for duplicate participants
+    let mut unique_participants = std::collections::HashSet::new();
+    for participant in &body.participants {
+        let key = participant.id.to_hex();
+        if !unique_participants.insert(key) {
+            return HttpResponse::BadRequest().json(AppError { 
+                message: "Duplicate participants are not allowed".to_string() 
+            });
+        }
+    }
+
+    // Validate authenticated user is in participants
     let user_in_participants = body.participants.iter().any(|p| {
         p.id.to_hex() == auth_user.id
     });
@@ -77,8 +114,56 @@ async fn create_conversation(
         });
     }
 
+    // Validate encrypted keys match participants
+    if body.encrypted_keys.len() != body.participants.len() {
+        return HttpResponse::BadRequest().json(AppError { 
+            message: "Must provide exactly one encrypted key per participant".to_string() 
+        });
+    }
+
+    // Validate each encrypted key matches a participant
+    for key_data in &body.encrypted_keys {
+        let matching_participant = body.participants.iter().find(|p| {
+            p.id.to_hex() == key_data.user_id && p.role == key_data.user_role
+        });
+
+        if matching_participant.is_none() {
+            return HttpResponse::BadRequest().json(AppError { 
+                message: format!(
+                    "Encrypted key for user {} with role {:?} does not match any participant",
+                    key_data.user_id, key_data.user_role
+                )
+            });
+        }
+
+        // Validate base64 format
+        if base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_data.encrypted_key).is_err() {
+            return HttpResponse::UnprocessableEntity().json(AppError { 
+                message: "Invalid encrypted key format. Must be valid base64.".to_string() 
+            });
+        }
+    }
+
     let db = get_database(&req, &state);
     let service = ConversationService::new(&db);
+
+    // Check for duplicate 1-on-1 conversations
+    if !body.is_group {
+        let participant_ids: Vec<ObjectId> = body.participants.iter().map(|p| p.id).collect();
+        
+        let existing_filter = doc! {
+            "is_group": false,
+            "participants.id": { "$all": participant_ids.clone() },
+            "$expr": { "$eq": [{ "$size": "$participants" }, 2] }
+        };
+
+        if let Ok(existing) = service.find_one(None, Some(existing_filter)).await {
+            return HttpResponse::Conflict().json(serde_json::json!({
+                "message": "Conversation already exists",
+                "existing_conversation_id": existing.id.unwrap().to_hex()
+            }));
+        }
+    }
 
     let conversation = Conversation {
         id: None,
@@ -103,7 +188,7 @@ async fn create_conversation(
         let user_id = match ObjectId::parse_str(&key_data.user_id) {
             Ok(id) => id,
             Err(_) => return HttpResponse::BadRequest().json(AppError { 
-                message: "Invalid user ID".to_string() 
+                message: "Invalid user ID in encrypted_keys".to_string() 
             }),
         };
 
@@ -121,7 +206,9 @@ async fn create_conversation(
         }
     }
 
-    HttpResponse::Created().json(created)
+    HttpResponse::Created().json(serde_json::json!({
+        "conversation": created
+    }))
 }
 
 #[get("")]

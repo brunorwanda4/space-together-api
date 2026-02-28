@@ -37,4 +37,5 @@ pub mod teacher_service;
 pub mod template_subject_service;
 pub mod trade_service;
 pub mod user_service;
+pub mod user_public_key_service;
 pub mod learning_material_service;
