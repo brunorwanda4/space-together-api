@@ -1,13 +1,21 @@
+use std::str::FromStr;
+
 use actix_web::{get, post, web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use mongodb::bson::{doc, oid::ObjectId};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::state::AppState, domain::{
+    config::state::AppState,
+    domain::{
         auth_user::AuthUserDto,
         common_details::{RelatedUser, UserRole},
         conversation::{Conversation, ConversationKey},
-    }, errors::AppError, middleware::school_token_middleware::SchoolTokenMiddleware, models::{id_model::IdType, school_token_model::SchoolToken}, services::conversation_service::ConversationService, utils::db_utils::get_database
+    },
+    errors::AppError,
+    middleware::school_token_middleware::OptionalSchoolTokenMiddleware,
+    models::{id_model::IdType, school_token_model::SchoolToken},
+    services::conversation_service::ConversationService,
+    utils::db_utils::get_database,
 };
 
 #[derive(Debug, Deserialize)]
@@ -42,7 +50,9 @@ async fn create_conversation(
 
     // School ID is optional - if present, conversation is school-specific
     // If not present, conversation is stored in main database (cross-school or admin)
-    let school_id = req.extensions().get::<ObjectId>().copied();
+    let school_id = req.extensions()
+        .get::<SchoolToken>()
+        .and_then(|token| ObjectId::from_str(&token.id).ok());
 
     // Validate participants
     if body.is_group && body.participants.len() < 3 {
@@ -122,12 +132,11 @@ async fn get_conversations(
 ) -> impl Responder {
     let auth_user = user.into_inner();
 
-    let school_id = match req.extensions().get::<ObjectId>().copied() {
-        Some(id) => id,
-        None => return HttpResponse::BadRequest().json(AppError { 
-            message: "School ID not found".to_string() 
-        }),
-    };
+    // School ID is optional - if present, fetch school-specific conversations
+    // If not present, fetch main database conversations (cross-school/admin)
+    let school_id = req.extensions()
+        .get::<SchoolToken>()
+        .and_then(|token| ObjectId::from_str(&token.id).ok());
 
     let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
         Ok(id) => id,
@@ -143,10 +152,17 @@ async fn get_conversations(
     let db = get_database(&req, &state);
     let service = ConversationService::new(&db);
 
-    let extra_match = doc! {
-        "school_id": school_id,
+    let mut extra_match = doc! {
         "participants.user.id": auth_user_id
     };
+
+    // Filter by school_id if present, otherwise get main database conversations
+    if let Some(school_id) = school_id {
+        extra_match.insert("school_id", school_id);
+    } else {
+        // Fetch conversations without school_id (main database conversations)
+        extra_match.insert("school_id", doc! { "$exists": false });
+    }
 
     let result = match service.get_all(None, Some(limit), Some(skip), Some(extra_match)).await {
         Ok(data) => data,
@@ -241,7 +257,7 @@ async fn get_conversation_key(
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("")
-            .wrap(SchoolTokenMiddleware)
+            .wrap(OptionalSchoolTokenMiddleware) // Optional - allows both school and non-school contexts
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_conversation)
             .service(get_conversations)

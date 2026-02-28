@@ -9,8 +9,10 @@ use crate::{
         message::{Message, MessageSender, MessageType},
     },
     errors::AppError,
+    middleware::school_token_middleware::OptionalSchoolTokenMiddleware,
     models::id_model::IdType,
-    services::{conversation_service::ConversationService, message_service::MessageService}, utils::db_utils::get_database,
+    services::{conversation_service::ConversationService, message_service::MessageService},
+    utils::db_utils::get_database,
 };
 
 #[derive(Debug, Deserialize)]
@@ -37,9 +39,6 @@ async fn create_message(
     path: web::Path<String>,
     body: web::Json<CreateMessageRequest>,
 ) -> Result<HttpResponse, AppError> {
-    // School ID is optional - None for cross-school/admin conversations
-    let school_id = req.extensions().get::<ObjectId>().copied();
-
     let auth_user = req
         .extensions()
         .get::<crate::domain::auth_user::AuthUserDto>()
@@ -58,17 +57,20 @@ async fn create_message(
     
     let auth_user_role = auth_user.role.clone().unwrap_or(crate::domain::common_details::UserRole::STUDENT);
 
-    let is_participant = conv_service
-        .is_participant(conversation_id, auth_user_id)
-        .await?;
+    // Verify conversation exists and user is participant
+    let conversation = conv_service.find_one(
+        Some(&IdType::ObjectId(conversation_id)),
+        Some(doc! { "participants.user.id": auth_user_id })
+    ).await.map_err(|_| AppError { 
+        message: "You are not a participant in this conversation".to_string() 
+    })?;
 
-    if !is_participant {
-        return Err(AppError { message: "You are not a participant in this conversation".to_string() });
-    }
+    // Ensure message school_id matches conversation school_id
+    let message_school_id = conversation.school_id;
 
     let message = Message {
         id: None,
-        school_id, // Optional - None for cross-school/admin conversations
+        school_id: message_school_id, // Use conversation's school_id
         conversation_id,
         sender: MessageSender {
             sender_role: auth_user_role,
@@ -111,20 +113,20 @@ async fn get_messages(
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(50).min(100);
 
-     let db = get_database(&req, &state);
+    let db = get_database(&req, &state);
     let conv_service = ConversationService::new(&db);
     let msg_service = MessageService::new(&db);
 
     let auth_user_id = ObjectId::parse_str(&auth_user.id)
         .map_err(|_| AppError { message: "Invalid user ID".to_string() })?;
 
-    let is_participant = conv_service
-        .is_participant(conversation_id, auth_user_id)
-        .await?;
-
-    if !is_participant {
-        return Err(AppError { message: "You are not a participant in this conversation".to_string() });
-    }
+    // Verify user is participant (single query)
+    conv_service.find_one(
+        Some(&IdType::ObjectId(conversation_id)),
+        Some(doc! { "participants.user.id": auth_user_id })
+    ).await.map_err(|_| AppError { 
+        message: "You are not a participant in this conversation".to_string() 
+    })?;
 
     let (messages, total) = msg_service
         .get_conversation_messages(conversation_id, page, limit)
@@ -168,13 +170,13 @@ async fn get_files(
     let auth_user_id = ObjectId::parse_str(&auth_user.id)
         .map_err(|_| AppError { message: "Invalid user ID".to_string() })?;
 
-    let is_participant = conv_service
-        .is_participant(conversation_id, auth_user_id)
-        .await?;
-
-    if !is_participant {
-        return Err(AppError { message: "You are not a participant in this conversation".to_string() });
-    }
+    // Verify user is participant (single query)
+    conv_service.find_one(
+        Some(&IdType::ObjectId(conversation_id)),
+        Some(doc! { "participants.user.id": auth_user_id })
+    ).await.map_err(|_| AppError { 
+        message: "You are not a participant in this conversation".to_string() 
+    })?;
 
     let (messages, total) = msg_service
         .get_conversation_files(conversation_id, page, limit)
@@ -215,13 +217,13 @@ async fn delete_message(
     let auth_user_id = ObjectId::parse_str(&auth_user.id)
         .map_err(|_| AppError { message: "Invalid user ID".to_string() })?;
 
-    let is_participant = conv_service
-        .is_participant(conversation_id, auth_user_id)
-        .await?;
-
-    if !is_participant {
-        return Err(AppError { message: "You are not a participant in this conversation".to_string() });
-    }
+    // Verify user is participant (single query)
+    conv_service.find_one(
+        Some(&IdType::ObjectId(conversation_id)),
+        Some(doc! { "participants.user.id": auth_user_id })
+    ).await.map_err(|_| AppError { 
+        message: "You are not a participant in this conversation".to_string() 
+    })?;
 
     let message = msg_service.find_one(&IdType::String(message_id_str.clone())).await?;
 
@@ -237,6 +239,8 @@ async fn delete_message(
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("")
+            .wrap(OptionalSchoolTokenMiddleware) // Optional - allows both school and non-school contexts
+            .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_message)
             .service(get_messages)
             .service(get_files)
