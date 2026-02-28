@@ -582,4 +582,103 @@ impl SchoolService {
             created_subjects: created_subjects_count,
         })
     }
+    // =========================
+    // SEARCH MEMBERS
+    // =========================
+    pub async fn search_members(
+        &self,
+        school_db: &Database,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<RelatedUser>, AppError> {
+        let search_filter = filter.clone().unwrap_or_default();
+        let limit = limit.unwrap_or(20);
+        let skip = skip.unwrap_or(0);
+
+        // Search across all member types
+        let mut all_members: Vec<RelatedUser> = Vec::new();
+
+        // Search students
+        let student_service = StudentService::new(school_db);
+        if let Ok(students) = student_service
+            .get_all(
+                Some(search_filter.clone()),
+                Some(limit * 2),
+                Some(skip),
+                extra_match.clone(),
+            )
+            .await
+        {
+            for student in students.data {
+                all_members.push(RelatedUser::STUDENT(student));
+            }
+        }
+
+        // Search teachers
+        let teacher_service = TeacherService::new(school_db);
+        if let Ok(teachers) = teacher_service
+            .get_all(
+                Some(search_filter.clone()),
+                Some(limit * 2),
+                Some(skip),
+                extra_match.clone(),
+            )
+            .await
+        {
+            for teacher in teachers.data {
+                all_members.push(RelatedUser::TEACHER(teacher));
+            }
+        }
+
+        // Search school staff
+        let staff_service = SchoolStaffService::new(school_db);
+        if let Ok(staff) = staff_service
+            .get_all(
+                Some(search_filter.clone()),
+                Some(limit * 2),
+                Some(skip),
+                extra_match.clone(),
+            )
+            .await
+        {
+            for staff_member in staff.data {
+                all_members.push(RelatedUser::SCHOOLSTAFF(staff_member));
+            }
+        }
+
+        // Search parents
+        let parent_service = crate::services::parent_service::ParentService::new(school_db);
+        if let Ok(parents) = parent_service
+            .get_all(
+                Some(search_filter.clone()),
+                Some(limit * 2),
+                Some(skip),
+                extra_match.clone(),
+            )
+            .await
+        {
+            for parent in parents.data {
+                all_members.push(RelatedUser::PARENT(parent));
+            }
+        }
+
+        let total = all_members.len() as i64;
+
+        // Apply pagination
+        let start = skip as usize;
+        let end = (start + limit as usize).min(all_members.len());
+        let paginated_data = all_members[start..end].to_vec();
+
+        let total_pages = (total as f64 / limit as f64).ceil() as i64;
+        let current_page = (skip / limit) + 1;
+
+        Ok(Paginated {
+            data: paginated_data,
+            total,
+            total_pages,
+            current_page,
+        })
+    }
 }

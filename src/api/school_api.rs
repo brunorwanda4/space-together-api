@@ -227,6 +227,50 @@ async fn count_schools(
     }
 }
 
+#[get("/{id}/search/members")]
+async fn search_school_members(
+    _req: HttpRequest,
+    path: web::Path<String>,
+    query: web::Query<RequestQuery>,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    let school_id = path.into_inner();
+
+    // Get school to verify it exists and get database name
+    let school_service = SchoolService::new(&state.db.main_db());
+    let school = match school_service
+        .find_one(Some(&IdType::from_string(&school_id)), None)
+        .await
+    {
+        Ok(school) => school,
+        Err(err) => return HttpResponse::NotFound().json(err),
+    };
+
+    let school_db_name = match school.database_name {
+        Some(name) => name,
+        None => {
+            return HttpResponse::BadRequest().json(AppError {
+                message: "School database not configured".to_string(),
+            })
+        }
+    };
+
+    let db = state.db.get_db(&school_db_name);
+
+    let extra_match = match build_extra_match(&query) {
+        Ok(doc) => doc,
+        Err(err) => return err,
+    };
+
+    match school_service
+        .search_members(&db, query.filter.clone(), query.limit, query.skip, extra_match)
+        .await
+    {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(err) => HttpResponse::BadRequest().json(err),
+    }
+}
+
 #[post("/refresh-school-token")]
 async fn refresh_school_token(req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
     let school_service = SchoolService::new(&state.db.main_db());
@@ -324,6 +368,7 @@ pub fn init(cfg: &mut web::ServiceConfig) {
             .service(get_school_by_match)
             .service(count_schools)
             .service(get_school_by_id)
+            .service(search_school_members)
             .service(refresh_school_token)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_school)
