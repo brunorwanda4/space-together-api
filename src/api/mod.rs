@@ -84,9 +84,9 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     // Messaging routes with /m prefix
     cfg.service(
         web::scope("/m")
+        .configure(messaging_users_api::init)
             .configure(conversations_api::init)
             .configure(messages_api::init)
-            .configure(messaging_users_api::init)
     );
     
     // WebSocket route

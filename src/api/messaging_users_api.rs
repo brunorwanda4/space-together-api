@@ -69,7 +69,7 @@ async fn upload_public_key(
 
 #[get("/public-keys")]
 async fn get_public_keys(
-    req: HttpRequest,
+    _req: HttpRequest,
     _user: web::ReqData<AuthUserDto>,
     state: web::Data<AppState>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -136,5 +136,5 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn init(cfg: &mut web::ServiceConfig) {
-    cfg.configure(blueprint);
+    cfg.service(web::scope("").configure(blueprint));
 }
