@@ -8,19 +8,20 @@ use crate::{
     config::state::AppState,
     domain::{
         auth_user::AuthUserDto,
-        common_details::{RelatedUser, UserRole},
+        common_details::UserRole,
         conversation::{Conversation, ConversationKey},
     },
     errors::AppError,
     middleware::school_token_middleware::OptionalSchoolTokenMiddleware,
     models::{id_model::IdType, school_token_model::SchoolToken},
+    schema::common_schema::ActorRef,
     services::conversation_service::ConversationService,
     utils::db_utils::get_database,
 };
 
 #[derive(Debug, Deserialize)]
 struct CreateConversationRequest {
-    participants: Vec<RelatedUser>,
+    participants: Vec<ActorRef>,
     is_group: bool,
     name: Option<String>,
     encrypted_keys: Vec<EncryptedKeyForUser>,
@@ -67,7 +68,7 @@ async fn create_conversation(
     }
 
     let user_in_participants = body.participants.iter().any(|p| {
-        p.get_id().map(|id| id == auth_user.id).unwrap_or(false)
+        p.id.to_hex() == auth_user.id
     });
 
     if !user_in_participants {
@@ -153,7 +154,7 @@ async fn get_conversations(
     let service = ConversationService::new(&db);
 
     let mut extra_match = doc! {
-        "participants.user.id": auth_user_id
+        "participants.id": auth_user_id
     };
 
     // Filter by school_id if present, otherwise get main database conversations
@@ -164,7 +165,7 @@ async fn get_conversations(
         extra_match.insert("school_id", doc! { "$exists": false });
     }
 
-    let result = match service.get_all(None, Some(limit), Some(skip), Some(extra_match)).await {
+    let result = match service.get_all_with_relations(Some(limit), Some(skip), Some(extra_match)).await {
         Ok(data) => data,
         Err(err) => return HttpResponse::BadRequest().json(err),
     };
@@ -194,10 +195,10 @@ async fn get_conversation(
 
     // Fetch conversation with participant check in one query
     let extra_match = doc! {
-        "participants.user.id": auth_user_id
+        "participants.id": auth_user_id
     };
 
-    let conversation = match service.find_one(Some(&IdType::String(id)), Some(extra_match)).await {
+    let conversation = match service.find_one_with_relations(Some(&IdType::String(id)), Some(extra_match)).await {
         Ok(conv) => conv,
         Err(err) => {
             if err.message.contains("not found") {

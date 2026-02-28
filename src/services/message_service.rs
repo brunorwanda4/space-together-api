@@ -1,10 +1,11 @@
 use crate::{
-    domain::message::Message,
+    domain::message::{Message, MessageWithRelations},
     errors::AppError,
     models::{
         id_model::IdType,
         mongo_model::IndexDef,
     },
+    pipeline::message_pipeline::message_pipeline,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
 };
@@ -34,7 +35,7 @@ impl MessageService {
         let indexes = vec![
             IndexDef::compound(vec![("conversation_id", 1), ("created_at", -1)], false),
             IndexDef::single("school_id", false),
-            IndexDef::single("sender.sender_id", false),
+            IndexDef::single("sender.id", false),
             IndexDef::single("client_message_id", true),
             IndexDef::single("deleted_at", false),
         ];
@@ -151,5 +152,55 @@ impl MessageService {
         repo.update_one_raw(id, update_doc).await?;
 
         Ok(message)
+    }
+
+    // =========================
+    // GET CONVERSATION MESSAGES WITH RELATIONS
+    // =========================
+    pub async fn get_conversation_messages_with_relations(
+        &self,
+        conversation_id: ObjectId,
+        page: i64,
+        limit: i64,
+    ) -> Result<(Vec<MessageWithRelations>, i64), AppError> {
+        let skip = (page - 1) * limit;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let match_stage = doc! {
+            "conversation_id": conversation_id,
+            "deleted_at": { "$exists": false }
+        };
+
+        let result = repo
+            .aggregate_with_paginate::<MessageWithRelations>(
+                message_pipeline(match_stage),
+                Some(limit),
+                Some(skip),
+            )
+            .await?;
+
+        Ok((result.data, result.total))
+    }
+
+    // =========================
+    // FIND ONE WITH RELATIONS
+    // =========================
+    pub async fn find_one_with_relations(
+        &self,
+        id: &IdType,
+    ) -> Result<MessageWithRelations, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let match_stage = doc! {
+            "_id": IdType::to_object_id(id)?,
+            "deleted_at": { "$exists": false }
+        };
+
+        repo.aggregate_one::<MessageWithRelations>(message_pipeline(match_stage), None)
+            .await?
+            .ok_or(AppError {
+                message: "Message not found".into(),
+            })
     }
 }

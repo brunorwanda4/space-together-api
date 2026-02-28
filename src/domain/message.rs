@@ -2,18 +2,7 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::{domain::common_details::{RelatedUser, UserRole}, helpers::object_id_helpers};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MessageSender {
-    pub sender_role: UserRole,
-
-    #[serde(
-        serialize_with = "object_id_helpers::serialize_oid",
-        deserialize_with = "object_id_helpers::deserialize_oid"
-    )]
-    pub sender_id: ObjectId,
-}
+use crate::{domain::common_details::RelatedUser, helpers::object_id_helpers, schema::common_schema::ActorRef};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
@@ -48,7 +37,7 @@ pub struct Message {
     )]
     pub conversation_id: ObjectId,
 
-    pub sender: MessageSender,
+    pub sender: ActorRef,
 
     pub encrypted_payload: String,
     pub nonce: String,
@@ -81,6 +70,13 @@ impl Default for MessageType {
     fn default() -> Self {
         MessageType::TEXT
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MessageWithRelations {
+    #[serde(flatten)]
+    pub message: Message,
+    pub sender_user: Option<RelatedUser>,
 }
 
 impl Message {

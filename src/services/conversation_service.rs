@@ -1,13 +1,14 @@
 use crate::{
     domain::{
         common_details::Paginated,
-        conversation::{Conversation, ConversationKey},
+        conversation::{Conversation, ConversationKey, ConversationWithRelations},
     },
     errors::AppError,
     models::{
         id_model::IdType,
         mongo_model::IndexDef,
     },
+    pipeline::conversation_pipeline::conversation_pipeline,
     repositories::base_repo::BaseRepository,
     utils::mongo_utils::extract_valid_fields,
 };
@@ -32,7 +33,7 @@ impl ConversationService {
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
         let indexes = vec![
             IndexDef::single("school_id", false),
-            IndexDef::single("participants.user.id", false),
+            IndexDef::single("participants.id", false),
             IndexDef::single("created_at", false),
         ];
 
@@ -108,7 +109,7 @@ impl ConversationService {
             "name",
             "_id",
             "school_id",
-            "participants.user.id",
+            "participants.id",
         ];
 
         let (data, total, total_pages, current_page) = repo
@@ -175,12 +176,55 @@ impl ConversationService {
             .find_one::<Conversation>(
                 doc! {
                     "_id": conversation_id,
-                    "participants.user.id": user_id
+                    "participants.id": user_id
                 },
                 None,
             )
             .await?;
 
         Ok(result.is_some())
+    }
+
+    // =========================
+    // GET ALL WITH RELATIONS
+    // =========================
+    pub async fn get_all_with_relations(
+        &self,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<ConversationWithRelations>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        let match_stage = extra_match.unwrap_or_default();
+
+        repo.aggregate_with_paginate::<ConversationWithRelations>(
+            conversation_pipeline(match_stage),
+            limit,
+            skip,
+        )
+        .await
+    }
+
+    // =========================
+    // FIND ONE WITH RELATIONS
+    // =========================
+    pub async fn find_one_with_relations(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<ConversationWithRelations, AppError> {
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            match_stage.insert("_id", IdType::to_object_id(id)?);
+        }
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        repo.aggregate_one::<ConversationWithRelations>(conversation_pipeline(match_stage), None)
+            .await?
+            .ok_or(AppError {
+                message: "Conversation not found".into(),
+            })
     }
 }

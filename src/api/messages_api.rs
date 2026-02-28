@@ -6,11 +6,12 @@ use crate::{
     config::state::AppState,
     domain::{
         common_details::Paginated,
-        message::{Message, MessageSender, MessageType},
+        message::{Message, MessageType},
     },
     errors::AppError,
     middleware::school_token_middleware::OptionalSchoolTokenMiddleware,
     models::id_model::IdType,
+    schema::common_schema::ActorRef,
     services::{conversation_service::ConversationService, message_service::MessageService},
     utils::db_utils::get_database,
 };
@@ -60,7 +61,7 @@ async fn create_message(
     // Verify conversation exists and user is participant
     let conversation = conv_service.find_one(
         Some(&IdType::ObjectId(conversation_id)),
-        Some(doc! { "participants.user.id": auth_user_id })
+        Some(doc! { "participants.id": auth_user_id })
     ).await.map_err(|_| AppError { 
         message: "You are not a participant in this conversation".to_string() 
     })?;
@@ -72,9 +73,9 @@ async fn create_message(
         id: None,
         school_id: message_school_id, // Use conversation's school_id
         conversation_id,
-        sender: MessageSender {
-            sender_role: auth_user_role,
-            sender_id: auth_user_id,
+        sender: ActorRef {
+            id: auth_user_id,
+            role: auth_user_role,
         },
         encrypted_payload: body.encrypted_payload.clone(),
         nonce: body.nonce.clone(),
@@ -123,13 +124,13 @@ async fn get_messages(
     // Verify user is participant (single query)
     conv_service.find_one(
         Some(&IdType::ObjectId(conversation_id)),
-        Some(doc! { "participants.user.id": auth_user_id })
+        Some(doc! { "participants.id": auth_user_id })
     ).await.map_err(|_| AppError { 
         message: "You are not a participant in this conversation".to_string() 
     })?;
 
     let (messages, total) = msg_service
-        .get_conversation_messages(conversation_id, page, limit)
+        .get_conversation_messages_with_relations(conversation_id, page, limit)
         .await?;
 
     let total_pages = (total as f64 / limit as f64).ceil() as i64;
@@ -173,7 +174,7 @@ async fn get_files(
     // Verify user is participant (single query)
     conv_service.find_one(
         Some(&IdType::ObjectId(conversation_id)),
-        Some(doc! { "participants.user.id": auth_user_id })
+        Some(doc! { "participants.id": auth_user_id })
     ).await.map_err(|_| AppError { 
         message: "You are not a participant in this conversation".to_string() 
     })?;
@@ -220,14 +221,14 @@ async fn delete_message(
     // Verify user is participant (single query)
     conv_service.find_one(
         Some(&IdType::ObjectId(conversation_id)),
-        Some(doc! { "participants.user.id": auth_user_id })
+        Some(doc! { "participants.id": auth_user_id })
     ).await.map_err(|_| AppError { 
         message: "You are not a participant in this conversation".to_string() 
     })?;
 
     let message = msg_service.find_one(&IdType::String(message_id_str.clone())).await?;
 
-    if message.sender.sender_id != auth_user_id {
+    if message.sender.id != auth_user_id {
         return Err(AppError { message: "You can only delete your own messages".to_string() });
     }
 

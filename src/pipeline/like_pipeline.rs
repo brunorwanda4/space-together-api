@@ -75,13 +75,34 @@ pub fn like_pipeline(match_stage: Document) -> Vec<Document> {
             }
         },
         doc! {
+            "$lookup": {
+                "from": "parents",
+                "let": { "uid": "$actor.id", "role": "$actor.role" },
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$and": [
+                                    { "$eq": ["$$role", "PARENT"] },
+                                    { "$eq": ["$_id", "$$uid"] }
+                                ]
+                            }
+                        }
+                    },
+                    { "$addFields": { "user_type": "PARENT" } }
+                ],
+                "as": "author_parent"
+            }
+        },
+        doc! {
             "$addFields": {
                 "author_user": {
                     "$first": {
                         "$concatArrays": [
                             "$author_student",
                             "$author_teacher",
-                            "$author_staff"
+                            "$author_staff",
+                            "$author_parent"
                         ]
                     }
                 }
@@ -91,7 +112,8 @@ pub fn like_pipeline(match_stage: Document) -> Vec<Document> {
             "$project": {
                 "author_student": 0,
                 "author_teacher": 0,
-                "author_staff": 0
+                "author_staff": 0,
+                "author_parent": 0
             }
         },
         doc! { "$sort": { "created_at": -1 } },

@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
-use crate::{domain::common_details::RelatedUser, helpers::object_id_helpers, make_partial};
+use crate::{domain::common_details::RelatedUser, helpers::object_id_helpers, make_partial, schema::common_schema::ActorRef};
 
 make_partial! {
     #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -24,7 +24,7 @@ make_partial! {
         )]
         pub school_id: Option<ObjectId>,
 
-        pub participants: Vec<RelatedUser>,
+        pub participants: Vec<ActorRef>,
 
         #[serde(default)]
         pub is_group: bool,
@@ -44,6 +44,13 @@ make_partial! {
 
 fn default_key_version() -> i32 {
     1
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConversationWithRelations {
+    #[serde(flatten)]
+    pub conversation: Conversation,
+    pub participants_users: Vec<RelatedUser>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
