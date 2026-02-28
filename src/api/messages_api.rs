@@ -37,11 +37,8 @@ async fn create_message(
     path: web::Path<String>,
     body: web::Json<CreateMessageRequest>,
 ) -> Result<HttpResponse, AppError> {
-    let school_id = req
-        .extensions()
-        .get::<ObjectId>()
-        .copied()
-        .ok_or_else(|| AppError { message: "School ID not found".to_string() })?;
+    // School ID is optional - None for cross-school/admin conversations
+    let school_id = req.extensions().get::<ObjectId>().copied();
 
     let auth_user = req
         .extensions()
@@ -71,7 +68,7 @@ async fn create_message(
 
     let message = Message {
         id: None,
-        school_id,
+        school_id, // Optional - None for cross-school/admin conversations
         conversation_id,
         sender: MessageSender {
             sender_role: auth_user_role,
@@ -152,12 +149,6 @@ async fn get_files(
     path: web::Path<String>,
     query: web::Query<QueryParams>,
 ) -> Result<HttpResponse, AppError> {
-    let school_id = req
-        .extensions()
-        .get::<ObjectId>()
-        .copied()
-        .ok_or_else(|| AppError { message: "School ID not found".to_string() })?;
-
     let auth_user = req
         .extensions()
         .get::<crate::domain::auth_user::AuthUserDto>()
@@ -207,12 +198,6 @@ async fn delete_message(
     state: web::Data<AppState>,
     path: web::Path<(String, String)>,
 ) -> Result<HttpResponse, AppError> {
-    let school_id = req
-        .extensions()
-        .get::<ObjectId>()
-        .copied()
-        .ok_or_else(|| AppError { message: "School ID not found".to_string() })?;
-
     let auth_user = req
         .extensions()
         .get::<crate::domain::auth_user::AuthUserDto>()

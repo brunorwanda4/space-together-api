@@ -45,12 +45,9 @@ async fn create_conversation(
 ) -> impl Responder {
     let auth_user = user.into_inner();
 
-    let school_id = match req.extensions().get::<ObjectId>().copied() {
-        Some(id) => id,
-        None => return HttpResponse::BadRequest().json(AppError { 
-            message: "School ID not found".to_string() 
-        }),
-    };
+    // School ID is optional - if present, conversation is school-specific
+    // If not present, conversation is stored in main database (cross-school or admin)
+    let school_id = req.extensions().get::<ObjectId>().copied();
 
     // Validate participants
     if body.is_group && body.participants.len() < 3 {
