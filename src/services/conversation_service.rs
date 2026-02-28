@@ -1,128 +1,145 @@
 use crate::{
-    domain::conversation::{Conversation, ConversationKey},
+    domain::{
+        common_details::Paginated,
+        conversation::{Conversation, ConversationKey},
+    },
     errors::AppError,
-    models::id_model::IdType,
-    helpers::object_id_helpers::parse_object_id,
+    models::{
+        id_model::IdType,
+        mongo_model::IndexDef,
+    },
+    repositories::base_repo::BaseRepository,
+    utils::mongo_utils::extract_valid_fields,
 };
-use chrono::Utc;
 use mongodb::{
-    bson::{doc, oid::ObjectId},
-    options::{FindOptions, IndexOptions},
-    Collection, Database, IndexModel,
+    bson::{doc, oid::ObjectId, Document},
+    Collection, Database,
 };
 
 pub struct ConversationService {
-    collection: Collection<Conversation>,
-    keys_collection: Collection<ConversationKey>,
+    pub collection: Collection<Conversation>,
+    pub keys_collection: Collection<ConversationKey>,
 }
 
 impl ConversationService {
     pub fn new(db: &Database) -> Self {
         Self {
-            collection: db.collection("conversations"),
-            keys_collection: db.collection("conversation_keys"),
+            collection: db.collection::<Conversation>("conversations"),
+            keys_collection: db.collection::<ConversationKey>("conversation_keys"),
         }
     }
 
     pub async fn ensure_indexes(&self) -> Result<(), AppError> {
         let indexes = vec![
-            IndexModel::builder()
-                .keys(doc! { "school_id": 1 })
-                .build(),
-            IndexModel::builder()
-                .keys(doc! { "participants.user.id": 1 })
-                .build(),
-            IndexModel::builder()
-                .keys(doc! { "created_at": -1 })
-                .build(),
+            IndexDef::single("school_id", false),
+            IndexDef::single("participants.user.id", false),
+            IndexDef::single("created_at", false),
         ];
 
-        self.collection
-            .create_indexes(indexes)
-            .await
-            .map_err(|e| AppError { message: format!("Failed to create indexes: {}", e) })?;
+        let repo = BaseRepository::new(
+            self.collection.clone().clone_with_type::<Document>(),
+        );
+        repo.ensure_indexes(&indexes).await?;
 
         let key_indexes = vec![
-            IndexModel::builder()
-                .keys(doc! { "conversation_id": 1, "user_id": 1 })
-                .options(IndexOptions::builder().unique(true).build())
-                .build(),
+            IndexDef::compound(vec![("conversation_id", 1), ("user_id", 1)], true),
         ];
 
-        self.keys_collection
-            .create_indexes(key_indexes)
-            .await
-            .map_err(|e| AppError { message: format!("Failed to create key indexes: {}", e) })?;
+        let key_repo = BaseRepository::new(
+            self.keys_collection.clone().clone_with_type::<Document>(),
+        );
+        key_repo.ensure_indexes(&key_indexes).await?;
 
         Ok(())
     }
 
-    pub async fn create(&self, mut dto: Conversation) -> Result<Conversation, AppError> {
-        dto.created_at = Utc::now();
-        dto.updated_at = Utc::now();
+    // =========================
+    // CREATE
+    // =========================
+    pub async fn create(&self, dto: Conversation) -> Result<Conversation, AppError> {
+        self.ensure_indexes().await?;
 
-        let result = self
-            .collection
-            .insert_one(&dto)
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let doc = mongodb::bson::to_document(&dto).map_err(|e| AppError {
+            message: format!("Failed to serialize conversation: {}", e),
+        })?;
+
+        repo.create::<Conversation>(extract_valid_fields(doc), None)
             .await
-            .map_err(|e| AppError { message: format!("Failed to create conversation: {}", e) })?;
-
-        dto.id = Some(result.inserted_id.as_object_id().unwrap());
-        Ok(dto)
     }
 
-    pub async fn find_one(&self, id: &IdType) -> Result<Conversation, AppError> {
-        let oid = parse_object_id(id).map_err(|e| AppError { message: e })?;
-
-        self.collection
-            .find_one(doc! { "_id": oid })
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?
-            .ok_or_else(|| AppError { message: "Conversation not found".to_string() })
-    }
-
-    pub async fn get_all(
+    // =========================
+    // FIND ONE
+    // =========================
+    pub async fn find_one(
         &self,
-        filter: mongodb::bson::Document,
-        page: i64,
-        limit: i64,
-    ) -> Result<(Vec<Conversation>, i64), AppError> {
-        let skip = (page - 1) * limit;
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<Conversation, AppError> {
+        let mut filter = extra_match.unwrap_or_default();
 
-        let options = FindOptions::builder()
-            .sort(doc! { "created_at": -1 })
-            .skip(skip as u64)
-            .limit(limit)
-            .build();
-
-        let mut cursor = self
-            .collection
-            .find(filter.clone())
-            .with_options(options)
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?;
-
-        let mut conversations = Vec::new();
-        while cursor.advance().await.map_err(|e| AppError { message: format!("Database error: {}", e) })? {
-            conversations.push(cursor.deserialize_current().map_err(|e| AppError { message: format!("Deserialization error: {}", e) })?);
+        if let Some(id) = id {
+            filter.insert("_id", IdType::to_object_id(id)?);
         }
 
-        let total = self
-            .collection
-            .count_documents(filter)
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?;
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        Ok((conversations, total as i64))
+        repo.find_one::<Conversation>(filter, None)
+            .await?
+            .ok_or(AppError {
+                message: "Conversation not found".into(),
+            })
     }
 
-    pub async fn store_conversation_key(&self, key: ConversationKey) -> Result<(), AppError> {
-        self.keys_collection
-            .insert_one(&key)
-            .await
-            .map_err(|e| AppError { message: format!("Failed to store conversation key: {}", e) })?;
+    // =========================
+    // GET ALL
+    // =========================
+    pub async fn get_all(
+        &self,
+        filter: Option<String>,
+        limit: Option<i64>,
+        skip: Option<i64>,
+        extra_match: Option<Document>,
+    ) -> Result<Paginated<Conversation>, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        Ok(())
+        let searchable = [
+            "name",
+            "_id",
+            "school_id",
+            "participants.user.id",
+        ];
+
+        let (data, total, total_pages, current_page) = repo
+            .get_all::<Conversation>(filter, &searchable, limit, skip, extra_match)
+            .await?;
+
+        Ok(Paginated {
+            data,
+            total,
+            total_pages,
+            current_page,
+        })
+    }
+
+    // =========================
+    // CONVERSATION KEYS
+    // =========================
+    pub async fn store_conversation_key(&self, key: ConversationKey) -> Result<ConversationKey, AppError> {
+        let repo = BaseRepository::new(
+            self.keys_collection.clone().clone_with_type::<Document>(),
+        );
+
+        let doc = mongodb::bson::to_document(&key).map_err(|e| AppError {
+            message: format!("Failed to serialize conversation key: {}", e),
+        })?;
+
+        repo.create::<ConversationKey>(
+            extract_valid_fields(doc),
+            None,
+        )
+        .await
     }
 
     pub async fn get_conversation_key(
@@ -130,27 +147,40 @@ impl ConversationService {
         conversation_id: ObjectId,
         user_id: ObjectId,
     ) -> Result<ConversationKey, AppError> {
-        self.keys_collection
-            .find_one(doc! { "conversation_id": conversation_id, "user_id": user_id })
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?
-            .ok_or_else(|| AppError { message: "Conversation key not found".to_string() })
+        let repo = BaseRepository::new(
+            self.keys_collection.clone().clone_with_type::<Document>(),
+        );
+
+        repo.find_one::<ConversationKey>(
+            doc! { "conversation_id": conversation_id, "user_id": user_id },
+            None,
+        )
+        .await?
+        .ok_or(AppError {
+            message: "Conversation key not found".into(),
+        })
     }
 
+    // =========================
+    // PARTICIPANT CHECK
+    // =========================
     pub async fn is_participant(
         &self,
         conversation_id: ObjectId,
         user_id: ObjectId,
     ) -> Result<bool, AppError> {
-        let count = self
-            .collection
-            .count_documents(doc! {
-                "_id": conversation_id,
-                "participants.user.id": user_id
-            })
-            .await
-            .map_err(|e| AppError { message: format!("Database error: {}", e) })?;
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        Ok(count > 0)
+        let result = repo
+            .find_one::<Conversation>(
+                doc! {
+                    "_id": conversation_id,
+                    "participants.user.id": user_id
+                },
+                None,
+            )
+            .await?;
+
+        Ok(result.is_some())
     }
 }

@@ -3,16 +3,11 @@ use mongodb::bson::{doc, oid::ObjectId};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::state::AppState,
-    domain::{
+    config::state::AppState, domain::{
         auth_user::AuthUserDto,
-        common_details::{Paginated, RelatedUser, UserRole},
+        common_details::{RelatedUser, UserRole},
         conversation::{Conversation, ConversationKey},
-    },
-    errors::AppError,
-    models::id_model::IdType,
-    services::conversation_service::ConversationService,
-    utils::db_utils::get_database,
+    }, errors::AppError, middleware::school_token_middleware::SchoolTokenMiddleware, models::{id_model::IdType, school_token_model::SchoolToken}, services::conversation_service::ConversationService, utils::db_utils::get_database
 };
 
 #[derive(Debug, Deserialize)]
@@ -90,6 +85,8 @@ async fn create_conversation(
         Err(err) => return HttpResponse::BadRequest().json(err),
     };
 
+    let conversation_id = created.id.unwrap();
+
     // Store encrypted keys for each participant
     for key_data in &body.encrypted_keys {
         let user_id = match ObjectId::parse_str(&key_data.user_id) {
@@ -101,7 +98,7 @@ async fn create_conversation(
 
         let key = ConversationKey {
             id: None,
-            conversation_id: created.id.unwrap(),
+            conversation_id,
             user_id,
             user_role: key_data.user_role.clone(),
             encrypted_key_for_user: key_data.encrypted_key.clone(),
@@ -132,12 +129,6 @@ async fn get_conversations(
         }),
     };
 
-    let page = query.page.unwrap_or(1);
-    let limit = query.limit.unwrap_or(20);
-
-    let db = get_database(&req, &state);
-    let service = ConversationService::new(&db);
-
     let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
         Ok(id) => id,
         Err(_) => return HttpResponse::BadRequest().json(AppError { 
@@ -145,26 +136,24 @@ async fn get_conversations(
         }),
     };
 
-    let filter = doc! {
+    let page = query.page.unwrap_or(1);
+    let limit = query.limit.unwrap_or(20);
+    let skip = (page - 1) * limit;
+
+    let db = get_database(&req, &state);
+    let service = ConversationService::new(&db);
+
+    let extra_match = doc! {
         "school_id": school_id,
         "participants.user.id": auth_user_id
     };
 
-    let (conversations, total) = match service.get_all(filter, page, limit).await {
+    let result = match service.get_all(None, Some(limit), Some(skip), Some(extra_match)).await {
         Ok(data) => data,
         Err(err) => return HttpResponse::BadRequest().json(err),
     };
 
-    let total_pages = (total as f64 / limit as f64).ceil() as i64;
-
-    let response = Paginated {
-        data: conversations,
-        total,
-        total_pages,
-        current_page: page,
-    };
-
-    HttpResponse::Ok().json(response)
+    HttpResponse::Ok().json(result)
 }
 
 #[get("/{id}")]
@@ -180,11 +169,6 @@ async fn get_conversation(
     let db = get_database(&req, &state);
     let service = ConversationService::new(&db);
 
-    let conversation = match service.find_one(&IdType::String(id.clone())).await {
-        Ok(conv) => conv,
-        Err(err) => return HttpResponse::NotFound().json(err),
-    };
-
     let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
         Ok(id) => id,
         Err(_) => return HttpResponse::BadRequest().json(AppError { 
@@ -192,16 +176,22 @@ async fn get_conversation(
         }),
     };
 
-    let is_participant = match service.is_participant(conversation.id.unwrap(), auth_user_id).await {
-        Ok(result) => result,
-        Err(err) => return HttpResponse::BadRequest().json(err),
+    // Fetch conversation with participant check in one query
+    let extra_match = doc! {
+        "participants.user.id": auth_user_id
     };
 
-    if !is_participant {
-        return HttpResponse::Forbidden().json(AppError { 
-            message: "You are not a participant in this conversation".to_string() 
-        });
-    }
+    let conversation = match service.find_one(Some(&IdType::String(id)), Some(extra_match)).await {
+        Ok(conv) => conv,
+        Err(err) => {
+            if err.message.contains("not found") {
+                return HttpResponse::Forbidden().json(AppError { 
+                    message: "You are not a participant in this conversation".to_string() 
+                });
+            }
+            return HttpResponse::NotFound().json(err);
+        }
+    };
 
     HttpResponse::Ok().json(conversation)
 }
@@ -222,9 +212,6 @@ async fn get_conversation_key(
         }),
     };
 
-    let db = get_database(&req, &state);
-    let service = ConversationService::new(&db);
-
     let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
         Ok(id) => id,
         Err(_) => return HttpResponse::BadRequest().json(AppError { 
@@ -232,20 +219,20 @@ async fn get_conversation_key(
         }),
     };
 
-    let is_participant = match service.is_participant(conversation_id, auth_user_id).await {
-        Ok(result) => result,
-        Err(err) => return HttpResponse::BadRequest().json(err),
-    };
+    let db = get_database(&req, &state);
+    let service = ConversationService::new(&db);
 
-    if !is_participant {
-        return HttpResponse::Forbidden().json(AppError { 
-            message: "You are not a participant in this conversation".to_string() 
-        });
-    }
-
+    // Get key directly - if it doesn't exist, user is not a participant
     let key = match service.get_conversation_key(conversation_id, auth_user_id).await {
         Ok(k) => k,
-        Err(err) => return HttpResponse::NotFound().json(err),
+        Err(err) => {
+            if err.message.contains("not found") {
+                return HttpResponse::Forbidden().json(AppError { 
+                    message: "You are not a participant in this conversation".to_string() 
+                });
+            }
+            return HttpResponse::NotFound().json(err);
+        }
     };
 
     HttpResponse::Ok().json(key)
@@ -254,6 +241,7 @@ async fn get_conversation_key(
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("")
+            .wrap(SchoolTokenMiddleware)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(create_conversation)
             .service(get_conversations)
