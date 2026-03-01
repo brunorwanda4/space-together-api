@@ -18,6 +18,7 @@ mod events;
 mod exam_api;
 mod grading_scale_api;
 mod join_school_request_api;
+mod learning_materials_api;
 mod like_api;
 mod main_class_api;
 mod messages_api;
@@ -37,7 +38,6 @@ mod students_api;
 mod teachers_api;
 mod template_subject_api;
 mod trade_api;
-mod learning_materials_api;
 mod users;
 mod welcome;
 
@@ -80,15 +80,12 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     recycle_bin_api::init(cfg);
     learning_materials_api::init(cfg);
     analytics_api::init(cfg);
-    
+
     // Messaging routes with /m prefix
-    cfg.service(
-        web::scope("/m")
-        .configure(messaging_users_api::init)
-            .configure(conversations_api::init)
-            .configure(messages_api::init)
-    );
-    
+    messaging_users_api::init(cfg);
+    conversations_api::init(cfg);
+    messages_api::init(cfg);
+
     // WebSocket route
     messaging_socket::init(cfg);
 }

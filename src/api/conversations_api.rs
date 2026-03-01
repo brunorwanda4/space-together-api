@@ -51,43 +51,44 @@ async fn create_conversation(
 
     // School ID is optional - if present, conversation is school-specific
     // If not present, conversation is stored in main database (cross-school or admin)
-    let school_id = req.extensions()
+    let school_id = req
+        .extensions()
         .get::<SchoolToken>()
         .and_then(|token| ObjectId::from_str(&token.id).ok());
 
     // Validate minimum participants
     if body.participants.len() < 2 {
-        return HttpResponse::BadRequest().json(AppError { 
-            message: "Minimum 2 participants required".to_string() 
+        return HttpResponse::BadRequest().json(AppError {
+            message: "Minimum 2 participants required".to_string(),
         });
     }
 
     // Validate maximum participants for group conversations
     if body.participants.len() > 50 {
-        return HttpResponse::BadRequest().json(AppError { 
-            message: "Maximum 50 participants allowed for group conversations".to_string() 
+        return HttpResponse::BadRequest().json(AppError {
+            message: "Maximum 50 participants allowed for group conversations".to_string(),
         });
     }
 
     // Validate group conversation name
     if body.is_group {
         if body.name.is_none() || body.name.as_ref().unwrap().trim().is_empty() {
-            return HttpResponse::BadRequest().json(AppError { 
-                message: "Group name is required for group conversations".to_string() 
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Group name is required for group conversations".to_string(),
             });
         }
         if let Some(ref name) = body.name {
             if name.len() > 100 {
-                return HttpResponse::BadRequest().json(AppError { 
-                    message: "Group name must be 1-100 characters".to_string() 
+                return HttpResponse::BadRequest().json(AppError {
+                    message: "Group name must be 1-100 characters".to_string(),
                 });
             }
         }
     } else {
         // For non-group conversations, name must be null
         if body.name.is_some() {
-            return HttpResponse::BadRequest().json(AppError { 
-                message: "Name must be null for direct conversations".to_string() 
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Name must be null for direct conversations".to_string(),
             });
         }
     }
@@ -97,49 +98,56 @@ async fn create_conversation(
     for participant in &body.participants {
         let key = participant.id.to_hex();
         if !unique_participants.insert(key) {
-            return HttpResponse::BadRequest().json(AppError { 
-                message: "Duplicate participants are not allowed".to_string() 
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Duplicate participants are not allowed".to_string(),
             });
         }
     }
 
     // Validate authenticated user is in participants
-    let user_in_participants = body.participants.iter().any(|p| {
-        p.id.to_hex() == auth_user.id
-    });
+    let user_in_participants = body
+        .participants
+        .iter()
+        .any(|p| p.id.to_hex() == auth_user.id);
 
     if !user_in_participants {
-        return HttpResponse::BadRequest().json(AppError { 
-            message: "You must be a participant in the conversation".to_string() 
+        return HttpResponse::BadRequest().json(AppError {
+            message: "You must be a participant in the conversation".to_string(),
         });
     }
 
     // Validate encrypted keys match participants
     if body.encrypted_keys.len() != body.participants.len() {
-        return HttpResponse::BadRequest().json(AppError { 
-            message: "Must provide exactly one encrypted key per participant".to_string() 
+        return HttpResponse::BadRequest().json(AppError {
+            message: "Must provide exactly one encrypted key per participant".to_string(),
         });
     }
 
     // Validate each encrypted key matches a participant
     for key_data in &body.encrypted_keys {
-        let matching_participant = body.participants.iter().find(|p| {
-            p.id.to_hex() == key_data.user_id && p.role == key_data.user_role
-        });
+        let matching_participant = body
+            .participants
+            .iter()
+            .find(|p| p.id.to_hex() == key_data.user_id && p.role == key_data.user_role);
 
         if matching_participant.is_none() {
-            return HttpResponse::BadRequest().json(AppError { 
+            return HttpResponse::BadRequest().json(AppError {
                 message: format!(
                     "Encrypted key for user {} with role {:?} does not match any participant",
                     key_data.user_id, key_data.user_role
-                )
+                ),
             });
         }
 
         // Validate base64 format
-        if base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_data.encrypted_key).is_err() {
-            return HttpResponse::UnprocessableEntity().json(AppError { 
-                message: "Invalid encrypted key format. Must be valid base64.".to_string() 
+        if base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            &key_data.encrypted_key,
+        )
+        .is_err()
+        {
+            return HttpResponse::UnprocessableEntity().json(AppError {
+                message: "Invalid encrypted key format. Must be valid base64.".to_string(),
             });
         }
     }
@@ -150,7 +158,7 @@ async fn create_conversation(
     // Check for duplicate 1-on-1 conversations
     if !body.is_group {
         let participant_ids: Vec<ObjectId> = body.participants.iter().map(|p| p.id).collect();
-        
+
         let existing_filter = doc! {
             "is_group": false,
             "participants.id": { "$all": participant_ids.clone() },
@@ -187,9 +195,11 @@ async fn create_conversation(
     for key_data in &body.encrypted_keys {
         let user_id = match ObjectId::parse_str(&key_data.user_id) {
             Ok(id) => id,
-            Err(_) => return HttpResponse::BadRequest().json(AppError { 
-                message: "Invalid user ID in encrypted_keys".to_string() 
-            }),
+            Err(_) => {
+                return HttpResponse::BadRequest().json(AppError {
+                    message: "Invalid user ID in encrypted_keys".to_string(),
+                })
+            }
         };
 
         let key = ConversationKey {
@@ -222,15 +232,18 @@ async fn get_conversations(
 
     // School ID is optional - if present, fetch school-specific conversations
     // If not present, fetch main database conversations (cross-school/admin)
-    let school_id = req.extensions()
+    let school_id = req
+        .extensions()
         .get::<SchoolToken>()
         .and_then(|token| ObjectId::from_str(&token.id).ok());
 
     let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
         Ok(id) => id,
-        Err(_) => return HttpResponse::BadRequest().json(AppError { 
-            message: "Invalid user ID".to_string() 
-        }),
+        Err(_) => {
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Invalid user ID".to_string(),
+            })
+        }
     };
 
     let page = query.page.unwrap_or(1);
@@ -252,7 +265,10 @@ async fn get_conversations(
         extra_match.insert("school_id", doc! { "$exists": false });
     }
 
-    let result = match service.get_all_with_relations(Some(limit), Some(skip), Some(extra_match)).await {
+    let result = match service
+        .get_all_with_relations(Some(limit), Some(skip), Some(extra_match))
+        .await
+    {
         Ok(data) => data,
         Err(err) => return HttpResponse::BadRequest().json(err),
     };
@@ -275,9 +291,11 @@ async fn get_conversation(
 
     let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
         Ok(id) => id,
-        Err(_) => return HttpResponse::BadRequest().json(AppError { 
-            message: "Invalid user ID".to_string() 
-        }),
+        Err(_) => {
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Invalid user ID".to_string(),
+            })
+        }
     };
 
     // Fetch conversation with participant check in one query
@@ -285,12 +303,15 @@ async fn get_conversation(
         "participants.id": auth_user_id
     };
 
-    let conversation = match service.find_one_with_relations(Some(&IdType::String(id)), Some(extra_match)).await {
+    let conversation = match service
+        .find_one_with_relations(Some(&IdType::String(id)), Some(extra_match))
+        .await
+    {
         Ok(conv) => conv,
         Err(err) => {
             if err.message.contains("not found") {
-                return HttpResponse::Forbidden().json(AppError { 
-                    message: "You are not a participant in this conversation".to_string() 
+                return HttpResponse::Forbidden().json(AppError {
+                    message: "You are not a participant in this conversation".to_string(),
                 });
             }
             return HttpResponse::NotFound().json(err);
@@ -311,28 +332,35 @@ async fn get_conversation_key(
 
     let conversation_id = match ObjectId::parse_str(&path.into_inner()) {
         Ok(id) => id,
-        Err(_) => return HttpResponse::BadRequest().json(AppError { 
-            message: "Invalid conversation ID".to_string() 
-        }),
+        Err(_) => {
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Invalid conversation ID".to_string(),
+            })
+        }
     };
 
     let auth_user_id = match ObjectId::parse_str(&auth_user.id) {
         Ok(id) => id,
-        Err(_) => return HttpResponse::BadRequest().json(AppError { 
-            message: "Invalid user ID".to_string() 
-        }),
+        Err(_) => {
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Invalid user ID".to_string(),
+            })
+        }
     };
 
     let db = get_database(&req, &state);
     let service = ConversationService::new(&db);
 
     // Get key directly - if it doesn't exist, user is not a participant
-    let key = match service.get_conversation_key(conversation_id, auth_user_id).await {
+    let key = match service
+        .get_conversation_key(conversation_id, auth_user_id)
+        .await
+    {
         Ok(k) => k,
         Err(err) => {
             if err.message.contains("not found") {
-                return HttpResponse::Forbidden().json(AppError { 
-                    message: "You are not a participant in this conversation".to_string() 
+                return HttpResponse::Forbidden().json(AppError {
+                    message: "You are not a participant in this conversation".to_string(),
                 });
             }
             return HttpResponse::NotFound().json(err);
@@ -355,5 +383,5 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn init(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("/conversations").configure(blueprint));
+    cfg.service(web::scope("/m-conversations").configure(blueprint));
 }

@@ -127,7 +127,7 @@ async fn get_public_keys(
 
 fn blueprint(cfg: &mut web::ServiceConfig) {
     cfg.service(
-        web::scope("/users")
+        web::scope("")
             .wrap(OptionalSchoolTokenMiddleware)
             .wrap(crate::middleware::jwt_middleware::JwtMiddleware)
             .service(upload_public_key)
@@ -136,5 +136,5 @@ fn blueprint(cfg: &mut web::ServiceConfig) {
 }
 
 pub fn init(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::scope("").configure(blueprint));
+    cfg.service(web::scope("/m-users").configure(blueprint));
 }
