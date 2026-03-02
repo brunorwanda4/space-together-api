@@ -93,9 +93,12 @@ impl UserPublicKeyService {
     // GET PUBLIC KEY
     // =========================
     pub async fn get_public_key(&self, user_id: ObjectId) -> Result<UserPublicKey, AppError> {
+        // Ensure indexes exist
+        self.ensure_indexes().await?;
+        
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        repo.find_one::<UserPublicKey>(doc! { "user_id": user_id }, None)
+        repo.find_one::<UserPublicKey>(doc! { "user_id": user_id.to_hex() }, None)
             .await?
             .ok_or(AppError {
                 message: format!("Public key not found for user: {}", user_id),
@@ -190,6 +193,9 @@ impl UserPublicKeyService {
             });
         }
 
+        // Ensure indexes exist
+        self.ensure_indexes().await?;
+
         let filter = doc! { "user_id": { "$in": user_ids.clone() } };
 
         let cursor = self
@@ -260,25 +266,78 @@ impl UserPublicKeyService {
                     message: format!("Failed to parse user ID: {}", e),
                 })?;
 
-                // Generate a new public key
-                let public_key = crate::utils::crypto_utils::generate_rsa_public_key()?;
-                
-                // Store it in the database
-                let created_key = self
-                    .upsert_public_key(user_id, public_key, "RSA-2048".to_string())
-                    .await?;
-
-                // Add to results
-                public_keys.push(PublicKeyInfo {
-                    user_id: created_key.user_id.to_hex(),
-                    public_key: created_key.public_key,
-                    key_algorithm: created_key.key_algorithm,
-                    created_at: created_key.created_at,
-                });
+                // Try to create key, but handle race condition where key was created by another request
+                match self.try_create_public_key(user_id).await {
+                    Ok(created_key) => {
+                        // Successfully created new key
+                        public_keys.push(PublicKeyInfo {
+                            user_id: created_key.user_id.to_hex(),
+                            public_key: created_key.public_key,
+                            key_algorithm: created_key.key_algorithm,
+                            created_at: created_key.created_at,
+                        });
+                    }
+                    Err(e) if e.message.contains("duplicate key error") || e.message.contains("E11000") => {
+                        // Key was created by another request, fetch it
+                        match self.get_public_key(user_id).await {
+                            Ok(existing_key) => {
+                                public_keys.push(PublicKeyInfo {
+                                    user_id: existing_key.user_id.to_hex(),
+                                    public_key: existing_key.public_key,
+                                    key_algorithm: existing_key.key_algorithm,
+                                    created_at: existing_key.created_at,
+                                });
+                            }
+                            Err(fetch_err) => {
+                                // If we still can't fetch it, return the original error
+                                return Err(AppError {
+                                    message: format!(
+                                        "Failed to create or fetch public key for user {}: {}",
+                                        user_id, fetch_err.message
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Other error, propagate it
+                        return Err(e);
+                    }
+                }
             }
         }
 
         Ok(public_keys)
+    }
+
+    // =========================
+    // TRY CREATE PUBLIC KEY
+    // Attempts to create a new public key without checking if it exists first
+    // =========================
+    async fn try_create_public_key(&self, user_id: ObjectId) -> Result<UserPublicKey, AppError> {
+        // Ensure indexes exist (including unique index on user_id)
+        self.ensure_indexes().await?;
+        
+        // Generate a new public key
+        let public_key = crate::utils::crypto_utils::generate_rsa_public_key()?;
+        
+        // Try to insert directly (will fail if key already exists due to unique index)
+        let new_key = UserPublicKey {
+            id: None,
+            user_id,
+            public_key,
+            key_algorithm: "RSA-2048".to_string(),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        let doc = mongodb::bson::to_document(&new_key).map_err(|e| AppError {
+            message: format!("Failed to serialize public key: {}", e),
+        })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.create::<UserPublicKey>(extract_valid_fields(doc), None)
+            .await
     }
 
     // =========================
