@@ -1,15 +1,14 @@
 use chrono::{Datelike, Utc};
-use rand::{rng, seq::IndexedRandom};
+use rand::{seq::SliceRandom, thread_rng};
 
 use crate::domain::school::School;
 
 pub fn generate_code() -> String {
-    let mut rng = rng();
+    let mut rng = thread_rng();
     let chars: Vec<char> = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".chars().collect();
 
-    // `.choose(&mut rng)` works on slices, so borrow as slice
     (0..5)
-        .map(|_| *chars.as_slice().choose(&mut rng).unwrap())
+        .map(|_| *chars.choose(&mut rng).unwrap())
         .collect()
 }
 

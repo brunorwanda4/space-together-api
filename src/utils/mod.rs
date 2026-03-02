@@ -2,6 +2,7 @@ pub mod api_utils;
 pub mod bytes;
 pub mod class_utils;
 pub mod code;
+pub mod crypto_utils;
 pub mod db_utils;
 pub mod email;
 pub mod hash;

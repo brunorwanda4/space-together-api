@@ -171,6 +171,117 @@ impl UserPublicKeyService {
     }
 
     // =========================
+    // GET MULTIPLE PUBLIC KEYS (PARTIAL)
+    // Returns found keys and list of missing user IDs
+    // =========================
+    pub async fn get_public_keys_partial(
+        &self,
+        user_ids: Vec<ObjectId>,
+    ) -> Result<(Vec<PublicKeyInfo>, Vec<String>), AppError> {
+        if user_ids.is_empty() {
+            return Err(AppError {
+                message: "user_ids parameter is required".to_string(),
+            });
+        }
+
+        if user_ids.len() > 50 {
+            return Err(AppError {
+                message: "Maximum 50 user IDs allowed per request".to_string(),
+            });
+        }
+
+        let filter = doc! { "user_id": { "$in": user_ids.clone() } };
+
+        let cursor = self
+            .collection
+            .find(filter)
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to fetch public keys: {}", e),
+            })?;
+
+        use futures::stream::TryStreamExt;
+        let keys: Vec<UserPublicKey> = cursor
+            .try_collect()
+            .await
+            .map_err(|e| AppError {
+                message: format!("Failed to collect public keys: {}", e),
+            })?;
+
+        // Identify missing user IDs
+        let found_ids: Vec<ObjectId> = keys.iter().map(|k| k.user_id).collect();
+        let missing_ids: Vec<String> = user_ids
+            .iter()
+            .filter(|id| !found_ids.contains(id))
+            .map(|id| id.to_hex())
+            .collect();
+
+        // Convert to PublicKeyInfo
+        let public_keys: Vec<PublicKeyInfo> = keys
+            .into_iter()
+            .map(|k| PublicKeyInfo {
+                user_id: k.user_id.to_hex(),
+                public_key: k.public_key,
+                key_algorithm: k.key_algorithm,
+                created_at: k.created_at,
+            })
+            .collect();
+
+        Ok((public_keys, missing_ids))
+    }
+
+    // =========================
+    // GET OR CREATE PUBLIC KEYS
+    // Automatically generates keys for users who don't have them
+    // =========================
+    pub async fn get_or_create_public_keys(
+        &self,
+        user_ids: Vec<ObjectId>,
+    ) -> Result<Vec<PublicKeyInfo>, AppError> {
+        if user_ids.is_empty() {
+            return Err(AppError {
+                message: "user_ids parameter is required".to_string(),
+            });
+        }
+
+        if user_ids.len() > 50 {
+            return Err(AppError {
+                message: "Maximum 50 user IDs allowed per request".to_string(),
+            });
+        }
+
+        // First, try to get existing keys
+        let (mut public_keys, missing_ids) = self.get_public_keys_partial(user_ids.clone()).await?;
+
+        // Generate keys for missing users
+        if !missing_ids.is_empty() {
+            for missing_id_str in missing_ids {
+                let user_id = ObjectId::parse_str(&missing_id_str).map_err(|e| AppError {
+                    message: format!("Failed to parse user ID: {}", e),
+                })?;
+
+                // Generate a new public key
+                let public_key = crate::utils::crypto_utils::generate_rsa_public_key()?;
+                
+                // Store it in the database
+                let created_key = self
+                    .upsert_public_key(user_id, public_key, "RSA-2048".to_string())
+                    .await?;
+
+                // Add to results
+                public_keys.push(PublicKeyInfo {
+                    user_id: created_key.user_id.to_hex(),
+                    public_key: created_key.public_key,
+                    key_algorithm: created_key.key_algorithm,
+                    created_at: created_key.created_at,
+                });
+            }
+        }
+
+        Ok(public_keys)
+    }
+
+    // =========================
     // DELETE PUBLIC KEY
     // =========================
     pub async fn delete_public_key(&self, user_id: ObjectId) -> Result<(), AppError> {

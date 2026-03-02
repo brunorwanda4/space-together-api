@@ -27,12 +27,6 @@ struct GetPublicKeysResponse {
     public_keys: Vec<PublicKeyInfo>,
 }
 
-#[derive(Debug, Serialize)]
-struct PublicKeyNotFoundError {
-    message: String,
-    missing_user_ids: Vec<String>,
-}
-
 #[post("/public-key")]
 async fn upload_public_key(
     _req: HttpRequest,
@@ -105,23 +99,10 @@ async fn get_public_keys(
     let db = &state.db.main_db();
     let service = UserPublicKeyService::new(db);
 
-    match service.get_public_keys(user_ids.clone()).await {
+    // Automatically generate keys for users who don't have them
+    match service.get_or_create_public_keys(user_ids.clone()).await {
         Ok(public_keys) => HttpResponse::Ok().json(GetPublicKeysResponse { public_keys }),
-        Err(err) => {
-            // Extract missing user IDs from error message
-            if err.message.contains("Public key not found for users:") {
-                let missing_part = err.message.replace("Public key not found for users: ", "");
-                let missing_user_ids: Vec<String> =
-                    missing_part.split(", ").map(|s| s.to_string()).collect();
-
-                return HttpResponse::NotFound().json(PublicKeyNotFoundError {
-                    message: err.message,
-                    missing_user_ids,
-                });
-            }
-
-            HttpResponse::BadRequest().json(err)
-        }
+        Err(err) => HttpResponse::BadRequest().json(err),
     }
 }
 

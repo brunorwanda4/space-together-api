@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use rand::{rng, seq::SliceRandom};
+use rand::{seq::SliceRandom, thread_rng};
 use regex::Regex;
 
 pub fn is_valid_name(name: &str) -> Result<String, String> {
@@ -56,7 +56,7 @@ pub fn is_valid_name(name: &str) -> Result<String, String> {
 }
 
 pub fn generate_username(name: &str) -> String {
-    let mut rng = rng();
+    let mut rng = thread_rng();
 
     // 1. Normalize and sanitize input
     let cleaned = name
