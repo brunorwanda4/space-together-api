@@ -1,13 +1,14 @@
 use crate::domain::user::{PaginatedUsers, UpdateUserDto, User, UserStats};
 use crate::errors::AppError;
 use crate::models::id_model::IdType;
+use crate::models::mongo_model::IndexDef;
 use crate::repositories::base_repo::BaseRepository;
 use crate::services::user_service::normalize_user_ids;
+use crate::utils::mongo_utils::extract_valid_fields;
 use chrono::{Duration, Utc, Weekday};
 use mongodb::{
     bson::{self, doc, oid::ObjectId, DateTime as BsonDateTime, Document},
-    options::IndexOptions,
-    Collection, Database, IndexModel,
+    Collection, Database,
 };
 use std::time::SystemTime;
 
@@ -23,6 +24,44 @@ impl UserRepo {
     }
 
     // =========================================================
+    // 🔹 Ensure Indexes (Performance Optimization)
+    // =========================================================
+    pub async fn ensure_indexes(&self) -> Result<(), AppError> {
+        let indexes = vec![
+            // Authentication & lookup indexes
+            IndexDef::single("email", true),
+            IndexDef::single_with_partial(
+                "username",
+                true,
+                doc! { "username": { "$exists": true, "$ne": null } },
+                Some("username_unique_idx"),
+            ),
+            // School relationship indexes
+            IndexDef::single("current_school_id", false),
+            IndexDef::compound(vec![("current_school_id", 1), ("role", 1)], false),
+            // Role-based queries
+            IndexDef::single("role", false),
+            // Status and filtering
+            IndexDef::single("disable", false),
+            IndexDef::single("gender", false),
+            // Timestamp indexes for sorting and filtering
+            IndexDef::single_with_name("created_at", false, "created_at_desc", -1),
+            IndexDef::single_with_name("updated_at", false, "updated_at_desc", -1),
+            // School array index for membership queries
+            IndexDef::single("schools", false),
+            // Class access index
+            IndexDef::single("accessible_classes", false),
+            // Compound indexes for common queries
+            IndexDef::compound(vec![("role", 1), ("current_school_id", 1)], false),
+            IndexDef::compound(vec![("role", 1), ("disable", 1)], false),
+        ];
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.ensure_indexes(&indexes).await?;
+        Ok(())
+    }
+
+    // =========================================================
     // 🔹 Utility Helpers
     // =========================================================
 
@@ -33,12 +72,8 @@ impl UserRepo {
     }
 
     pub async fn find_one_by_filter(&self, filter: Document) -> Result<Option<User>, AppError> {
-        self.collection
-            .find_one(filter)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Database query failed: {}", e),
-            })
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.find_one::<User>(filter, None).await
     }
 
     async fn update_one_and_fetch(
@@ -75,24 +110,32 @@ impl UserRepo {
         self.find_one_by_filter(doc! { "_id": obj_id }).await
     }
 
+    pub async fn find_one(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<User, AppError> {
+        let mut filter = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            filter.insert("_id", IdType::to_object_id(id)?);
+        }
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.find_one::<User>(filter, None)
+            .await?
+            .ok_or(AppError {
+                message: "User not found".into(),
+            })
+    }
+
     // =========================================================
     // 🔹 Insert User
     // =========================================================
 
     pub async fn insert_user(&self, user: &mut User) -> Result<User, AppError> {
-        // Unique indexes
-        for field in ["email", "username"] {
-            let index = IndexModel::builder()
-                .keys(doc! { field: 1 })
-                .options(IndexOptions::builder().unique(true).build())
-                .build();
-            self.collection
-                .create_index(index)
-                .await
-                .map_err(|e| AppError {
-                    message: format!("Failed to create unique index on {}: {}", field, e),
-                })?;
-        }
+        // Ensure indexes exist
+        self.ensure_indexes().await?;
 
         // Normalize and set timestamps
         let mut user_to_insert = normalize_user_ids(user.clone())?;
@@ -100,7 +143,7 @@ impl UserRepo {
         user_to_insert.created_at = Some(Utc::now());
         user_to_insert.updated_at = Some(Utc::now());
 
-        // Default availability (✅ fixed)
+        // Default availability schedule
         if user_to_insert.availability_schedule.is_none() {
             use crate::domain::common_details::{DailyAvailability, TimeRange};
 
@@ -121,24 +164,15 @@ impl UserRepo {
             user_to_insert.availability_schedule = Some(availability);
         }
 
-        // Insert user
-        let res = self
-            .collection
-            .insert_one(&user_to_insert)
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to insert user: {}", e),
-            })?;
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let inserted_id = res.inserted_id.as_object_id().ok_or_else(|| AppError {
-            message: "Failed to extract inserted_id".to_string(),
+        // Use BaseRepository create method
+        let user_doc = bson::to_document(&user_to_insert).map_err(|e| AppError {
+            message: format!("Failed to serialize user: {}", e),
         })?;
 
-        self.find_by_id(&IdType::from_object_id(inserted_id))
-            .await?
-            .ok_or(AppError {
-                message: "User not found after insertion".to_string(),
-            })
+        repo.create::<User>(extract_valid_fields(user_doc), None)
+            .await
     }
 
     // =========================================================
@@ -152,8 +186,7 @@ impl UserRepo {
         skip: Option<i64>,
         extra_match: Option<Document>,
     ) -> Result<PaginatedUsers, AppError> {
-        // ✅ fixed: BaseRepository expects Collection<Document>
-        let base_repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
         let searchable_fields = [
             "name",
@@ -170,9 +203,12 @@ impl UserRepo {
             "department",
             "job_title",
             "preferred_communication_method",
+            "_id",
+            "current_school_id",
+            "schools",
         ];
 
-        let (users, total, total_pages, current_page) = base_repo
+        let (users, total, total_pages, current_page) = repo
             .get_all::<User>(filter, &searchable_fields, limit, skip, extra_match)
             .await?;
 
@@ -199,7 +235,7 @@ impl UserRepo {
             message: format!("Failed to serialize update dto: {}", e),
         })?;
 
-        // ✅ Fix: bson::Document has no retain, so use filter_map
+        // Filter out null values
         let mut update_doc = Document::new();
         for (k, v) in update_doc_full {
             if !matches!(v, bson::Bson::Null) {
@@ -219,27 +255,62 @@ impl UserRepo {
             .await
     }
 
+    pub async fn update(
+        &self,
+        id: &IdType,
+        update_dto: &UpdateUserDto,
+    ) -> Result<User, AppError> {
+        let update_doc_full = bson::to_document(update_dto).map_err(|e| AppError {
+            message: format!("Failed to serialize update dto: {}", e),
+        })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.update_one_and_fetch::<User>(id, extract_valid_fields(update_doc_full))
+            .await
+    }
+
     // =========================================================
     // 🔹 Delete User
     // =========================================================
 
     pub async fn delete_user(&self, id: &IdType) -> Result<(), AppError> {
-        let obj_id = IdType::to_object_id(id)?;
-        let result = self
-            .collection
-            .delete_one(doc! { "_id": obj_id })
-            .await
-            .map_err(|e| AppError {
-                message: format!("Failed to delete user: {}", e),
-            })?;
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.delete_one(id).await
+    }
 
-        if result.deleted_count == 0 {
-            Err(AppError {
-                message: "No user deleted (user may not exist)".into(),
-            })
-        } else {
-            Ok(())
-        }
+    // Soft delete
+    pub async fn soft_delete(&self, id: &IdType, deleted_by: ObjectId) -> Result<User, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let update_doc = doc! {
+            "$set": {
+                "deleted_at": bson::to_bson(&Utc::now()).unwrap(),
+                "deleted_by": deleted_by,
+                "disable": true
+            }
+        };
+
+        repo.update_one_raw(id, update_doc).await?;
+        self.find_one(Some(id), None).await
+    }
+
+    // Restore soft deleted user
+    pub async fn restore(&self, id: &IdType) -> Result<User, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let update_doc = doc! {
+            "$unset": {
+                "deleted_at": "",
+                "deleted_by": ""
+            },
+            "$set": {
+                "disable": false,
+                "updated_at": bson::to_bson(&Utc::now()).unwrap()
+            }
+        };
+
+        repo.update_one_raw(id, update_doc).await?;
+        self.find_one(Some(id), None).await
     }
 
     // =========================================================
@@ -337,5 +408,44 @@ impl UserRepo {
             },
         )
         .await
+    }
+
+    // =========================================================
+    // 🔹 Bulk Operations
+    // =========================================================
+
+    pub async fn create_many(&self, users: Vec<User>) -> Result<Vec<User>, AppError> {
+        self.ensure_indexes().await?;
+
+        let mut docs = Vec::new();
+        for user in users {
+            let mut user_to_insert = normalize_user_ids(user.clone())?;
+            user_to_insert.id = None;
+            user_to_insert.created_at = Some(Utc::now());
+            user_to_insert.updated_at = Some(Utc::now());
+
+            let doc = bson::to_document(&user_to_insert).map_err(|e| AppError {
+                message: format!("Failed to serialize user: {}", e),
+            })?;
+
+            docs.push(extract_valid_fields(doc));
+        }
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.create_many::<User>(docs, None).await
+    }
+
+    pub async fn update_many(
+        &self,
+        filter: Document,
+        update_dto: &UpdateUserDto,
+    ) -> Result<Vec<User>, AppError> {
+        let update_doc_full = bson::to_document(update_dto).map_err(|e| AppError {
+            message: format!("Failed to serialize update dto: {}", e),
+        })?;
+
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        repo.update_many_and_fetch::<User>(filter, extract_valid_fields(update_doc_full))
+            .await
     }
 }

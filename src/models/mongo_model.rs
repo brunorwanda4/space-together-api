@@ -48,6 +48,16 @@ impl IndexDef {
             name: name.map(|n| n.to_string()),
         }
     }
+
+    /// Create a single-field index with custom name and sort order
+    pub fn single_with_name(field: &str, unique: bool, name: &str, order: i32) -> Self {
+        Self {
+            fields: vec![(field.to_string(), order)],
+            unique,
+            partial: None,
+            name: Some(name.to_string()),
+        }
+    }
 }
 
 // count doc
