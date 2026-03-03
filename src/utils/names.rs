@@ -122,3 +122,15 @@ pub fn is_valid_username(username: &str) -> Result<String, String> {
         }
     }
 }
+
+pub fn is_valid_email(email: &str) -> Result<String, String> {
+    let re = Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap();
+    
+    let trimmed_email = email.trim();
+    
+    if re.is_match(trimmed_email) {
+        Ok(trimmed_email.to_string())
+    } else {
+        Err("Invalid email format. Please provide a valid email address.".to_string())
+    }
+}

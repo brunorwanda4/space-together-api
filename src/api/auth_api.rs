@@ -42,48 +42,11 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
     let auth_service = AuthService::new(&user_repo);
 
     match auth_service.login(data.into_inner(), &state).await {
-        Ok(mut response) => {
-            if let Some(ref school_id) = response.current_school_id {
-                let school_db_name = format!("school_{}", school_id);
-                let school_db = state.db.get_db(&school_db_name);
-                let school_service = SchoolService::new(&db);
-
-                let user_id = match &response.id {
-                    None => {
-                        return HttpResponse::BadRequest().json(AppError {
-                            message: "User does not have Id".to_string()
-                        })
-                    },
-                    Some(id) => match ObjectId::from_str(id) {
-                        Ok(oid) => oid,
-                        Err(_) => {
-                            return HttpResponse::BadRequest().json(AppError {
-                                message: "Invalid user ID format".to_string()
-                            })
-                        }
-                    }
-                };
-
-                let member_type = response.role.clone();
-                
-                
-                match school_service.search_single_member(
-                    &school_db,
-                    None,
-                    Some(doc!{"user_id": user_id}),
-                    member_type
-                ).await {
-                    Ok(member) => {
-                        response.current_school_user_id = member.get_id();
-                    },
-                    Err(search_error) => {
-                        return HttpResponse::BadRequest().json(search_error);
-                    }
-                }
-            }
+        Ok(response) => {
+           
             HttpResponse::Ok().json(response)
         },
-        Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
+        Err(message) => HttpResponse::Unauthorized().json(message),
     }
 }
 

@@ -7,7 +7,7 @@ use crate::{
         email::is_valid_email,
         hash::verify_password,
         jwt::{create_jwt, verify_jwt},
-        names::{generate_username, is_valid_name},
+        names::{generate_username, is_valid_name, is_valid_username},
         user_utils::sanitize_user,
     }
 };
@@ -23,17 +23,38 @@ impl<'a> AuthService<'a> {
         Self { repo }
     }
 
-    pub async fn get_auth_user(&self, user_email: &str, state: &AppState) -> Result<LoginResponse, AppError> {
+    pub async fn get_auth_user(&self, user_email: &str, password:Option<&String>,  state: &AppState) -> Result<LoginResponse, AppError> {
         let db = state.db.main_db();
         
-        // Find user by email
-        let user = self
+        // allow user to login with username or email
+        let user =match is_valid_email(user_email) {
+            Ok(email) => match self
             .repo
-            .find_by_email(user_email)
-            .await?
-            .ok_or_else(|| AppError {
-                message: "User not found".to_string(),
-            })?;
+            .find_by_email(&email).await? {
+                None => return Err(AppError { message: "User not found by email".to_string() }),
+                Some(u) => u
+            },
+            Err(_error) =>match is_valid_username(&user_email) {
+                Ok(username) =>  match self.repo.find_by_username(&username).await? {
+               None => return Err(AppError { message: "User not found by username".to_string() }),
+                Some(u) => u 
+            }, 
+            Err(username_error) => return Err(AppError {message: username_error})
+            }
+        };
+
+      
+
+            if let Some(user_password) = password {
+            let hash = user
+            .password_hash
+            .as_ref()
+            .ok_or(AppError{message:"This account does not have a password set".to_string()})?;
+
+                  if !verify_password(hash, user_password) {
+            return Err(AppError{message: "Incorrect password, please try again".into()});
+        }
+            }
 
         let school_service = SchoolService::new(&db);
         let mut current_school_user_id = None;
@@ -177,61 +198,9 @@ impl<'a> AuthService<'a> {
     }
 
     /// ✅ Log in existing user
-    pub async fn login(&self, data: LoginUser, state: &AppState) -> Result<LoginResponse, String> {
-        let db = state.db.main_db();
-        let school_service = SchoolService::new(&db);
-
-        let user = self
-            .repo
-            .find_by_email(&data.email)
-            .await
-            .map_err(|_| "Failed to connect to database, please try again")?;
-
-        let user = user.ok_or("No user found with this email address")?;
-
-        let hash = user
-            .password_hash
-            .as_ref()
-            .ok_or("This account does not have a password set")?;
-
-        if !verify_password(hash, &data.password) {
-            return Err("Incorrect password, please try again".into());
-        }
-
-        let dto = to_auth_dto(&user, None);
-        let access_token = create_jwt(&dto);
-
-        let school_access_token = match user.current_school_id {
-            Some(school_id) => {
-
-                Some(
-                    school_service
-                        .create_school_token(&IdType::from_object_id(school_id), &dto, state)
-                        .await
-                        .map_err(|e| e.message)?,
-                )
-            }
-            None => None,
-        };
-
-        let user = sanitize_user(user);
-
-        Ok(LoginResponse {
-            id: user.id.map(|i| i.to_string()),
-            email: user.email,
-            name: user.name,
-            access_token,
-            image: user.image,
-            role: user.role,
-            username: user.username,
-            bio: user.bio,
-            current_school_user_id: None, //TODO 
-            schools: user
-                .schools
-                .map(|ids| ids.into_iter().map(|id| id.to_string()).collect()),
-            current_school_id: user.current_school_id.map(|id| id.to_string()),
-            school_access_token,
-        })
+    pub async fn login(&self, data: LoginUser, state: &AppState) -> Result<LoginResponse, AppError> {
+self.get_auth_user(&data.email, Some(&data.password), state).await
+      
     }
 
     /// ✅ Get user info from JWT
@@ -272,7 +241,7 @@ impl<'a> AuthService<'a> {
         let token_clean = token.replace("Bearer ", "");
         let claims = verify_jwt(&token_clean).ok_or_else(|| AppError{message: "Invalid token".to_string()})?;
 
-        let auth = self.get_auth_user(&claims.user.email, state).await?;
+        let auth = self.get_auth_user(&claims.user.email,None, state).await?;
 
         Ok(auth.access_token)
     }
