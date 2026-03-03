@@ -1,23 +1,18 @@
 use crate::{
-    config::state::AppState,
-    domain::{
+    config::state::AppState, domain::{
         auth::{LoginResponse, LoginUser, RegisterUser},
         common_details::UserRole,
         user::{UpdateUserDto, User},
-    },
-    mappers::user_mapper::to_auth_dto,
-    models::id_model::IdType,
-    repositories::user_repo::UserRepo,
-    services::{school_service::SchoolService, user_service::UserService},
-    utils::{
+    }, errors::AppError, mappers::user_mapper::to_auth_dto, models::id_model::IdType, repositories::user_repo::UserRepo, services::{school_service::SchoolService, user_service::UserService}, utils::{
         email::is_valid_email,
         hash::verify_password,
         jwt::{create_jwt, verify_jwt},
         names::{generate_username, is_valid_name},
         user_utils::sanitize_user,
-    },
+    }
 };
 use chrono::Utc;
+use mongodb::bson::doc;
 
 pub struct AuthService<'a> {
     repo: &'a UserRepo,
@@ -26,6 +21,83 @@ pub struct AuthService<'a> {
 impl<'a> AuthService<'a> {
     pub fn new(repo: &'a UserRepo) -> Self {
         Self { repo }
+    }
+
+    pub async fn get_auth_user(&self, user_email: &str, state: &AppState) -> Result<LoginResponse, AppError> {
+        let db = state.db.main_db();
+        
+        // Find user by email
+        let user = self
+            .repo
+            .find_by_email(user_email)
+            .await?
+            .ok_or_else(|| AppError {
+                message: "User not found".to_string(),
+            })?;
+
+        let school_service = SchoolService::new(&db);
+        let mut current_school_user_id = None;
+        let mut school_access_token = None;
+
+        // Handle school-specific data if user has a current school
+        if let Some(ref school_id) = user.current_school_id {
+            let school_db_name = format!("school_{}", school_id.to_string());
+            let school_db = state.db.get_db(&school_db_name);
+
+            // Get user ObjectId
+            let user_id = user
+                .id
+                .as_ref()
+                .ok_or_else(|| AppError {
+                    message: "User does not have an ID".to_string(),
+                })?
+                .clone();
+
+            let member_type = user.role.clone();
+
+            // Search for school member
+            let school_member = school_service
+                .search_single_member(
+                    &school_db,
+                    None,
+                    Some(doc! {"user_id": user_id}),
+                    member_type,
+                )
+                .await?;
+
+            current_school_user_id = school_member.get_id();
+
+            // Create auth DTO with school user ID
+            let auth_user_dto = to_auth_dto(&user, current_school_user_id.clone());
+
+            // Generate school access token
+            school_access_token = Some(
+                school_service
+                    .create_school_token(&IdType::from_object_id(school_id.clone()), &auth_user_dto, state)
+                    .await?,
+            );
+        }
+
+        // Create main auth DTO and access token
+        let auth_user_dto = to_auth_dto(&user, current_school_user_id.clone());
+        let access_token = create_jwt(&auth_user_dto);
+
+        Ok(LoginResponse {
+            id: user.id.map(|i| i.to_string()),
+            email: user.email,
+            name: user.name,
+            access_token,
+            image: user.image,
+            role: user.role,
+            username: user.username,
+            bio: user.bio,
+            current_school_user_id,
+            schools: user
+                .schools
+                .map(|ids| ids.into_iter().map(|id| id.to_string()).collect()),
+            current_school_id: user.current_school_id.map(|id| id.to_string()),
+            school_access_token,
+        })
     }
 
     /// ✅ Register a new user
@@ -44,32 +116,23 @@ impl<'a> AuthService<'a> {
         // 🧩 Validate name and generate username
         let valid_name = is_valid_name(&data.name)?;
         let username = Some(generate_username(&valid_name));
-        let now = Some(Utc::now());
 
-        // 🧱 Create new user record (fill all fields)
         let user = User {
-            // 🔹 Identification & Authentication
             id: None,
             name: valid_name,
             email: data.email,
             username,
             password_hash: Some(data.password),
             role: Some(UserRole::STUDENT),
-
-            // 🔹 Profile & Media
             image_id: None,
             image: None,
             background_images: None,
             bio: None,
-            disable: Some(false),
-
-            // 🔹 Contact & Social
+            disable: None,
             phone: None,
             address: None,
             social_media: None,
             preferred_communication_method: None,
-
-            // 🔹 Personal Info
             gender: None,
             age: None,
             languages_spoken: None,
@@ -77,20 +140,14 @@ impl<'a> AuthService<'a> {
             dream_career: None,
             special_skills: None,
             health_or_learning_notes: None,
-
-            // 🔹 Academic & School
             current_school_id: None,
-            schools: Some(vec![]), // default user have empty schools
+            schools: None,
             accessible_classes: None,
             favorite_subjects_category: None,
             preferred_study_styles: None,
-
-            // 🔹 Guardian, Support, Learning
             guardian_info: None,
             special_support_needed: None,
             learning_challenges: None,
-
-            // 🔹 Teaching & Employment
             teaching_level: None,
             employment_type: None,
             teaching_start_date: None,
@@ -103,10 +160,8 @@ impl<'a> AuthService<'a> {
             department: None,
             job_title: None,
             teaching_style: None,
-
-            // 🔹 Timestamps
-            created_at: now,
-            updated_at: now,
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
         };
         // 💾 Save user
         let res = user_service
@@ -115,7 +170,7 @@ impl<'a> AuthService<'a> {
             .map_err(|e| e.to_string())?;
 
         // 🪪 Generate token
-        let dto = to_auth_dto(&sanitize_user(res.clone()));
+        let dto = to_auth_dto(&sanitize_user(res.clone()), None);
         let token = create_jwt(&dto);
 
         Ok((token, sanitize_user(res)))
@@ -123,6 +178,9 @@ impl<'a> AuthService<'a> {
 
     /// ✅ Log in existing user
     pub async fn login(&self, data: LoginUser, state: &AppState) -> Result<LoginResponse, String> {
+        let db = state.db.main_db();
+        let school_service = SchoolService::new(&db);
+
         let user = self
             .repo
             .find_by_email(&data.email)
@@ -140,13 +198,11 @@ impl<'a> AuthService<'a> {
             return Err("Incorrect password, please try again".into());
         }
 
-        let dto = to_auth_dto(&user);
+        let dto = to_auth_dto(&user, None);
         let access_token = create_jwt(&dto);
 
         let school_access_token = match user.current_school_id {
             Some(school_id) => {
-                let db = state.db.main_db();
-                let school_service = SchoolService::new(&db);
 
                 Some(
                     school_service
@@ -204,31 +260,20 @@ impl<'a> AuthService<'a> {
         let updated_user = user_service.update_user(&id, updated_data).await?;
 
         // 🪪 Issue fresh token
-        let dto = to_auth_dto(&sanitize_user(updated_user.clone()));
+        let dto = to_auth_dto(&sanitize_user(updated_user.clone()), None);
         let new_token = create_jwt(&dto);
 
         Ok((new_token, sanitize_user(updated_user)))
     }
 
     /// 🔄 Refresh JWT token if still valid
-    pub async fn refresh_token(&self, token: &str) -> Result<String, String> {
+    pub async fn refresh_token(&self, token: &str ,state: &AppState) -> Result<String, AppError> {
         // remove "Bearer " if present
         let token_clean = token.replace("Bearer ", "");
-        let claims = verify_jwt(&token_clean).ok_or_else(|| "Invalid token".to_string())?;
+        let claims = verify_jwt(&token_clean).ok_or_else(|| AppError{message: "Invalid token".to_string()})?;
 
-        // get user from DB to ensure still valid
-        let user_id = &claims.user.id;
-        let user = self
-            .repo
-            .find_by_id(&IdType::from_string(user_id))
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "User not found".to_string())?;
+        let auth = self.get_auth_user(&claims.user.email, state).await?;
 
-        // create a fresh token
-        let dto = to_auth_dto(&sanitize_user(user));
-        let new_token = create_jwt(&dto);
-
-        Ok(new_token)
+        Ok(auth.access_token)
     }
 }

@@ -1,6 +1,6 @@
 use crate::domain::{auth_user::AuthUserDto, user::User};
 
-pub fn to_auth_dto(user: &User) -> AuthUserDto {
+pub fn to_auth_dto(user: &User, current_school_user_id: Option<String>) -> AuthUserDto {
     AuthUserDto {
         id: user
             .id
@@ -24,6 +24,7 @@ pub fn to_auth_dto(user: &User) -> AuthUserDto {
             .as_ref()
             .map(|schools| schools.iter().map(|id| id.to_string()).collect()),
         current_school_id: user.current_school_id.as_ref().map(|id| id.to_string()),
+        current_school_user_id,
         iat: None,
         exp: None,
     }

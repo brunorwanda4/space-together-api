@@ -1,14 +1,14 @@
 use std::str::FromStr;
 
 use actix_web::{HttpMessage, HttpRequest, HttpResponse, Responder, get, patch, post, web};
-use mongodb::bson::oid::ObjectId;
+use mongodb::bson::{doc, oid::ObjectId};
 
 use crate::{
     config::state::AppState, domain::{
         auth::{LoginUser, RegisterUser},
         auth_user::AuthUserDto,
         user::UpdateUserDto,
-    }, errors::AppError, middleware::jwt_middleware::JwtMiddleware, models::request_error_model::ReqErrModel, repositories::user_repo::UserRepo, services::{auth_service::AuthService, school_service::SchoolService, user_service::UserService}
+    }, errors::AppError, middleware::jwt_middleware::JwtMiddleware, models::{id_model::IdType, request_error_model::ReqErrModel}, repositories::user_repo::UserRepo, services::{auth_service::AuthService, school_service::SchoolService, user_service::UserService}
 };
 
 #[post("/register")]
@@ -64,13 +64,13 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
                     }
                 };
 
-                let id_type = crate::models::id_model::IdType::ObjectId(user_id);
                 let member_type = response.role.clone();
+                
                 
                 match school_service.search_single_member(
                     &school_db,
-                    Some(&id_type),
                     None,
+                    Some(doc!{"user_id": user_id}),
                     member_type
                 ).await {
                     Ok(member) => {
@@ -186,11 +186,11 @@ async fn refresh_token(req: HttpRequest, state: web::Data<AppState>) -> impl Res
         }
     };
 
-    match service.refresh_token(&token).await {
+    match service.refresh_token(&token, &state).await {
         Ok(new_token) => HttpResponse::Ok().json(serde_json::json!({
             "accessToken": new_token
         })),
-        Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
+        Err(message) => HttpResponse::Unauthorized().json(message),
     }
 }
 
