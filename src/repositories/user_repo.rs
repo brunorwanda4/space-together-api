@@ -32,7 +32,7 @@ impl UserRepo {
         })
     }
 
-    async fn find_one_by_filter(&self, filter: Document) -> Result<Option<User>, AppError> {
+    pub async fn find_one_by_filter(&self, filter: Document) -> Result<Option<User>, AppError> {
         self.collection
             .find_one(filter)
             .await

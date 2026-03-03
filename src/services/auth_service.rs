@@ -23,103 +23,110 @@ impl<'a> AuthService<'a> {
         Self { repo }
     }
 
-    pub async fn get_auth_user(&self, user_email: &str, password:Option<&String>,  state: &AppState) -> Result<LoginResponse, AppError> {
-        let db = state.db.main_db();
-        
-        // allow user to login with username or email
-        let user =match is_valid_email(user_email) {
-            Ok(email) => match self
-            .repo
-            .find_by_email(&email).await? {
-                None => return Err(AppError { message: "User not found by email".to_string() }),
-                Some(u) => u
-            },
-            Err(_error) =>match is_valid_username(&user_email) {
-                Ok(username) =>  match self.repo.find_by_username(&username).await? {
-               None => return Err(AppError { message: "User not found by username".to_string() }),
-                Some(u) => u 
-            }, 
-            Err(username_error) => return Err(AppError {message: username_error})
-            }
-        };
+    pub async fn get_auth_user(&self, user_email: &str, password: Option<&String>, state: &AppState) -> Result<LoginResponse, AppError> {
+            let db = state.db.main_db();
 
-      
+            // Optimized: Use single database query to check both email and username
+            let user = {
+                let filter = if is_valid_email(user_email).is_ok() {
+                    // If it's a valid email, prioritize email lookup
+                    doc! { "email": user_email }
+                } else {
+                    // Otherwise, try username lookup
+                    doc! { "username": user_email }
+                };
 
+                self.repo
+                    .find_one_by_filter(filter)
+                    .await?
+                    .ok_or_else(|| AppError {
+                        message: "User not found".to_string(),
+                    })?
+            };
+
+            // Verify password if provided (this is the slowest operation due to bcrypt)
             if let Some(user_password) = password {
-            let hash = user
-            .password_hash
-            .as_ref()
-            .ok_or(AppError{message:"This account does not have a password set".to_string()})?;
+                let hash = user
+                    .password_hash
+                    .as_ref()
+                    .ok_or_else(|| AppError {
+                        message: "This account does not have a password set".to_string(),
+                    })?;
 
-                  if !verify_password(hash, user_password) {
-            return Err(AppError{message: "Incorrect password, please try again".into()});
-        }
+                if !verify_password(hash, user_password) {
+                    return Err(AppError {
+                        message: "Incorrect password, please try again".to_string(),
+                    });
+                }
             }
 
-        let school_service = SchoolService::new(&db);
-        let mut current_school_user_id = None;
-        let mut school_access_token = None;
+            let school_service = SchoolService::new(&db);
+            let mut current_school_user_id = None;
+            let mut school_access_token = None;
 
-        // Handle school-specific data if user has a current school
-        if let Some(ref school_id) = user.current_school_id {
-            let school_db_name = format!("school_{}", school_id.to_string());
-            let school_db = state.db.get_db(&school_db_name);
+            // Handle school-specific data if user has a current school
+            if let Some(ref school_id) = user.current_school_id {
+                let school_db_name = format!("school_{}", school_id.to_string());
+                let school_db = state.db.get_db(&school_db_name);
 
-            // Get user ObjectId
-            let user_id = user
-                .id
-                .as_ref()
-                .ok_or_else(|| AppError {
-                    message: "User does not have an ID".to_string(),
-                })?
-                .clone();
+                // Get user ObjectId
+                let user_id = user
+                    .id
+                    .as_ref()
+                    .ok_or_else(|| AppError {
+                        message: "User does not have an ID".to_string(),
+                    })?
+                    .clone();
 
-            let member_type = user.role.clone();
+                let member_type = user.role.clone();
 
-            // Search for school member
-            let school_member = school_service
-                .search_single_member(
-                    &school_db,
-                    None,
-                    Some(doc! {"user_id": user_id}),
-                    member_type,
-                )
-                .await?;
+                // Search for school member
+                let school_member = school_service
+                    .search_single_member(
+                        &school_db,
+                        None,
+                        Some(doc! {"user_id": user_id}),
+                        member_type,
+                    )
+                    .await?;
 
-            current_school_user_id = school_member.get_id();
+                current_school_user_id = school_member.get_id();
 
-            // Create auth DTO with school user ID
+                // Create auth DTO with school user ID
+                let auth_user_dto = to_auth_dto(&user, current_school_user_id.clone());
+
+                // Generate school access token
+                school_access_token = Some(
+                    school_service
+                        .create_school_token(&IdType::from_object_id(school_id.clone()), &auth_user_dto, state)
+                        .await?,
+                );
+            }
+
+            // Create main auth DTO and access token
             let auth_user_dto = to_auth_dto(&user, current_school_user_id.clone());
+            let access_token = create_jwt(&auth_user_dto);
 
-            // Generate school access token
-            school_access_token = Some(
-                school_service
-                    .create_school_token(&IdType::from_object_id(school_id.clone()), &auth_user_dto, state)
-                    .await?,
-            );
+            let user = sanitize_user(user);
+
+            Ok(LoginResponse {
+                id: user.id.map(|i| i.to_string()),
+                email: user.email,
+                name: user.name,
+                access_token,
+                image: user.image,
+                role: user.role,
+                username: user.username,
+                bio: user.bio,
+                current_school_user_id,
+                schools: user
+                    .schools
+                    .map(|ids| ids.into_iter().map(|id| id.to_string()).collect()),
+                current_school_id: user.current_school_id.map(|id| id.to_string()),
+                school_access_token,
+            })
         }
 
-        // Create main auth DTO and access token
-        let auth_user_dto = to_auth_dto(&user, current_school_user_id.clone());
-        let access_token = create_jwt(&auth_user_dto);
-
-        Ok(LoginResponse {
-            id: user.id.map(|i| i.to_string()),
-            email: user.email,
-            name: user.name,
-            access_token,
-            image: user.image,
-            role: user.role,
-            username: user.username,
-            bio: user.bio,
-            current_school_user_id,
-            schools: user
-                .schools
-                .map(|ids| ids.into_iter().map(|id| id.to_string()).collect()),
-            current_school_id: user.current_school_id.map(|id| id.to_string()),
-            school_access_token,
-        })
-    }
 
     /// ✅ Register a new user
     pub async fn register(
