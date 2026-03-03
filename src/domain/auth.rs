@@ -27,5 +27,6 @@ pub struct LoginResponse {
     pub bio: Option<String>,
     pub schools: Option<Vec<String>>,
     pub current_school_id: Option<String>,
+    pub current_school_user_id: Option<String>,
     pub school_access_token: Option<String>,
 }

@@ -169,6 +169,7 @@ impl<'a> AuthService<'a> {
             role: user.role,
             username: user.username,
             bio: user.bio,
+            current_school_user_id: None, //TODO 
             schools: user
                 .schools
                 .map(|ids| ids.into_iter().map(|id| id.to_string()).collect()),

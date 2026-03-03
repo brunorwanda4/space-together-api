@@ -681,4 +681,99 @@ impl SchoolService {
             current_page,
         })
     }
+
+    
+}
+
+impl SchoolService {
+    // =========================
+    // SEARCH SINGLE MEMBER
+    // =========================
+    pub async fn search_single_member(
+        &self,
+        school_db: &Database,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+        member_type: Option<UserRole>,
+    ) -> Result<RelatedUser, AppError> {
+        // If member type is specified, search only that type
+        if let Some(role) = member_type {
+            return match role {
+                UserRole::STUDENT => {
+                    let student_service = StudentService::new(school_db);
+                    let student = student_service
+                        .find_one(id, extra_match.clone())
+                        .await?;
+                    Ok(RelatedUser::STUDENT(student))
+                }
+                UserRole::TEACHER => {
+                    let teacher_service = TeacherService::new(school_db);
+                    let teacher = teacher_service
+                              .find_one(id, extra_match.clone())
+                        .await?;
+                    Ok(RelatedUser::TEACHER(teacher))
+                }
+                UserRole::SCHOOLSTAFF => {
+                    let staff_service = SchoolStaffService::new(school_db);
+                    let staff = staff_service
+                               .find_one(id, extra_match.clone())
+                        .await?;
+                    Ok(RelatedUser::SCHOOLSTAFF(staff))
+                }
+                UserRole::PARENT => {
+                    let parent_service = crate::services::parent_service::ParentService::new(school_db);
+                    let parent = parent_service
+                               .find_one(id, extra_match)
+                        .await?;
+                    Ok(RelatedUser::PARENT(parent))
+                }
+                _ => Err(AppError {
+                    message: "Invalid member type for school search".to_string(),
+                }),
+            };
+        }
+
+        // Search across all member types if no specific type provided
+        // Try students first
+        let student_service = StudentService::new(school_db);
+        if let Ok(student) = student_service
+                   .find_one(id, extra_match.clone())
+            .await
+        {
+            return Ok(RelatedUser::STUDENT(student));
+        }
+
+        // Try teachers
+        let teacher_service = TeacherService::new(school_db);
+        if let Ok(teacher) = teacher_service
+                   .find_one(id, extra_match.clone())
+            .await
+        {
+            return Ok(RelatedUser::TEACHER(teacher));
+        }
+
+        // Try school staff
+        let staff_service = SchoolStaffService::new(school_db);
+        if let Ok(staff) = staff_service
+                   .find_one(id, extra_match.clone())
+            .await
+        {
+            return Ok(RelatedUser::SCHOOLSTAFF(staff));
+        }
+
+        // Try parents
+        let parent_service = crate::services::parent_service::ParentService::new(school_db);
+        if let Ok(parent) = parent_service
+                   .find_one(id, extra_match)
+            .await
+        {
+            return Ok(RelatedUser::PARENT(parent));
+        }
+
+        // Member not found in any category
+        let id_str = id.map(|i| i.as_string()).unwrap_or_else(|| "unknown".to_string());
+        Err(AppError {
+            message: format!("School member not found with id: {}", id_str),
+        })
+    }
 }

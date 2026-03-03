@@ -1,16 +1,14 @@
-use actix_web::{get, patch, post, web, HttpMessage, HttpRequest, HttpResponse, Responder};
+use std::str::FromStr;
+
+use actix_web::{HttpMessage, HttpRequest, HttpResponse, Responder, get, patch, post, web};
+use mongodb::bson::oid::ObjectId;
 
 use crate::{
-    config::state::AppState,
-    domain::{
+    config::state::AppState, domain::{
         auth::{LoginUser, RegisterUser},
         auth_user::AuthUserDto,
         user::UpdateUserDto,
-    },
-    middleware::jwt_middleware::JwtMiddleware,
-    models::request_error_model::ReqErrModel,
-    repositories::user_repo::UserRepo,
-    services::{auth_service::AuthService, user_service::UserService},
+    }, errors::AppError, middleware::jwt_middleware::JwtMiddleware, models::request_error_model::ReqErrModel, repositories::user_repo::UserRepo, services::{auth_service::AuthService, school_service::SchoolService, user_service::UserService}
 };
 
 #[post("/register")]
@@ -44,7 +42,47 @@ async fn login_user(data: web::Json<LoginUser>, state: web::Data<AppState>) -> i
     let auth_service = AuthService::new(&user_repo);
 
     match auth_service.login(data.into_inner(), &state).await {
-        Ok(response) => HttpResponse::Ok().json(response),
+        Ok(mut response) => {
+            if let Some(ref school_id) = response.current_school_id {
+                let school_db_name = format!("school_{}", school_id);
+                let school_db = state.db.get_db(&school_db_name);
+                let school_service = SchoolService::new(&db);
+
+                let user_id = match &response.id {
+                    None => {
+                        return HttpResponse::BadRequest().json(AppError {
+                            message: "User does not have Id".to_string()
+                        })
+                    },
+                    Some(id) => match ObjectId::from_str(id) {
+                        Ok(oid) => oid,
+                        Err(_) => {
+                            return HttpResponse::BadRequest().json(AppError {
+                                message: "Invalid user ID format".to_string()
+                            })
+                        }
+                    }
+                };
+
+                let id_type = crate::models::id_model::IdType::ObjectId(user_id);
+                let member_type = response.role.clone();
+                
+                match school_service.search_single_member(
+                    &school_db,
+                    Some(&id_type),
+                    None,
+                    member_type
+                ).await {
+                    Ok(member) => {
+                        response.current_school_user_id = member.get_id();
+                    },
+                    Err(search_error) => {
+                        return HttpResponse::BadRequest().json(search_error);
+                    }
+                }
+            }
+            HttpResponse::Ok().json(response)
+        },
         Err(message) => HttpResponse::Unauthorized().json(ReqErrModel { message }),
     }
 }
