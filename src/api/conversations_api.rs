@@ -19,7 +19,7 @@ use crate::{
     utils::db_utils::get_database,
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize,Clone )]
 struct CreateConversationRequest {
     participants: Vec<ActorRef>,
     is_group: bool,
@@ -27,7 +27,7 @@ struct CreateConversationRequest {
     encrypted_keys: Vec<EncryptedKeyForUser>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 struct EncryptedKeyForUser {
     user_id: String,
     user_role: UserRole,
@@ -56,15 +56,54 @@ async fn create_conversation(
         .get::<SchoolToken>()
         .and_then(|token| ObjectId::from_str(&token.id).ok());
 
-    // Validate minimum participants
-    if body.participants.len() < 2 {
+    let mut participants = body.participants.clone();
+    let encrypted_keys = body.encrypted_keys.clone();
+
+    // Determine which ID to use for the authenticated user
+    // If in school context and has current_school_user_id, use that; otherwise use regular id
+    let auth_user_id = if school_id.is_some() && auth_user.current_school_user_id.is_some() {
+        auth_user.current_school_user_id.as_ref().unwrap()
+    } else {
+        &auth_user.id
+    };
+
+    let auth_user_object_id = match ObjectId::from_str(auth_user_id) {
+        Ok(id) => id,
+        Err(_) => {
+            return HttpResponse::BadRequest().json(AppError {
+                message: "Invalid user ID format".to_string(),
+            })
+        }
+    };
+
+    let auth_user_role = auth_user.role.clone().unwrap_or(UserRole::STUDENT);
+
+    // Check if authenticated user is already in participants
+    let user_in_participants = participants
+        .iter()
+        .any(|p| p.id == auth_user_object_id && p.role == auth_user_role);
+
+    // If user is not in participants, add them automatically
+    if !user_in_participants {
+        participants.push(ActorRef {
+            id: auth_user_object_id,
+            role: auth_user_role.clone(),
+        });
+
+        // Note: We don't add encrypted key for auth user here
+        // The client should handle their own key encryption
+        // This is just to ensure they're in the participant list
+    }
+
+    // Validate minimum participants (after potentially adding auth user)
+    if participants.len() < 2 {
         return HttpResponse::BadRequest().json(AppError {
             message: "Minimum 2 participants required".to_string(),
         });
     }
 
     // Validate maximum participants for group conversations
-    if body.participants.len() > 50 {
+    if participants.len() > 50 {
         return HttpResponse::BadRequest().json(AppError {
             message: "Maximum 50 participants allowed for group conversations".to_string(),
         });
@@ -95,8 +134,8 @@ async fn create_conversation(
 
     // Check for duplicate participants
     let mut unique_participants = std::collections::HashSet::new();
-    for participant in &body.participants {
-        let key = participant.id.to_hex();
+    for participant in &participants {
+        let key = format!("{}:{:?}", participant.id.to_hex(), participant.role);
         if !unique_participants.insert(key) {
             return HttpResponse::BadRequest().json(AppError {
                 message: "Duplicate participants are not allowed".to_string(),
@@ -104,29 +143,20 @@ async fn create_conversation(
         }
     }
 
-    // Validate authenticated user is in participants
-    let user_in_participants = body
-        .participants
-        .iter()
-        .any(|p| p.id.to_hex() == auth_user.id);
-
-    if !user_in_participants {
-        return HttpResponse::BadRequest().json(AppError {
-            message: "You must be a participant in the conversation".to_string(),
-        });
-    }
-
     // Validate encrypted keys match participants
-    if body.encrypted_keys.len() != body.participants.len() {
+    if encrypted_keys.len() != participants.len() {
         return HttpResponse::BadRequest().json(AppError {
-            message: "Must provide exactly one encrypted key per participant".to_string(),
+            message: format!(
+                "Must provide exactly one encrypted key per participant. Expected {}, got {}",
+                participants.len(),
+                encrypted_keys.len()
+            ),
         });
     }
 
     // Validate each encrypted key matches a participant
-    for key_data in &body.encrypted_keys {
-        let matching_participant = body
-            .participants
+    for key_data in &encrypted_keys {
+        let matching_participant = participants
             .iter()
             .find(|p| p.id.to_hex() == key_data.user_id && p.role == key_data.user_role);
 
@@ -157,7 +187,7 @@ async fn create_conversation(
 
     // Check for duplicate 1-on-1 conversations
     if !body.is_group {
-        let participant_ids: Vec<ObjectId> = body.participants.iter().map(|p| p.id).collect();
+        let participant_ids: Vec<ObjectId> = participants.iter().map(|p| p.id).collect();
 
         let existing_filter = doc! {
             "is_group": false,
@@ -176,7 +206,7 @@ async fn create_conversation(
     let conversation = Conversation {
         id: None,
         school_id,
-        participants: body.participants.clone(),
+        participants: participants.clone(),
         is_group: body.is_group,
         name: body.name.clone(),
         encryption_key_version: 1,
@@ -192,7 +222,7 @@ async fn create_conversation(
     let conversation_id = created.id.unwrap();
 
     // Store encrypted keys for each participant
-    for key_data in &body.encrypted_keys {
+    for key_data in &encrypted_keys {
         let user_id = match ObjectId::parse_str(&key_data.user_id) {
             Ok(id) => id,
             Err(_) => {
