@@ -13,7 +13,7 @@ mod class_timetable;
 mod comment_api;
 mod conversations_api;
 mod database_status;
-mod education_year;
+mod education_year_api;
 mod events;
 mod exam_api;
 mod grading_scale_api;
@@ -63,7 +63,7 @@ pub fn init_routes(cfg: &mut web::ServiceConfig) {
     template_subject_api::init(cfg);
     class_subject::init(cfg);
     class_timetable::init(cfg);
-    education_year::init(cfg);
+    education_year_api::init(cfg);
     announcement_api::init(cfg);
     comment_api::init(cfg);
     like_api::init(cfg);

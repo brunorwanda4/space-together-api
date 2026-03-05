@@ -58,10 +58,6 @@ features = ["sync"]
 name = "space-together-api"
 path = "src/main.rs"
 
-# [[bin]]
-# name = "test_messaging_api"
-# path = "tests/messaging_users_api_test.rs"
-
 [profile.dev]
 opt-level = 0
 debug = 1
