@@ -10,10 +10,10 @@ use crate::{
         education_year::{EducationYear, EducationYearPartial, EducationYearWithOthers, Term},
     },
     errors::AppError,
-    models::{id_model::IdType, mongo_model::IndexDef},
+    models::{id_model::IdType, mongo_model::{CountDoc, IndexDef}},
     pipeline::academic_year_pipeline::academic_year_pipeline,
     repositories::base_repo::BaseRepository,
-    utils::mongo_utils::extract_valid_fields,
+    utils::mongo_utils::{build_search_filter, extract_valid_fields},
 };
 
 pub struct EducationYearService {
@@ -73,20 +73,26 @@ impl EducationYearService {
     }
 
     // ============================================
-    // FIND BY ID
+    // FIND ONE
     // ============================================
-    pub async fn find_one_by_id(&self, id: &IdType) -> Result<EducationYear, AppError> {
-        let obj = IdType::to_object_id(id)?;
+    pub async fn find_one(
+        &self,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
+    ) -> Result<EducationYear, AppError> {
+        let mut filter = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            filter.insert("_id", IdType::to_object_id(id)?);
+        }
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
-        let filter = doc! { "_id": obj };
 
-        match repo.find_one::<EducationYear>(filter, None).await? {
-            Some(item) => Ok(item),
-            None => Err(AppError {
+        repo.find_one::<EducationYear>(filter, None)
+            .await?
+            .ok_or(AppError {
                 message: "Academic year not found".to_string(),
-            }),
-        }
+            })
     }
 
     // ============================================
@@ -124,7 +130,7 @@ impl EducationYearService {
     ) -> Result<Paginated<EducationYear>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let searchable = ["label", "_id"];
+        let searchable = ["label", "_id", "curriculum_id"];
 
         let (data, total, total_pages, current_page) = repo
             .get_all::<EducationYear>(filter, &searchable, limit, skip, extra_match)
@@ -141,24 +147,28 @@ impl EducationYearService {
     // ============================================
     // UPDATE
     // ============================================
-    pub async fn update_year(
+    pub async fn update(
         &self,
         id: &IdType,
         update: &EducationYearPartial,
     ) -> Result<EducationYear, AppError> {
+        let existing = self.find_one(Some(id), None).await?;
+
         // Uniqueness check
         if let (Some(label), Some(curriculum_id)) = (update.label.clone(), update.curriculum_id) {
-            if let Ok(existing) = self
-                .find_by_label_and_curriculum(&label, curriculum_id)
-                .await
-            {
-                if existing.id != IdType::to_object_id(id).ok() {
-                    return Err(AppError {
-                        message: format!(
-                            "Academic year {} already exists for this curriculum",
-                            existing.label
-                        ),
-                    });
+            if existing.label != label || existing.curriculum_id != curriculum_id {
+                if let Ok(found) = self
+                    .find_by_label_and_curriculum(&label, curriculum_id)
+                    .await
+                {
+                    if found.id != IdType::to_object_id(id).ok() {
+                        return Err(AppError {
+                            message: format!(
+                                "Academic year {} already exists for this curriculum",
+                                found.label
+                            ),
+                        });
+                    }
                 }
             }
         }
@@ -175,15 +185,42 @@ impl EducationYearService {
     }
 
     // ============================================
-    // DELETE
+    // DELETE (SOFT DELETE)
     // ============================================
-    pub async fn delete_year(&self, id: &IdType) -> Result<EducationYear, AppError> {
+    pub async fn delete(&self, id: &IdType, user_id: mongodb::bson::oid::ObjectId) -> Result<EducationYear, AppError> {
+        let education_year = self.find_one(Some(id), None).await?;
+
+        // Soft delete: set deleted_at and deleted_by
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        
+        let update_doc = doc! {
+            "$set": {
+                "deleted_at": mongodb::bson::to_bson(&Utc::now()).unwrap(),
+                "deleted_by": user_id
+            }
+        };
 
-        let found = self.find_one_by_id(id).await?;
-        repo.delete_one(id).await?;
+        repo.update_one_raw(id, update_doc).await?;
 
-        Ok(found)
+        Ok(education_year)
+    }
+
+    // ============================================
+    // RESTORE (UNDO SOFT DELETE)
+    // ============================================
+    pub async fn restore(&self, id: &IdType) -> Result<EducationYear, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+        
+        let update_doc = doc! {
+            "$unset": {
+                "deleted_at": "",
+                "deleted_by": ""
+            }
+        };
+
+        repo.update_one_raw(id, update_doc).await?;
+
+        self.find_one(Some(id), None).await
     }
 
     // ============================================
@@ -194,50 +231,66 @@ impl EducationYearService {
         filter: Option<String>,
         limit: Option<i64>,
         skip: Option<i64>,
+        extra_match: Option<Document>,
     ) -> Result<Paginated<EducationYearWithOthers>, AppError> {
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
 
-        let mut pipeline = vec![];
+        let mut match_stage = extra_match.unwrap_or_default();
 
         if let Some(f) = filter {
-            pipeline.push(doc! {
-                "$match": {
-                    "$or": [
-                        { "_id": { "$regex": &f, "$options": "i" }},
-                        { "label": { "$regex": &f, "$options": "i" }}
-                    ]
-                }
-            });
+            let search = build_search_filter(
+                Some(f),
+                &["label", "_id", "curriculum_id"],
+            );
+            match_stage.extend(search);
         }
 
-        pipeline.extend(academic_year_pipeline(doc! {}));
+        let pipeline = academic_year_pipeline(match_stage);
 
         repo.aggregate_with_paginate::<EducationYearWithOthers>(pipeline, limit, skip)
             .await
     }
 
+
     pub async fn find_one_with_relations(
         &self,
-        id: &IdType,
+        id: Option<&IdType>,
+        extra_match: Option<Document>,
     ) -> Result<EducationYearWithOthers, AppError> {
-        let obj = IdType::to_object_id(id)?;
-        let match_stage = doc! { "_id": obj };
+        let mut match_stage = extra_match.unwrap_or_default();
+
+        if let Some(id) = id {
+            match_stage.insert("_id", IdType::to_object_id(id)?);
+        }
 
         let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
         let pipeline = academic_year_pipeline(match_stage);
 
-        let result = repo
-            .aggregate_one::<EducationYearWithOthers>(pipeline, None)
-            .await?;
-
-        match result {
-            Some(item) => Ok(item),
-            None => Err(AppError {
+        repo.aggregate_one::<EducationYearWithOthers>(pipeline, None)
+            .await?
+            .ok_or(AppError {
                 message: "Academic year not found".to_string(),
-            }),
-        }
+            })
     }
 
+    // ============================================
+    // COUNT
+    // ============================================
+    pub async fn count_education_years(
+        &self,
+        filter: Option<String>,
+        extra_match: Option<Document>,
+    ) -> Result<CountDoc, AppError> {
+        let repo = BaseRepository::new(self.collection.clone().clone_with_type::<Document>());
+
+        let searchable = ["label", "_id", "curriculum_id"];
+
+        repo.count(filter, &searchable, extra_match).await
+    }
+
+    // ============================================
+    // GET CURRENT YEAR AND TERM
+    // ============================================
     pub async fn get_current_year_and_term(
         &self,
         date: Option<DateTime<Utc>>,
