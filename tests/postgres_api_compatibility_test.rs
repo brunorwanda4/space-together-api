@@ -73,3 +73,12 @@ fn school_compatibility_keeps_database_name_as_response_field() {
 
     assert_compatible_json_shape(&mongo_response, &postgres_response);
 }
+
+#[test]
+fn replacement_schema_removes_document_storage_columns() {
+    let migration = include_str!("../migrations/20260524000400_relational_connected_schema.sql");
+
+    assert!(migration.contains("DROP COLUMN IF EXISTS raw_document"));
+    assert!(!migration.contains("CREATE TABLE legacy_records"));
+    assert!(!migration.contains("raw_document JSONB"));
+}
