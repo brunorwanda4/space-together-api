@@ -11,8 +11,10 @@ services:
       RUST_LOG: info
       PORT: 4646
       MONGO_URI: mongodb://mongo:27017/main_database
+      POSTGRES_URL: postgres://space_together:space_together@postgres:5432/space_together
     depends_on:
       - mongo
+      - postgres
     restart: unless-stopped
 
   mongo:
@@ -24,5 +26,19 @@ services:
       - mongo_data:/data/db
     restart: always
 
+  postgres:
+    image: postgres:17
+    container_name: space-together-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: space_together
+      POSTGRES_PASSWORD: space_together
+      POSTGRES_DB: space_together
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
 volumes:
   mongo_data:
+  postgres_data:

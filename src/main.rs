@@ -29,7 +29,17 @@ async fn main() -> std::io::Result<()> {
     let address = format!("0.0.0.0:{port}");
 
     let mongo_manager = config::db::init_mongo_manager().await;
-    let state = web::Data::new(config::state::AppState::new(mongo_manager.clone()));
+    let pg_manager = config::db::init_postgres_manager()
+        .await
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))?;
+    pg_manager
+        .run_migrations()
+        .await
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err.to_string()))?;
+    let state = web::Data::new(config::state::AppState::new(
+        mongo_manager.clone(),
+        pg_manager.clone(),
+    ));
 
     println!("🚀 Space-Together backend starting on {address}");
 

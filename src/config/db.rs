@@ -1,4 +1,5 @@
 use crate::config::mongo_manager::MongoManager;
+use crate::config::postgres_manager::PgManager;
 use std::env;
 
 pub async fn init_mongo_manager() -> MongoManager {
@@ -7,4 +8,9 @@ pub async fn init_mongo_manager() -> MongoManager {
     MongoManager::new(&uri, &main_db_name)
         .await
         .expect("Failed to init MongoManager")
+}
+
+pub async fn init_postgres_manager() -> anyhow::Result<PgManager> {
+    let database_url = env::var("POSTGRES_URL").expect("POSTGRES_URL not set in .env");
+    PgManager::new(&database_url).await
 }

@@ -49,6 +49,7 @@ actix-rt = "2.11.0"
 dashmap = "6.1.0"
 anyhow = "1.0.100"
 rsa = "0.9.6"
+sqlx = { version = "0.8.2", features = ["runtime-tokio-rustls", "postgres", "chrono", "json", "migrate"] }
 
 [dependencies.mongodb]
 version = "3.4.1"
